@@ -1,0 +1,202 @@
+# best-factor
+
+`best-factor` is a dependency-light Python CLI for researching which long-only US equity factor ranks highest in a given run under free-data constraints. It maps each tested factor to actual stock holdings and weights, backtests weekly or monthly rebalancing, ranks factors with return and downside metrics, and writes CSV, Markdown, and static HTML dashboard reports.
+
+> Research only: this project does **not** provide investment advice or trade execution.
+
+## What it does
+
+- Loads a US stock universe and long-form OHLCV prices from CSV, or optionally fetches live prices through `yfinance`.
+- Computes factor-zoo style signals that map to concrete tickers:
+  - `momentum_12_1`
+  - `momentum_6m`
+  - `low_volatility`
+  - `short_reversal`
+  - `risk_adjusted_momentum`
+  - `liquidity`
+  - `value_pe` when fundamentals are available
+  - `quality_roe` when fundamentals are available
+  - `composite_defensive`
+- Builds long-only top-N portfolios with equal or score weights.
+- Supports monthly (`M`) and weekly (`W`) rebalancing.
+- Applies optional market-cap and dollar-volume filters.
+- Measures CAGR, annualized return, volatility, Sharpe, Sortino, Calmar, max drawdown, turnover, emitted-period coverage, and a deterministic composite score.
+- Emits current/latest best-factor holdings and weights.
+- Writes a dependency-free `report.html` dashboard with summary cards, ranking bars, metric tables, holdings weights, diagnostics, metadata, and caveats.
+- Exports the same run artifacts into a GitHub Pages-ready `docs/` dashboard similar to the reference static dashboard pattern.
+
+## Install
+
+No runtime dependency is required for CSV/offline runs:
+
+```bash
+python -m pip install -e .
+```
+
+Optional live Yahoo/yfinance support:
+
+```bash
+python -m pip install -e '.[live]'
+```
+
+## Quick offline smoke run
+
+```bash
+python -m best_factor.cli run \
+  --prices-file tests/fixtures/prices.csv \
+  --universe-file tests/fixtures/universe.csv \
+  --fundamentals-file tests/fixtures/fundamentals.csv \
+  --output-dir runs/fixture \
+  --rebalance M \
+  --top-n 3
+```
+
+Or after editable install:
+
+```bash
+best-factor run \
+  --prices-file tests/fixtures/prices.csv \
+  --universe-file tests/fixtures/universe.csv \
+  --fundamentals-file tests/fixtures/fundamentals.csv \
+  --output-dir runs/fixture \
+  --rebalance M \
+  --top-n 3
+```
+
+## Optional live free-data run
+
+```bash
+best-factor run \
+  --provider yfinance \
+  --tickers AAPL MSFT NVDA AMZN META GOOGL JPM XOM LLY AVGO \
+  --period 5y \
+  --output-dir runs/live-smoke \
+  --rebalance M \
+  --top-n 5
+```
+
+The live path is intentionally optional because free public data can fail, be rate-limited, or change format.
+
+## Output artifacts
+
+Each run writes:
+
+- `factor_metrics.csv`
+- `factor_rankings.csv`
+- `latest_holdings.csv`
+- `portfolio_returns.csv`
+- `factor_scores.csv`
+- `skipped_reasons.csv`
+- `prices_snapshot.csv`
+- `universe_snapshot.csv`
+- `run_config.json`
+- `run_metadata.json`
+- `report.md`
+- `report.html`
+- optional GitHub Pages JSON via `best-factor site`: `docs/data/latest-results.json`
+
+The latest best-factor holdings include `rebalance_date`, `factor`, `ticker`, `weight`, `score`, and `price_date_used`. Weights sum to approximately 1.0 for non-empty eligible portfolios.
+
+Open `report.html` in a browser to inspect the analysis visually. It is a static file with inline CSS only; no CDN, JavaScript, or remote chart dependency is required. Visual bars are clamped to `0-100%` and exact numeric metric values remain visible in text.
+
+## GitHub Pages-style dashboard
+
+The `docs/` directory contains a local-asset-only static dashboard for GitHub Pages. It reads `docs/data/latest-results.json`, renders Korean summary cards, factor ranking bars, latest holdings/weights, diagnostics, metadata, and free-data caveats, and shows an explicit static-data warning with `generated_at`, source hash, and run/fetch time when available.
+
+Export a run into the site JSON schema:
+
+```bash
+python -m best_factor.cli site \
+  --run-dir runs/fixture \
+  --output-file docs/data/latest-results.json \
+  --data-scope csv_run
+```
+
+Serve locally before opening the page, because some browsers block `fetch()` for `file://` pages:
+
+```bash
+python -m http.server --directory docs 8000
+# open http://127.0.0.1:8000/
+```
+
+To publish manually, use the isolated `SonChangGi/best-factor` repository and its GitHub Pages custom workflow. Do not use another project repository or branch-source Pages target.
+
+## Isolated GitHub Pages deployment
+
+This project must be deployed only to its own repository. The intended public URL is:
+
+- `https://sonchanggi.github.io/best-factor/`
+- GitHub repository: `SonChangGi/best-factor`
+
+It must not publish to, link to, trigger workflows in, or reuse assets from any other repository or Pages site. No other project is a deployment target for this repository.
+
+The `docs/` dashboard includes an update panel. Because GitHub Pages is static, the button does not run compute anonymously in the browser and it does not embed a token. It opens the new repository's GitHub Actions workflow; a user with repository permission can run the workflow manually:
+
+```bash
+gh workflow run update-dashboard.yml --repo SonChangGi/best-factor --ref main
+```
+
+The workflow uses GitHub Pages custom workflow deployment (`actions/configure-pages`, `actions/upload-pages-artifact`, and `actions/deploy-pages`) so the generated `docs/` artifact is published by that same run. It intentionally does not rely on a workflow self-commit to trigger a branch-based Pages build.
+For manual and scheduled updates, the deployed Pages artifact is the freshness source of truth; the checked-in `docs/data/latest-results.json` is a seed/sample until the next workflow artifact is deployed.
+
+### Live dashboard universe
+
+`.github/best-factor-dashboard-tickers.txt` is the committed public dashboard universe. It is a curated list of individual large/liquid US stocks, not a survivorship-free historical universe and not the whole US market. The workflow builds best-effort current universe metadata from yfinance, applies a liquidity filter, attempts a market-cap filter when metadata is available, and retries with liquidity-only filtering if free metadata is insufficient.
+
+This keeps the public page reproducible and cheap to update, but the results remain research-grade and current-universe biased.
+
+## Data schemas
+
+Canonical output/internal schemas are enforced by tests:
+
+- `prices`: `ticker`, `date`, `open`, `high`, `low`, `close`, `adj_close`, `volume`, `source`, `fetched_at`
+- `universe`: `ticker`, `name`, `exchange`, `asset_type`, `active`, `market_cap`, `sector`, `source`, `as_of_date`
+- `factor_scores`: `factor`, `ticker`, `signal_date`, `score`, `rank`, `eligible`, `skip_reason`
+- `holdings`: `rebalance_date`, `factor`, `ticker`, `weight`, `score`, `price_date_used`
+- `metrics/rankings`: `factor`, `cagr`, `annual_return`, `volatility`, `sharpe`, `sortino`, `calmar`, `max_drawdown`, `turnover`, `coverage`, `composite_score`
+
+## Timing convention / no-lookahead rule
+
+Signals at date `t` use only data available through `t`. Portfolio weights are formed at `t` and evaluated on forward close-to-close returns after `t`, ending at the next rebalance date. Weekly schedules use the last available trading session in each ISO week. Monthly schedules use the last available trading session in each calendar month.
+
+## Ranking formula
+
+The default composite score is deterministic:
+
+- Reward metrics: CAGR 20%, Sharpe 25%, Sortino 20%, Calmar 20%.
+- Penalty metrics: absolute max drawdown 10%, volatility 5%.
+- Metrics are min-max normalized across tested factors.
+- Missing metrics receive the worst normalized score.
+- Equal/single-factor metric ranges receive a deterministic 0.5 normalized score.
+- Tie-break order: composite score desc, Sharpe desc, CAGR desc, max drawdown desc (less negative is better), factor name asc. Undefined or extreme positive Sortino/Calmar ratios from zero or near-zero downside are capped at 999 for deterministic, non-misleading reports.
+
+
+## Rank eligibility and universe boundaries
+
+A factor must produce at least one non-empty portfolio period (`coverage > 0`) to appear in `factor_rankings.csv` or become the best factor. `coverage` is measured over emitted portfolio-return periods after missing-price and eligibility skips, not over every scheduled calendar rebalance. If filters leave no rank-eligible factor, the CLI exits with a controlled error instead of reporting a misleading all-empty winner. Universe rows are filtered to active stock/equity asset types by default.
+
+`composite_defensive` depends on `momentum_6m`, `low_volatility`, and `liquidity`; all three dependencies must be eligible for a ticker before the composite row becomes eligible. When requested alone, those dependencies are computed internally but only the composite factor is emitted/ranked. Unknown factor names are rejected before a run starts.
+
+## Free-data limitations
+
+The default approach uses free/current-universe data and should be interpreted as research-grade, not institutional-grade:
+
+- Current symbol lists are not survivorship-bias-free historical constituents.
+- Yahoo/yfinance data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms.
+- Fundamental files must include `as_of_date` and `available_at`; rows without `available_at` are treated as non-point-in-time and skipped for historical factor scoring.
+- Some factors or rows may be skipped with explicit reason codes such as `missing_fundamentals`, `insufficient_history`, `insufficient_volume`, `market_cap_unavailable`, `market_cap_below_min`, `empty_after_filters`, `provider_error`, `not_enough_assets`, `missing_rebalance_price`, `missing_exit_price`, and `inactive_or_non_stock`.
+
+For higher-confidence research, use a survivorship-aware universe and point-in-time fundamentals from a licensed data source through a new provider adapter.
+
+## Verification
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests
+python -m best_factor.cli run \
+  --prices-file tests/fixtures/prices.csv \
+  --universe-file tests/fixtures/universe.csv \
+  --fundamentals-file tests/fixtures/fundamentals.csv \
+  --output-dir /tmp/best-factor-smoke \
+  --rebalance M \
+  --top-n 3
+```

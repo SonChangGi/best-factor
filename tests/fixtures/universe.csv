@@ -1,0 +1,9 @@
+ticker,name,exchange,asset_type,active,market_cap,sector,source,as_of_date
+AAA,AAA Corp,NASDAQ,stock,true,900000000000,Tech,fixture,2026-06-10
+BBB,BBB Corp,NASDAQ,stock,true,500000000000,Tech,fixture,2026-06-10
+CCC,CCC Corp,NASDAQ,stock,true,250000000000,Health,fixture,2026-06-10
+DDD,DDD Corp,NASDAQ,stock,true,80000000000,Energy,fixture,2026-06-10
+EEE,EEE Corp,NASDAQ,stock,true,20000000000,Industrial,fixture,2026-06-10
+FFF,FFF Corp,NASDAQ,stock,true,150000000000,Staples,fixture,2026-06-10
+GGG,GGG Corp,NASDAQ,stock,true,5000000000,Small,fixture,2026-06-10
+HHH,HHH Corp,NASDAQ,stock,true,60000000000,Finance,fixture,2026-06-10

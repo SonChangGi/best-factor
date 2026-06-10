@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Best Factor Lab Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="hero" aria-labelledby="page-title">
+    <div class="hero-copy">
+      <p class="eyebrow">Best Factor Lab</p>
+      <h1 id="page-title">미국 주식 팩터 랭킹 대시보드</h1>
+      <p>
+        무료 데이터 기반 백테스트 결과를 GitHub Pages에서 보기 좋게 확인하는 정적 대시보드입니다.
+        팩터별 성과·위험 지표, 최신 편입 종목과 비중, 데이터 한계를 한 화면에서 비교합니다.
+      </p>
+    </div>
+    <aside class="status-card" id="run-status" aria-live="polite">데이터를 불러오는 중...</aside>
+  </header>
+
+  <noscript>
+    <section class="notice warning">
+      이 대시보드는 정적 JSON 데이터를 불러와 화면을 그리므로 JavaScript가 필요합니다.
+    </section>
+  </noscript>
+
+  <main>
+    <section class="notice" aria-label="research notice">
+      <strong>중요:</strong> 이 페이지는 연구용 정적 스냅샷입니다. 표시된 결과는 투자 조언이나 매매 지시가 아니며,
+      우주(universe), 리밸런싱, 필터, 무료 데이터 품질, 랭킹 공식에 따라 달라집니다.
+    </section>
+
+    <section class="controls" aria-label="대시보드 입력값">
+      <label>정렬 기준
+        <select id="sort-select">
+          <option value="composite_score">종합 점수</option>
+          <option value="sharpe">샤프</option>
+          <option value="sortino">소르티노</option>
+          <option value="calmar">칼마</option>
+          <option value="cagr">CAGR</option>
+          <option value="max_drawdown">MDD</option>
+        </select>
+      </label>
+      <label>종목 표시 수
+        <input id="topn-input" type="number" min="1" max="50" value="20" />
+      </label>
+      <label>팩터 검색
+        <input id="factor-filter" type="search" placeholder="예: momentum" />
+      </label>
+    </section>
+
+    <section class="cards" id="summary-cards" aria-label="요약 카드"></section>
+
+    <section class="panel update-panel" aria-labelledby="update-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Update</p>
+          <h2 id="update-title">최신 데이터 갱신</h2>
+        </div>
+        <p>정적 페이지 자체는 계산을 실행할 수 없습니다. 저장소 권한이 있는 사용자가 새 Best Factor 저장소의 GitHub Actions 워크플로를 열어 실행하면, 워크플로가 yfinance 무료 데이터를 다시 받아 Pages artifact로 배포합니다.</p>
+      </div>
+      <div class="update-grid">
+        <div>
+          <a id="workflow-link" class="button" href="https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml" target="_blank" rel="noopener noreferrer">GitHub Actions 업데이트 워크플로 열기</a>
+          <p id="update-status" class="helper" role="status" aria-live="polite">저장소 권한 필요 · 실행 완료 후 이 페이지의 생성 시각과 데이터 기준일을 확인하세요.</p>
+        </div>
+        <div class="command-card" aria-label="CLI workflow dispatch command">
+          <span>CLI 실행 예시</span>
+          <code id="workflow-command">gh workflow run update-dashboard.yml --repo SonChangGi/best-factor --ref main</code>
+          <button id="copy-command" type="button">명령 복사</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel diagnostics-panel" aria-labelledby="diagnostics-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">현실성 점검</p>
+          <h2 id="diagnostics-title">데이터 품질 · 최신성 · 매매 가능성 게이트</h2>
+        </div>
+        <p>정적 결과가 언제 생성되었는지, 어떤 무료 데이터/필터 조건을 통과했는지 먼저 확인하세요.</p>
+      </div>
+      <div class="diagnostic-grid" id="diagnostics-grid"></div>
+    </section>
+
+    <section class="panel visual-panel" aria-labelledby="visual-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">시각화 대시보드</p>
+          <h2 id="visual-title">팩터별 비교 · 최신 보유 비중</h2>
+        </div>
+        <p>막대는 빠른 비교용으로 0~100% 범위에 클램프되며, 정확한 값은 텍스트 숫자를 기준으로 보세요.</p>
+      </div>
+      <div class="viz-grid">
+        <article class="viz-card wide">
+          <h3>팩터 랭킹</h3>
+          <div id="ranking-list" class="ranking-list" aria-live="polite"></div>
+        </article>
+        <article class="viz-card wide">
+          <h3>최신 편입 종목과 비중</h3>
+          <div id="holdings-table" class="table-wrap" aria-live="polite"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="metrics-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Risk / Return</p>
+          <h2 id="metrics-title">상세 지표 테이블</h2>
+        </div>
+      </div>
+      <div id="metrics-table" class="table-wrap"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="metadata-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Reproducibility</p>
+          <h2 id="metadata-title">실행 메타데이터</h2>
+        </div>
+      </div>
+      <div id="metadata-table" class="table-wrap"></div>
+    </section>
+
+    <section class="panel caveats" aria-labelledby="caveats-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Limitations</p>
+          <h2 id="caveats-title">무료 데이터 한계와 해석</h2>
+        </div>
+      </div>
+      <ul id="caveats-list"></ul>
+    </section>
+  </main>
+</body>
+</html>
