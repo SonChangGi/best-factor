@@ -13,8 +13,8 @@
       <p class="eyebrow">Best Factor Lab</p>
       <h1 id="page-title">미국 주식 팩터 랭킹 대시보드</h1>
       <p>
-        무료 데이터 기반 백테스트 결과를 GitHub Pages에서 보기 좋게 확인하는 정적 대시보드입니다.
-        팩터별 성과·위험 지표, 최신 편입 종목과 비중, 데이터 한계를 한 화면에서 비교합니다.
+        무료 데이터 기반 미국 개별주식 팩터 백테스트 결과를 정적 대시보드로 제공합니다.
+        팩터별 성과·위험 지표, 최신 편입 종목과 비중, 데이터 품질 게이트를 표와 차트로 함께 확인하세요.
       </p>
     </div>
     <aside class="status-card" id="run-status" aria-live="polite">데이터를 불러오는 중...</aside>
@@ -22,7 +22,7 @@
 
   <noscript>
     <section class="notice warning">
-      이 대시보드는 정적 JSON 데이터를 불러와 화면을 그리므로 JavaScript가 필요합니다.
+      이 대시보드는 정적 JSON 데이터를 불러와 표와 차트를 그리므로 JavaScript가 필요합니다.
     </section>
   </noscript>
 
@@ -82,27 +82,94 @@
         </div>
         <p>정적 결과가 언제 생성되었는지, 어떤 무료 데이터/필터 조건을 통과했는지 먼저 확인하세요.</p>
       </div>
-      <div class="diagnostic-grid" id="diagnostics-grid"></div>
+      <div class="diagnostic-grid three" id="diagnostics-grid"></div>
     </section>
 
-    <section class="panel visual-panel" aria-labelledby="visual-title">
+    <section class="panel visual-panel" id="visual-dashboard" aria-labelledby="visual-title">
       <div class="panel-heading">
         <div>
           <p class="eyebrow">시각화 대시보드</p>
-          <h2 id="visual-title">팩터별 비교 · 최신 보유 비중</h2>
+          <h2 id="visual-title">팩터별 비교 · 위험/수익 · 최신 보유 비중</h2>
         </div>
-        <p>막대는 빠른 비교용으로 0~100% 범위에 클램프되며, 정확한 값은 텍스트 숫자를 기준으로 보세요.</p>
+        <p>위 입력값을 바꾸면 아래 차트와 표가 즉시 갱신됩니다. 차트는 비교를 돕기 위한 시각화이며, 정확한 공식 값은 각 표의 숫자를 기준으로 보세요.</p>
       </div>
       <div class="viz-grid">
         <article class="viz-card wide">
-          <h3>팩터 랭킹</h3>
-          <div id="ranking-list" class="ranking-list" aria-live="polite"></div>
+          <div class="viz-card-heading">
+            <div>
+              <p class="eyebrow">팩터 성과</p>
+              <h3>팩터 CAGR 막대 차트</h3>
+            </div>
+            <span id="factor-chart-meta" class="chart-meta">-</span>
+          </div>
+          <div id="factor-return-chart" class="bar-chart" aria-live="polite"></div>
+        </article>
+        <article class="viz-card">
+          <div class="viz-card-heading">
+            <div>
+              <p class="eyebrow">위험 조정</p>
+              <h3>샤프 · 소르티노 · 칼마 비교</h3>
+            </div>
+            <span id="risk-chart-meta" class="chart-meta">-</span>
+          </div>
+          <div id="risk-chart" class="mini-metric-grid" aria-live="polite"></div>
+        </article>
+        <article class="viz-card">
+          <div class="viz-card-heading">
+            <div>
+              <p class="eyebrow">모형 비중</p>
+              <h3>상위 보유 종목 비중 시각화</h3>
+            </div>
+            <span id="weight-chart-meta" class="chart-meta">-</span>
+          </div>
+          <div id="weight-chart" class="bar-chart compact-bars" aria-live="polite"></div>
         </article>
         <article class="viz-card wide">
-          <h3>최신 편입 종목과 비중</h3>
-          <div id="holdings-table" class="table-wrap" aria-live="polite"></div>
+          <div class="viz-card-heading">
+            <div>
+              <p class="eyebrow">최신 출력</p>
+              <h3>현재 최고 팩터 편입 종목과 비중</h3>
+            </div>
+            <span id="current-output-meta" class="chart-meta">-</span>
+          </div>
+          <div class="table-wrap">
+            <table id="current-output-table">
+              <thead>
+                <tr>
+                  <th>순위</th>
+                  <th>종목</th>
+                  <th>팩터</th>
+                  <th>점수</th>
+                  <th>비중</th>
+                  <th>리밸런싱일</th>
+                  <th>가격 기준일</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="viz-card wide">
+          <div class="viz-card-heading">
+            <div>
+              <p class="eyebrow">랭킹 카드</p>
+              <h3>정렬 기준별 팩터 순위</h3>
+            </div>
+          </div>
+          <div id="ranking-list" class="ranking-list" aria-live="polite"></div>
         </article>
       </div>
+    </section>
+
+    <section class="panel" aria-labelledby="holdings-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Portfolio</p>
+          <h2 id="holdings-title">최신 편입 종목과 투자 비중</h2>
+        </div>
+        <p>최고 팩터에 해당하는 최신 롱온리 모형 포트폴리오입니다. 비중은 백테스트 산출물이며 실제 주문 가능 수량, 세금, 비용, 슬리피지는 반영하지 않습니다.</p>
+      </div>
+      <div id="holdings-table" class="table-wrap" aria-live="polite"></div>
     </section>
 
     <section class="panel" aria-labelledby="metrics-title">
@@ -111,18 +178,27 @@
           <p class="eyebrow">Risk / Return</p>
           <h2 id="metrics-title">상세 지표 테이블</h2>
         </div>
+        <p>수익률뿐 아니라 샤프, 소르티노, 칼마, MDD, 변동성, 커버리지를 함께 보며 전략 품질을 판단합니다.</p>
       </div>
       <div id="metrics-table" class="table-wrap"></div>
     </section>
 
-    <section class="panel" aria-labelledby="metadata-title">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">Reproducibility</p>
-          <h2 id="metadata-title">실행 메타데이터</h2>
-        </div>
+    <section class="panel two-col" aria-label="reading guide and metadata">
+      <div>
+        <p class="eyebrow">Reproducibility</p>
+        <h2 id="metadata-title">실행 메타데이터</h2>
+        <div id="metadata-table" class="table-wrap compact"></div>
       </div>
-      <div id="metadata-table" class="table-wrap"></div>
+      <div class="explain">
+        <p class="eyebrow">읽는 방법</p>
+        <h2>대시보드 설명</h2>
+        <ul>
+          <li><strong>종합 점수</strong>는 여러 성과/위험 지표를 표준화해 합산한 비교용 점수입니다.</li>
+          <li><strong>최고 팩터</strong>는 현재 정렬 기준이 아니라 백테스트 산출물의 종합 점수 기준 1위입니다.</li>
+          <li><strong>비중</strong>은 해당 팩터의 최신 리밸런싱 스냅샷이며, 실제 체결 가능성은 별도 점검이 필요합니다.</li>
+          <li><strong>업데이트</strong> 버튼은 브라우저에서 계산하지 않고 GitHub Actions 수동 실행 화면을 엽니다.</li>
+        </ul>
+      </div>
     </section>
 
     <section class="panel caveats" aria-labelledby="caveats-title">
@@ -135,5 +211,10 @@
       <ul id="caveats-list"></ul>
     </section>
   </main>
+
+  <footer>
+    <span>Best Factor Lab</span>
+    <span id="generated-at"></span>
+  </footer>
 </body>
 </html>

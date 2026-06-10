@@ -86,6 +86,10 @@
     renderStatus(payload);
     renderSummary(payload);
     renderDiagnostics(payload);
+    renderFactorReturnChart(payload);
+    renderRiskChart(payload);
+    renderWeightChart(payload);
+    renderCurrentOutput(payload);
     renderRankings(payload);
     renderHoldings(payload);
     renderMetrics(payload);
@@ -95,52 +99,136 @@
 
   function renderStatus(payload) {
     const summary = payload.summary || {};
-    q('#run-status').textContent = [
-      '정적 JSON 로드 완료',
-      `생성: ${fmtText(payload.generated_at)}`,
-      `데이터 범위: ${fmtText(payload.data_scope)}`,
-      `최고 팩터: ${fmtText(summary.best_factor)}`,
-      fmtText(summary.static_data_warning),
-    ].join(' · ');
+    q('#run-status').replaceChildren(
+      statusLine('상태', '정적 JSON 로드 완료'),
+      statusLine('생성', payload.generated_at),
+      statusLine('데이터 기준', summary.data_end_date || payload.data_scope),
+      statusLine('최고 팩터', summary.best_factor),
+      statusLine('주의', summary.static_data_warning)
+    );
+    const generated = q('#generated-at');
+    if (generated) generated.textContent = `Generated: ${fmtText(payload.generated_at)}`;
   }
 
   function renderSummary(payload) {
     const summary = payload.summary || {};
     const cards = [
       ['Best factor', summary.best_factor, '종합 점수 기준 1위 팩터'],
-      ['Composite', fmtNumber(summary.best_composite_score, 4), '여러 성과/위험 지표를 합산한 점수'],
+      ['Composite', fmtNumber(summary.best_composite_score, 4), '성과/위험 지표를 합산한 비교 점수'],
       ['Factors', `${summary.effective_factor_count ?? '—'} / ${summary.tested_factor_count ?? '—'}`, '유효 / 테스트된 팩터 수'],
       ['Holdings', summary.holding_count, '최신 최고 팩터 편입 종목 수'],
-      ['Generated', payload.generated_at, '정적 사이트 JSON 생성 시각'],
+      ['Data end', summary.data_end_date || payload.data_scope, '가격 데이터 기준일'],
       ['Source hash', summary.source_hash || 'missing', '재현성 확인용 입력 파일 해시'],
     ];
-    const root = q('#summary-cards');
-    root.replaceChildren(...cards.map(([label, value, help]) => card(label, value, help)));
+    q('#summary-cards').replaceChildren(...cards.map(([label, value, help]) => card(label, value, help)));
   }
 
   function renderDiagnostics(payload) {
     const summary = payload.summary || {};
+    const metadata = payload.metadata || {};
     const skipped = payload.skipped_reasons || [];
-    const root = q('#diagnostics-grid');
-    root.replaceChildren(
-      diagnosticCard('데이터 최신성', [
+    q('#diagnostics-grid').replaceChildren(
+      diagnosticCard('데이터 커버리지', [
         ['JSON 생성', payload.generated_at],
         ['원천 fetch/run', summary.fetched_at || 'metadata missing'],
         ['Universe 기준일', summary.universe_as_of_date || 'unknown'],
         ['Data scope', payload.data_scope || 'unknown'],
-        ['Data end date', summary.data_end_date || 'unknown'],
+        ['Provider', summary.provider || metadata.provider || 'unknown'],
       ]),
-      diagnosticCard('게이트/스킵 진단', [
-        ['테스트 팩터', summary.tested_factor_count ?? 'unknown'],
-        ['유효 팩터', summary.effective_factor_count ?? 'unknown'],
-        ['랭킹 행', summary.ranking_count ?? 0],
-        ['스킵 사유', skipped.length ? skipped.map((r) => `${r.skip_reason}: ${r.count}`).join(', ') : '없음'],
-      ])
+      diagnosticListCard('팩터/랭킹 게이트', [
+        gateItem('테스트 팩터', `${summary.tested_factor_count ?? 'unknown'}개`, 'pass'),
+        gateItem('유효 팩터', `${summary.effective_factor_count ?? 'unknown'}개`, Number(summary.effective_factor_count) > 0 ? 'pass' : 'warn'),
+        gateItem('랭킹 행', `${summary.ranking_count ?? 0}개`, Number(summary.ranking_count) > 0 ? 'pass' : 'warn'),
+      ]),
+      diagnosticListCard('스킵/현실 제약', skipped.length ? skipped.map((row) => gateItem(row.skip_reason, `${row.count}개`, 'warn')) : [gateItem('스킵 사유', '없음', 'pass')])
     );
   }
 
+  function renderFactorReturnChart(payload) {
+    const rows = visibleRankings(payload).slice(0, 8);
+    setText('#factor-chart-meta', `${metricLabel('cagr')} · ${rows.length}개 표시`);
+    const root = q('#factor-return-chart');
+    if (!rows.length) {
+      root.replaceChildren(empty('표시할 팩터가 없습니다.'));
+      return;
+    }
+    const maxAbs = Math.max(...rows.map((row) => Math.abs(Number(row.cagr) || 0)), 0.01);
+    root.replaceChildren(...rows.map((row) => barRow({
+      label: row.factor,
+      value: fmtPct(row.cagr),
+      width: (Math.abs(Number(row.cagr) || 0) / maxAbs) * 100,
+      negative: Number(row.cagr) < 0,
+      best: row.rank === 1,
+    })));
+  }
+
+  function renderRiskChart(payload) {
+    const rows = visibleRankings(payload).slice(0, 5);
+    setText('#risk-chart-meta', `${rows.length}개 팩터`);
+    const root = q('#risk-chart');
+    if (!rows.length) {
+      root.replaceChildren(empty('위험 조정 지표가 없습니다.'));
+      return;
+    }
+    root.replaceChildren(...rows.map((row) => {
+      const tile = el('article', 'metric-tile');
+      const header = el('div', 'metric-tile-header');
+      header.append(strong(row.factor), span(`MDD ${fmtPct(row.max_drawdown)}`));
+      const metrics = el('div', 'mini-list');
+      metrics.append(
+        miniMetric('Sharpe', fmtNumber(row.sharpe, 2), normalizedWidth(row.sharpe, rows, 'sharpe')),
+        miniMetric('Sortino', fmtNumber(row.sortino, 2), normalizedWidth(row.sortino, rows, 'sortino')),
+        miniMetric('Calmar', fmtNumber(row.calmar, 2), normalizedWidth(row.calmar, rows, 'calmar'))
+      );
+      tile.append(header, metrics);
+      return tile;
+    }));
+  }
+
+  function renderWeightChart(payload) {
+    const holdings = (payload.latest_holdings || []).slice(0, Math.min(state.topN, 12));
+    setText('#weight-chart-meta', `${holdings.length}개 종목 · 합계 ${fmtPct(sumWeights(holdings))}`);
+    const root = q('#weight-chart');
+    if (!holdings.length) {
+      root.replaceChildren(empty('최신 편입 종목이 없습니다.'));
+      return;
+    }
+    const maxWeight = Math.max(...holdings.map((row) => Number(row.weight) || 0), 0.01);
+    root.replaceChildren(...holdings.map((row) => barRow({
+      label: row.ticker,
+      value: fmtPct(row.weight),
+      width: ((Number(row.weight) || 0) / maxWeight) * 100,
+      best: row === holdings[0],
+    })));
+  }
+
+  function renderCurrentOutput(payload) {
+    const holdings = (payload.latest_holdings || []).slice(0, state.topN);
+    setText('#current-output-meta', `${holdings.length}행 · 기준 ${fmtText((payload.summary || {}).data_end_date)}`);
+    const tbody = q('#current-output-table tbody');
+    if (!tbody) return;
+    if (!holdings.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 7;
+      td.textContent = '최신 편입 종목이 없습니다.';
+      tr.append(td);
+      tbody.replaceChildren(tr);
+      return;
+    }
+    tbody.replaceChildren(...holdings.map((row, index) => tableRow([
+      index + 1,
+      strong(row.ticker),
+      fmtText(row.factor),
+      fmtNumber(row.score, 4),
+      fmtPct(row.weight),
+      fmtText(row.rebalance_date),
+      fmtText(row.price_date_used),
+    ])));
+  }
+
   function renderRankings(payload) {
-    const rankings = sortedRankings(payload).filter((row) => !state.filter || String(row.factor || '').toLowerCase().includes(state.filter));
+    const rankings = visibleRankings(payload);
     const root = q('#ranking-list');
     if (!rankings.length) {
       root.replaceChildren(empty('표시할 팩터가 없습니다.'));
@@ -149,7 +237,7 @@
     root.replaceChildren(...rankings.map((row) => {
       const article = el('article', 'rank-card');
       const head = el('div', 'rank-head');
-      head.append(span(` rank #${row.rank ?? '—'}`, 'rank-badge'), strong(row.factor), span(fmtNumber(row[state.sortMetric], 4)));
+      head.append(span(`rank #${row.rank ?? '—'}`, 'rank-badge'), strong(row.factor), span(`${metricLabel(state.sortMetric)} ${fmtMetric(row[state.sortMetric], state.sortMetric)}`));
       article.append(head, bar(percentForMetric(row[state.sortMetric], state.sortMetric), `정렬 지표 ${state.sortMetric}`));
       const metricRow = el('div', 'metric-row');
       metricRow.append(
@@ -173,11 +261,12 @@
     }
     root.replaceChildren(table(
       '최신 최고 팩터 편입 종목과 표시 비중',
-      ['Ticker', 'Weight', 'Score', 'Rebalance date', 'Price date used'],
+      ['Ticker', 'Weight', 'Score', 'Factor', 'Rebalance date', 'Price date used'],
       holdings.map((row) => [
         strong(row.ticker),
         weightCell(row.weight),
         fmtNumber(row.score, 4),
+        fmtText(row.factor),
         fmtText(row.rebalance_date),
         fmtText(row.price_date_used),
       ])
@@ -185,7 +274,7 @@
   }
 
   function renderMetrics(payload) {
-    const rows = sortedRankings({ rankings: payload.metrics || [] });
+    const rows = sortRows(payload.metrics || [], state.sortMetric);
     const root = q('#metrics-table');
     if (!rows.length) {
       root.replaceChildren(empty('상세 지표가 없습니다.'));
@@ -193,7 +282,7 @@
     }
     root.replaceChildren(table(
       '팩터별 성과와 위험 지표. 숫자가 공식 결과입니다.',
-      ['Factor', 'Composite', 'CAGR', 'Sharpe', 'Sortino', 'Calmar', 'MDD', 'Volatility', 'Coverage'],
+      ['Factor', 'Composite', 'CAGR', 'Sharpe', 'Sortino', 'Calmar', 'MDD', 'Volatility', 'Turnover', 'Coverage'],
       rows.map((row) => [
         fmtText(row.factor),
         fmtNumber(row.composite_score, 4),
@@ -203,6 +292,7 @@
         fmtNumber(row.calmar, 2),
         fmtPct(row.max_drawdown),
         fmtPct(row.volatility),
+        fmtPct(row.turnover),
         fmtPct(row.coverage),
       ])
     ));
@@ -238,6 +328,10 @@
     }));
   }
 
+  function visibleRankings(payload) {
+    return sortedRankings(payload).filter((row) => !state.filter || String(row.factor || '').toLowerCase().includes(state.filter));
+  }
+
   function sortedRankings(payload) {
     return sortRows(payload.rankings || [], state.sortMetric);
   }
@@ -270,18 +364,20 @@
     });
     thead.append(headRow);
     const tbody = document.createElement('tbody');
-    rows.forEach((row) => {
-      const tr = document.createElement('tr');
-      row.forEach((cell) => {
-        const td = document.createElement('td');
-        if (cell instanceof Node) td.append(cell);
-        else td.textContent = fmtText(cell);
-        tr.append(td);
-      });
-      tbody.append(tr);
-    });
+    rows.forEach((row) => tbody.append(tableRow(row)));
     tbl.append(caption, thead, tbody);
     return tbl;
+  }
+
+  function tableRow(cells) {
+    const tr = document.createElement('tr');
+    cells.forEach((cell) => {
+      const td = document.createElement('td');
+      if (cell instanceof Node) td.append(cell);
+      else td.textContent = fmtText(cell);
+      tr.append(td);
+    });
+    return tr;
   }
 
   function card(label, value, help) {
@@ -296,31 +392,77 @@
     heading.textContent = title;
     const dl = el('dl', 'kv-list');
     pairs.forEach(([key, value]) => {
-      const row = document.createElement('div');
       const dt = document.createElement('dt');
       const dd = document.createElement('dd');
       dt.textContent = fmtText(key);
       dd.textContent = fmtText(value);
-      row.append(dt, dd);
-      dl.append(row);
+      dl.append(dt, dd);
     });
     article.append(heading, dl);
     return article;
   }
 
+  function diagnosticListCard(title, items) {
+    const article = el('article', 'diagnostic-card');
+    const heading = document.createElement('h3');
+    const list = el('div', 'gate-list');
+    heading.textContent = title;
+    list.replaceChildren(...items);
+    article.append(heading, list);
+    return article;
+  }
+
+  function gateItem(title, detail, status) {
+    const item = el('div', `gate-item ${status || 'pass'}`);
+    item.append(strong(title), small(detail));
+    return item;
+  }
+
+  function miniMetric(label, value, width) {
+    const item = el('div', 'mini-item');
+    item.append(strong(`${label} ${value}`), bar(width, label));
+    return item;
+  }
+
   function weightCell(weight) {
     const wrap = el('div', 'weight-cell');
-    wrap.append(bar(Number(weight) * 100, '보유 비중', 'small'), span(fmtPct(weight)));
+    wrap.append(bar(Number(weight) * 100, '보유 비중'), span(fmtPct(weight)));
     return wrap;
   }
 
-  function bar(percent, label, size) {
-    const outer = el('div', size ? `bar ${size}` : 'bar');
+  function barRow({ label, value, width, negative, best }) {
+    const row = el('div', best ? 'bar-row is-best' : 'bar-row');
+    row.append(span(label, 'bar-label'), barTrack(width, negative), span(value, 'bar-value'));
+    return row;
+  }
+
+  function bar(percent, label) {
+    const outer = barTrack(percent, false);
     outer.setAttribute('aria-label', label);
-    const inner = document.createElement('span');
-    inner.style.width = `${clampPct(percent).toFixed(2)}%`;
-    outer.append(inner);
     return outer;
+  }
+
+  function barTrack(percent, negative) {
+    const track = el('div', 'bar-track');
+    const fill = el('div', negative ? 'bar-fill negative' : 'bar-fill');
+    fill.style.width = `${clampPct(percent).toFixed(2)}%`;
+    track.append(fill);
+    return track;
+  }
+
+  function statusLine(label, value) {
+    const row = el('div', 'status-line');
+    row.append(span(label, 'status-label'), span(value, 'status-value'));
+    return row;
+  }
+
+  function normalizedWidth(value, rows, metric) {
+    const max = Math.max(...rows.map((row) => Math.max(0, Number(row[metric]) || 0)), 0.01);
+    return (Math.max(0, Number(value) || 0) / max) * 100;
+  }
+
+  function sumWeights(rows) {
+    return rows.reduce((total, row) => total + (Number(row.weight) || 0), 0);
   }
 
   function percentForMetric(value, metric) {
@@ -335,6 +477,22 @@
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return 0;
     return Math.max(0, Math.min(100, numeric));
+  }
+
+  function metricLabel(metric) {
+    const labels = {
+      composite_score: '종합 점수',
+      sharpe: '샤프',
+      sortino: '소르티노',
+      calmar: '칼마',
+      cagr: 'CAGR',
+      max_drawdown: 'MDD',
+    };
+    return labels[metric] || metric;
+  }
+
+  function fmtMetric(value, metric) {
+    return metric === 'cagr' || metric === 'max_drawdown' ? fmtPct(value) : fmtNumber(value, metric === 'composite_score' ? 4 : 2);
   }
 
   function fmtNumber(value, digits = 2) {
@@ -352,6 +510,11 @@
   function fmtText(value) {
     if (value === null || value === undefined || value === '') return '—';
     return String(value);
+  }
+
+  function setText(selector, value) {
+    const node = q(selector);
+    if (node) node.textContent = fmtText(value);
   }
 
   function el(tag, className) {
@@ -379,7 +542,7 @@
   }
 
   function empty(text) {
-    const node = el('p', 'empty');
+    const node = el('p', 'empty-state');
     node.textContent = text;
     return node;
   }
