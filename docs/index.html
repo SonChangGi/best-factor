@@ -13,7 +13,7 @@
       <p class="eyebrow">Best Factor Lab</p>
       <h1 id="page-title">미국 주식 팩터 랭킹 대시보드</h1>
       <p>
-        무료 데이터 기반 미국 개별주식 팩터 백테스트 결과를 정적 대시보드로 제공합니다.
+        무료 데이터 기반 미국 개별주식 factor-zoo 백테스트 결과를 정적 대시보드로 제공합니다.
         팩터별 성과·위험 지표, 최신 편입 종목과 비중, 데이터 품질 게이트를 표와 차트로 함께 확인하세요.
       </p>
     </div>
@@ -29,7 +29,8 @@
   <main>
     <section class="notice" aria-label="research notice">
       <strong>중요:</strong> 이 페이지는 연구용 정적 스냅샷입니다. 표시된 결과는 투자 조언이나 매매 지시가 아니며,
-      우주(universe), 리밸런싱, 필터, 무료 데이터 품질, 랭킹 공식에 따라 달라집니다.
+      “최고 팩터”는 수백 개 테스트 후보 중 이번 실행에서 1위라는 뜻입니다. 우주(universe), 리밸런싱, 필터,
+      무료 데이터 품질, 랭킹 공식, 다중검정/데이터 스누핑 위험에 따라 결론은 달라집니다.
     </section>
 
     <section class="controls" aria-label="대시보드 입력값">
@@ -80,7 +81,7 @@
           <p class="eyebrow">현실성 점검</p>
           <h2 id="diagnostics-title">데이터 품질 · 최신성 · 매매 가능성 게이트</h2>
         </div>
-        <p>정적 결과가 언제 생성되었는지, 어떤 무료 데이터/필터 조건을 통과했는지 먼저 확인하세요.</p>
+          <p>정적 결과가 언제 생성되었는지, 얼마나 많은 팩터 후보를 비교했는지, 어떤 무료 데이터/필터 조건을 통과했는지 먼저 확인하세요.</p>
       </div>
       <div class="diagnostic-grid three" id="diagnostics-grid"></div>
     </section>
@@ -128,7 +129,7 @@
           <div class="viz-card-heading">
             <div>
               <p class="eyebrow">최신 출력</p>
-              <h3>현재 최고 팩터 편입 종목과 비중</h3>
+              <h3>현재 최고 테스트 팩터 편입 종목과 비중</h3>
             </div>
             <span id="current-output-meta" class="chart-meta">-</span>
           </div>
@@ -167,7 +168,7 @@
           <p class="eyebrow">Portfolio</p>
           <h2 id="holdings-title">최신 편입 종목과 투자 비중</h2>
         </div>
-        <p>최고 팩터에 해당하는 최신 롱온리 모형 포트폴리오입니다. 비중은 백테스트 산출물이며 실제 주문 가능 수량, 세금, 비용, 슬리피지는 반영하지 않습니다.</p>
+        <p>테스트 후보 중 최고 팩터에 해당하는 최신 롱온리 모형 포트폴리오입니다. 비중은 백테스트 산출물이며 실제 주문 가능 수량, 세금, 비용, 슬리피지는 반영하지 않습니다.</p>
       </div>
       <div id="holdings-table" class="table-wrap" aria-live="polite"></div>
     </section>
@@ -194,7 +195,7 @@
         <h2>대시보드 설명</h2>
         <ul>
           <li><strong>종합 점수</strong>는 여러 성과/위험 지표를 표준화해 합산한 비교용 점수입니다.</li>
-          <li><strong>최고 팩터</strong>는 현재 정렬 기준이 아니라 백테스트 산출물의 종합 점수 기준 1위입니다.</li>
+          <li><strong>최고 팩터</strong>는 현재 정렬 기준이 아니라 백테스트 산출물의 종합 점수 기준 1위이며, 수백 개 테스트 후보 중 1위라는 의미입니다.</li>
           <li><strong>비중</strong>은 해당 팩터의 최신 리밸런싱 스냅샷이며, 실제 체결 가능성은 별도 점검이 필요합니다.</li>
           <li><strong>업데이트</strong> 버튼은 브라우저에서 계산하지 않고 GitHub Actions 수동 실행 화면을 엽니다.</li>
         </ul>

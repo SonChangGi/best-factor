@@ -51,6 +51,7 @@ PORTFOLIO_RETURN_COLUMNS = [
     "return",
     "turnover",
     "holdings_count",
+    "skip_reason",
 ]
 
 METRIC_COLUMNS = [
@@ -88,11 +89,14 @@ CAVEATS = [
     "Default live runs use free public/current-universe data and are not survivorship-bias free.",
     "Yahoo/yfinance data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms; use for research/education only.",
     "Fundamental fields from free sources can be sparse or not point-in-time; unavailable factor rows are skipped with explicit reason codes.",
+    "Factor-zoo mode evaluates many related candidates; the selected winner is best among tested candidates in this run, not out-of-sample validated, and may reflect multiple-testing/data-snooping.",
     "Coverage is measured over emitted portfolio-return periods after missing-price and eligibility skips, not over every scheduled calendar rebalance.",
     "Outputs are research artifacts, not investment advice or trade instructions.",
+    "Current yfinance universe and market-cap metadata are current-screen inputs, not historical point-in-time membership or point-in-time market capitalization.",
 ]
 
 TIMING_CONVENTION = (
-    "Signals at date t use data available through t; weights are formed at t and evaluated "
-    "on forward close-to-close returns after t, ending at the next rebalance date."
+    "Research convention: signals at date t use closing data available through t; reported returns are "
+    "close-to-close from t to the next rebalance close. This is not an intraday trade-execution model "
+    "and same-close portfolio formation can be optimistic versus executable next-session trading."
 )

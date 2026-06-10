@@ -8,6 +8,13 @@ from best_factor.ranking import rank_factors
 class MetricsRankingTest(unittest.TestCase):
     def test_max_drawdown(self):
         self.assertAlmostEqual(max_drawdown([1.0, 1.2, 0.9, 1.3]), -0.25)
+        self.assertAlmostEqual(max_drawdown([0.9]), -0.1)
+
+    def test_first_period_loss_counts_in_mdd_and_calmar(self):
+        rows = [{"factor": "loss", "period_end": 1, "return": -0.1, "turnover": 0.0, "holdings_count": 1}]
+        result = compute_metrics(rows, "M")[0]
+        self.assertAlmostEqual(result["max_drawdown"], -0.1)
+        self.assertLess(result["calmar"], 0.0)
 
     def test_compute_metrics_contains_required_fields(self):
         rows = [
@@ -18,6 +25,15 @@ class MetricsRankingTest(unittest.TestCase):
         for key in ["cagr", "annual_return", "volatility", "sharpe", "sortino", "calmar", "max_drawdown", "coverage"]:
             self.assertIn(key, result)
         self.assertLessEqual(result["max_drawdown"], 0)
+
+    def test_zero_holding_attempts_reduce_coverage_and_annualization_window(self):
+        rows = [
+            {"factor": "partial", "period_end": 1, "return": 0.12, "turnover": 0.0, "holdings_count": 1},
+            {"factor": "partial", "period_end": 2, "return": 0.0, "turnover": 0.0, "holdings_count": 0, "skip_reason": "empty_after_filters"},
+        ]
+        result = compute_metrics(rows, "M")[0]
+        self.assertAlmostEqual(result["coverage"], 0.5)
+        self.assertLess(result["annual_return"], 0.12 * 12)
 
     def test_ranking_handles_nan_inf_equal_and_single_factor(self):
         single = rank_factors([

@@ -1,27 +1,21 @@
 # best-factor
 
-`best-factor` is a dependency-light Python CLI for researching which long-only US equity factor ranks highest in a given run under free-data constraints. It maps each tested factor to actual stock holdings and weights, backtests weekly or monthly rebalancing, ranks factors with return and downside metrics, and writes CSV, Markdown, and static HTML dashboard reports.
+`best-factor` is a dependency-light Python CLI for researching which long-only US equity factor ranks highest among tested candidates in a given run under free-data constraints. It maps each tested factor to actual stock holdings and weights, backtests weekly or monthly rebalancing, ranks factors with return and downside metrics, and writes CSV, Markdown, and static HTML dashboard reports.
 
 > Research only: this project does **not** provide investment advice or trade execution.
 
 ## What it does
 
 - Loads a US stock universe and long-form OHLCV prices from CSV, or optionally fetches live prices through `yfinance`.
-- Computes factor-zoo style signals that map to concrete tickers:
-  - `momentum_12_1`
-  - `momentum_6m`
-  - `low_volatility`
-  - `short_reversal`
-  - `risk_adjusted_momentum`
-  - `liquidity`
-  - `value_pe` when fundamentals are available
-  - `quality_roe` when fundamentals are available
-  - `composite_defensive`
+- Computes a factor-zoo-scale signal library that maps every tested factor to concrete tickers:
+  - Default `--factor-preset zoo`: 200+ generated OHLCV/fundamental-optional candidates spanning momentum, reversal, volatility, downside risk, risk-adjusted momentum, liquidity, Amihud-style illiquidity, volume trend, moving-average trend, range position, drawdown-to-high, acceleration, and composite blends.
+  - `--factor-preset core`: the legacy compact set (`momentum_12_1`, `momentum_6m`, `low_volatility`, `short_reversal`, `risk_adjusted_momentum`, `liquidity`, `value_pe`, `quality_roe`, `composite_defensive`) for fast smoke runs.
+  - `--factors ...`: explicit allowlist that overrides the preset.
 - Builds long-only top-N portfolios with equal or score weights.
 - Supports monthly (`M`) and weekly (`W`) rebalancing.
 - Applies optional market-cap and dollar-volume filters.
 - Measures CAGR, annualized return, volatility, Sharpe, Sortino, Calmar, max drawdown, turnover, emitted-period coverage, and a deterministic composite score.
-- Emits current/latest best-factor holdings and weights.
+- Emits current/latest holdings and weights for the best factor among the tested candidates.
 - Writes a dependency-free `report.html` dashboard with summary cards, ranking bars, metric tables, holdings weights, diagnostics, metadata, and caveats.
 - Exports the same run artifacts into a GitHub Pages-ready `docs/` dashboard similar to the reference static dashboard pattern.
 
@@ -48,8 +42,11 @@ python -m best_factor.cli run \
   --fundamentals-file tests/fixtures/fundamentals.csv \
   --output-dir runs/fixture \
   --rebalance M \
-  --top-n 3
+  --top-n 3 \
+  --factor-preset core
 ```
+
+The default preset is `zoo`; use `--factor-preset core` when you want a fast compact run, or `--factors momentum_6m low_volatility` when you want an explicit allowlist.
 
 Or after editable install:
 
@@ -72,7 +69,8 @@ best-factor run \
   --period 5y \
   --output-dir runs/live-smoke \
   --rebalance M \
-  --top-n 5
+  --top-n 5 \
+  --factor-preset zoo
 ```
 
 The live path is intentionally optional because free public data can fail, be rate-limited, or change format.
@@ -95,7 +93,7 @@ Each run writes:
 - `report.html`
 - optional GitHub Pages JSON via `best-factor site`: `docs/data/latest-results.json`
 
-The latest best-factor holdings include `rebalance_date`, `factor`, `ticker`, `weight`, `score`, and `price_date_used`. Weights sum to approximately 1.0 for non-empty eligible portfolios.
+The latest best-tested-factor holdings include `rebalance_date`, `factor`, `ticker`, `weight`, `score`, and `price_date_used`. Weights sum to approximately 1.0 for non-empty eligible portfolios.
 
 Open `report.html` in a browser to inspect the analysis visually. It is a static file with inline CSS only; no CDN, JavaScript, or remote chart dependency is required. Visual bars are clamped to `0-100%` and exact numeric metric values remain visible in text.
 
@@ -157,7 +155,7 @@ Canonical output/internal schemas are enforced by tests:
 
 ## Timing convention / no-lookahead rule
 
-Signals at date `t` use only data available through `t`. Portfolio weights are formed at `t` and evaluated on forward close-to-close returns after `t`, ending at the next rebalance date. Weekly schedules use the last available trading session in each ISO week. Monthly schedules use the last available trading session in each calendar month.
+Research convention: signals at date `t` use closing data available through `t`; reported portfolio returns are close-to-close from `t` to the next rebalance close. This is useful for comparing factors but is **not** an intraday trade-execution model, and same-close portfolio formation can be optimistic versus executable next-session trading. Weekly schedules use the last available trading session in each ISO week. Monthly schedules use the last available trading session in each calendar month.
 
 ## Ranking formula
 
@@ -171,7 +169,9 @@ The default composite score is deterministic:
 - Tie-break order: composite score desc, Sharpe desc, CAGR desc, max drawdown desc (less negative is better), factor name asc. Undefined or extreme positive Sortino/Calmar ratios from zero or near-zero downside are capped at 999 for deterministic, non-misleading reports.
 
 
-## Rank eligibility and universe boundaries
+## Factor-zoo presets, rank eligibility, and universe boundaries
+
+The default run uses `--factor-preset zoo`, which expands to the full generated library. `--factor-preset core` keeps the compact legacy set for development speed, and `--factors` explicitly selects named factors and overrides the preset. The reported winner is the best among tested candidates in that run, not proof of a universal anomaly.
 
 A factor must produce at least one non-empty portfolio period (`coverage > 0`) to appear in `factor_rankings.csv` or become the best factor. `coverage` is measured over emitted portfolio-return periods after missing-price and eligibility skips, not over every scheduled calendar rebalance. If filters leave no rank-eligible factor, the CLI exits with a controlled error instead of reporting a misleading all-empty winner. Universe rows are filtered to active stock/equity asset types by default.
 
@@ -183,8 +183,10 @@ The default approach uses free/current-universe data and should be interpreted a
 
 - Current symbol lists are not survivorship-bias-free historical constituents.
 - Yahoo/yfinance data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms.
+- Current yfinance universe membership and market-cap metadata are current screens, not historical point-in-time constituent or point-in-time market-cap filters.
 - Fundamental files must include `as_of_date` and `available_at`; rows without `available_at` are treated as non-point-in-time and skipped for historical factor scoring.
 - Some factors or rows may be skipped with explicit reason codes such as `missing_fundamentals`, `insufficient_history`, `insufficient_volume`, `market_cap_unavailable`, `market_cap_below_min`, `empty_after_filters`, `provider_error`, `not_enough_assets`, `missing_rebalance_price`, `missing_exit_price`, and `inactive_or_non_stock`.
+- Factor-zoo mode compares many related definitions. The top-ranked factor can be an in-sample winner caused by multiple-testing/data-snooping and should be rechecked with holdout periods, alternate universes, costs, and higher-quality point-in-time data before drawing investment conclusions.
 
 For higher-confidence research, use a survivorship-aware universe and point-in-time fundamentals from a licensed data source through a new provider adapter.
 
@@ -198,5 +200,6 @@ python -m best_factor.cli run \
   --fundamentals-file tests/fixtures/fundamentals.csv \
   --output-dir /tmp/best-factor-smoke \
   --rebalance M \
-  --top-n 3
+  --top-n 3 \
+  --factor-preset core
 ```

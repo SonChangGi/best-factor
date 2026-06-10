@@ -17,7 +17,15 @@ from .data import (
     source_hash_for_paths,
     write_universe_snapshot,
 )
-from .factors import DEFAULT_FACTORS, compute_factor_scores, serialize_factor_scores, validate_factor_names
+from .factors import (
+    DEFAULT_FACTORS,
+    FACTOR_PRESETS,
+    compute_factor_scores,
+    factor_category_counts,
+    factor_names_for_preset,
+    serialize_factor_scores,
+    validate_factor_names,
+)
 from .io_utils import ensure_dir, write_csv_dicts, write_json
 from .metrics import compute_metrics
 from .portfolio import latest_holdings_for_best, run_backtests, serialize_holdings, serialize_returns
@@ -71,7 +79,13 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--tickers", nargs="*", default=[])
     run.add_argument("--period", default="5y")
     run.add_argument("--cache-dir", default=".cache/best-factor")
-    run.add_argument("--factors", nargs="+", default=[f.name for f in DEFAULT_FACTORS])
+    run.add_argument(
+        "--factor-preset",
+        choices=sorted(FACTOR_PRESETS),
+        default="zoo",
+        help="factor library preset to run when --factors is not supplied (default: zoo)",
+    )
+    run.add_argument("--factors", nargs="+", default=None, help="explicit factor names; overrides --factor-preset")
 
     site = sub.add_parser("site", help="export run artifacts to GitHub Pages dashboard JSON")
     site.add_argument("--run-dir", required=True, help="directory containing best-factor run artifacts")
@@ -87,7 +101,12 @@ def build_site(args: argparse.Namespace) -> dict[str, object]:
 def run(args: argparse.Namespace) -> dict[str, object]:
     if args.top_n <= 0:
         raise ValueError("--top-n must be positive")
-    requested_factors = validate_factor_names(args.factors)
+    if args.factors:
+        requested_factors = validate_factor_names(args.factors)
+        factor_preset = "explicit"
+    else:
+        requested_factors = factor_names_for_preset(args.factor_preset)
+        factor_preset = args.factor_preset
     output_dir = ensure_dir(args.output_dir)
     cache_dir = ensure_dir(args.cache_dir)
     provider_metadata: dict[str, object]
@@ -161,11 +180,31 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "price_ticker_count": len(tickers),
         "data_start_date": data_start_date,
         "data_end_date": data_end_date,
+        "universe_is_point_in_time": False,
+        "market_cap_filter_basis": _market_cap_filter_basis(args, universe),
+        "current_screen_note": (
+            "Universe membership and market-cap filters use the supplied/current metadata snapshot; "
+            "they are not historical point-in-time constituent or market-cap screens."
+        ),
         "tested_factor_count": tested_factor_count,
         "effective_factor_count": effective_factor_count,
+        "factor_preset": factor_preset,
+        "requested_factor_preset": args.factor_preset,
+        "factor_library_size": len(DEFAULT_FACTORS),
+        "selected_factor_count": tested_factor_count,
+        "factor_category_counts": factor_category_counts(requested_factors),
+        "factor_library_note": (
+            "Factor-zoo mode ranks the best factor among the tested candidate definitions in this run; "
+            "it is exploratory and not an out-of-sample or multiple-testing-adjusted anomaly discovery claim."
+        ),
         "timing_convention": TIMING_CONVENTION,
         "caveats": CAVEATS,
-        "run_config": {**vars(args), "factors": requested_factors},
+        "run_config": {
+            **vars(args),
+            "factors": requested_factors,
+            "factor_preset": factor_preset,
+            "requested_factor_preset": args.factor_preset,
+        },
         "ranking_formula": {
             "reward_weights": {"cagr": 0.20, "sharpe": 0.25, "sortino": 0.20, "calmar": 0.20},
             "penalty_weights": {"abs_max_drawdown": 0.10, "volatility": 0.05},
@@ -195,7 +234,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         [{"skip_reason": key, "count": value} for key, value in sorted(Counter(skipped_reasons).items())],
         ["skip_reason", "count"],
     )
-    write_json(output_dir / "run_config.json", vars(args))
+    write_json(
+        output_dir / "run_config.json",
+        {
+            **vars(args),
+            "factors": requested_factors,
+            "factor_preset": factor_preset,
+            "requested_factor_preset": args.factor_preset,
+        },
+    )
     write_json(output_dir / "run_metadata.json", metadata)
     write_report(output_dir / "report.md", rankings, latest, skipped_reasons, metadata)
     write_html_report(output_dir / "report.html", rankings, latest, skipped_reasons, metadata)
@@ -228,6 +275,15 @@ def _universe_name(args: argparse.Namespace, universe: list[dict[str, object]]) 
     if sources:
         return ",".join(sources[:3])
     return "inferred_from_prices"
+
+
+def _market_cap_filter_basis(args: argparse.Namespace, universe: list[dict[str, object]]) -> str:
+    if float(getattr(args, "min_market_cap", 0.0) or 0.0) <= 0:
+        return "not_applied"
+    sources = {str(row.get("source") or "").lower() for row in universe}
+    if any("yfinance" in source for source in sources):
+        return "current_yfinance_metadata_screen_not_point_in_time"
+    return "supplied_universe_metadata_screen_not_verified_point_in_time"
 
 
 if __name__ == "__main__":  # pragma: no cover

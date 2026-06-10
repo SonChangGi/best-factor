@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+import json
 import math
 from collections import Counter
 from pathlib import Path
@@ -24,7 +25,7 @@ def write_report(
     lines.append("")
     lines.append("## Summary")
     if best:
-        lines.append(f"- **Best factor**: `{best['factor']}`")
+        lines.append(f"- **Best factor among tested candidates**: `{best['factor']}`")
         lines.append(f"- **Composite score**: {_fmt(best.get('composite_score'))}")
         lines.append(f"- **CAGR**: {_pct(best.get('cagr'))}")
         lines.append(f"- **Sharpe**: {_fmt(best.get('sharpe'))}")
@@ -70,7 +71,12 @@ def write_report(
     lines.append("## Skipped factor/row diagnostics")
     tested = int(metadata.get("tested_factor_count", 0) or 0)
     effective = int(metadata.get("effective_factor_count", 0) or 0)
+    library_size = int(metadata.get("factor_library_size", tested) or tested)
+    selected_count = int(metadata.get("selected_factor_count", tested) or tested)
     skipped_count = max(0, tested - effective)
+    lines.append(f"- Factor preset: `{metadata.get('factor_preset', 'unknown')}`")
+    lines.append(f"- Candidate library size: {library_size}")
+    lines.append(f"- Selected/tested candidates: {selected_count}")
     lines.append(f"- Tested factors: {tested}")
     lines.append(f"- Effective factors: {effective}")
     lines.append(f"- Skipped factors: {skipped_count}")
@@ -82,9 +88,26 @@ def write_report(
             lines.append(f"| `{reason}` | {count} |")
     lines.append("")
     lines.append("## Data sources and run metadata")
-    for key in ["provider", "provider_version", "source", "fetched_at", "cache_dir", "universe_as_of_date", "source_hash"]:
+    for key in [
+        "provider",
+        "provider_version",
+        "source",
+        "fetched_at",
+        "cache_dir",
+        "universe_as_of_date",
+        "source_hash",
+        "universe_is_point_in_time",
+        "market_cap_filter_basis",
+        "current_screen_note",
+        "factor_preset",
+        "requested_factor_preset",
+        "factor_library_size",
+        "selected_factor_count",
+        "factor_category_counts",
+        "factor_library_note",
+    ]:
         if metadata.get(key) not in (None, ""):
-            lines.append(f"- {key}: `{metadata.get(key)}`")
+            lines.append(f"- {key}: `{_safe_metadata_value(key, metadata.get(key))}`")
     lines.append("")
     lines.append("## Free-data limitations and warnings")
     caveats = metadata.get("caveats") or CAVEATS
@@ -92,7 +115,7 @@ def write_report(
         lines.append(f"- {caveat}")
     lines.append("")
     lines.append("## Interpretation")
-    lines.append("The top-ranked factor is the best result under this run's universe, timing, filters, ranking formula, and free-data limitations. Re-run with different universes, windows, costs, and data sources before relying on any conclusion.")
+    lines.append("The top-ranked factor is the best result among the tested candidate definitions under this run's universe, timing, filters, ranking formula, and free-data limitations. Because many related factors are compared, treat the winner as exploratory and re-run with different universes, windows, costs, holdout periods, and data sources before relying on any conclusion.")
     p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -142,7 +165,7 @@ def _hero_summary(best: dict[str, object] | None, metadata: dict[str, object]) -
     if not best:
         return '<div class="summary-card warning">No effective factor portfolio was produced.</div>'
     cards = [
-        ("Best factor", f"<strong>{_e(best.get('factor'))}</strong>"),
+        ("Best tested factor", f"<strong>{_e(best.get('factor'))}</strong>"),
         ("Composite", _fmt(best.get("composite_score"))),
         ("CAGR", _pct(best.get("cagr"))),
         ("Sharpe", _fmt(best.get("sharpe"))),
@@ -232,8 +255,10 @@ def _holdings_section(latest_holdings: list[dict[str, object]]) -> str:
 def _diagnostics_section(skipped_reasons: dict[str, int], metadata: dict[str, object]) -> str:
     tested = int(metadata.get("tested_factor_count", 0) or 0)
     effective = int(metadata.get("effective_factor_count", 0) or 0)
+    library_size = int(metadata.get("factor_library_size", tested) or tested)
+    selected_count = int(metadata.get("selected_factor_count", tested) or tested)
     lines = ['<section class="panel" aria-labelledby="diagnostics-title">', '<h2 id="diagnostics-title">Diagnostics</h2>']
-    lines.append(f'<div class="summary-grid compact"><article class="summary-card"><span>Tested factors</span><b>{tested}</b></article><article class="summary-card"><span>Effective factors</span><b>{effective}</b></article><article class="summary-card"><span>Skipped factors</span><b>{max(0, tested - effective)}</b></article></div>')
+    lines.append(f'<div class="summary-grid compact"><article class="summary-card"><span>Preset</span><b>{_e(metadata.get("factor_preset", "unknown"))}</b></article><article class="summary-card"><span>Library factors</span><b>{library_size}</b></article><article class="summary-card"><span>Tested factors</span><b>{selected_count}</b></article><article class="summary-card"><span>Effective factors</span><b>{effective}</b></article><article class="summary-card"><span>Skipped factors</span><b>{max(0, tested - effective)}</b></article></div>')
     if skipped_reasons:
         lines.append('<div class="table-wrap"><table aria-label="Skipped factor and row diagnostics"><caption>Skipped diagnostics by reason code.</caption><thead><tr><th>Reason</th><th>Count</th></tr></thead><tbody>')
         for reason, count in Counter(skipped_reasons).most_common():
@@ -246,13 +271,30 @@ def _diagnostics_section(skipped_reasons: dict[str, int], metadata: dict[str, ob
 
 
 def _metadata_section(metadata: dict[str, object]) -> str:
-    keys = ["provider", "provider_version", "source", "fetched_at", "cache_dir", "universe_as_of_date", "source_hash"]
+    keys = [
+        "provider",
+        "provider_version",
+        "source",
+        "fetched_at",
+        "cache_dir",
+        "universe_as_of_date",
+        "source_hash",
+        "universe_is_point_in_time",
+        "market_cap_filter_basis",
+        "current_screen_note",
+        "factor_preset",
+        "requested_factor_preset",
+        "factor_library_size",
+        "selected_factor_count",
+        "factor_category_counts",
+        "factor_library_note",
+    ]
     lines = ['<section class="panel" aria-labelledby="metadata-title">', '<h2 id="metadata-title">Run Metadata</h2>']
     lines.append('<div class="table-wrap"><table aria-label="Run metadata"><caption>Data source and reproducibility metadata.</caption><tbody>')
     for key in keys:
         value = metadata.get(key)
         if value not in (None, ""):
-            lines.append(f"<tr><th>{_e(key)}</th><td>{_e(value)}</td></tr>")
+            lines.append(f"<tr><th>{_e(key)}</th><td>{_e(_safe_metadata_value(key, value))}</td></tr>")
     lines.append("</tbody></table></div></section>")
     return "\n".join(lines)
 
@@ -315,6 +357,25 @@ th { color:#33433a; background:#f5eddf; }
 
 def _e(value: object) -> str:
     return html.escape(str(value if value is not None else ""), quote=True)
+
+
+def _safe_metadata_value(key: str, value: object) -> str:
+    if key == "source":
+        return _safe_source_summary(value)
+    if key == "cache_dir":
+        return Path(str(value)).name if value else ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
+def _safe_source_summary(value: object) -> str:
+    text = str(value or "")
+    if text.startswith("csv:"):
+        return f"csv:{Path(text.split(':', 1)[1]).name}"
+    if "/" in text or "\\" in text:
+        return Path(text).name
+    return text
 
 
 def _bar_width(value: object) -> float:

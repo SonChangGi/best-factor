@@ -17,7 +17,16 @@ RANKING_NUMERIC_COLUMNS = set(RANKING_COLUMNS) - {"factor"}
 METRIC_NUMERIC_COLUMNS = set(METRIC_COLUMNS) - {"factor"}
 HOLDING_NUMERIC_COLUMNS = {"weight", "score"}
 SKIPPED_NUMERIC_COLUMNS = {"count"}
-INTEGER_COLUMNS = {"rank", "count", "tested_factor_count", "effective_factor_count", "ranking_count", "holding_count"}
+INTEGER_COLUMNS = {
+    "rank",
+    "count",
+    "tested_factor_count",
+    "effective_factor_count",
+    "ranking_count",
+    "holding_count",
+    "factor_library_size",
+    "selected_factor_count",
+}
 CORE_ARTIFACTS = ("factor_rankings.csv", "factor_metrics.csv", "run_metadata.json")
 SAFE_SOURCE_KINDS = {"csv", "yfinance"}
 PUBLIC_METADATA_KEYS = {
@@ -27,6 +36,12 @@ PUBLIC_METADATA_KEYS = {
     "universe_as_of_date",
     "tested_factor_count",
     "effective_factor_count",
+    "factor_preset",
+    "requested_factor_preset",
+    "factor_library_size",
+    "selected_factor_count",
+    "factor_category_counts",
+    "factor_library_note",
     "timing_convention",
     "source_hash",
     "ranking_formula",
@@ -35,6 +50,9 @@ PUBLIC_METADATA_KEYS = {
     "price_ticker_count",
     "data_start_date",
     "data_end_date",
+    "universe_is_point_in_time",
+    "market_cap_filter_basis",
+    "current_screen_note",
     "requested_tickers",
     "succeeded_tickers",
     "failed_tickers",
@@ -77,6 +95,9 @@ def build_site_payload(
             "holding_count": len(latest_holdings),
             "tested_factor_count": _int_or_none(metadata.get("tested_factor_count")),
             "effective_factor_count": _int_or_none(metadata.get("effective_factor_count")),
+            "factor_preset": metadata.get("factor_preset") or None,
+            "factor_library_size": _int_or_none(metadata.get("factor_library_size")),
+            "selected_factor_count": _int_or_none(metadata.get("selected_factor_count")),
             "provider": metadata.get("provider", "unknown"),
             "fetched_at": metadata.get("fetched_at") or None,
             "data_end_date": metadata.get("data_end_date") or None,

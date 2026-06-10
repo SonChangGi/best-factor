@@ -64,6 +64,28 @@ class PortfolioCalendarTest(unittest.TestCase):
         self.assertTrue(all(weight > 0 for weight in weights))
         self.assertAlmostEqual(sum(weights), 1.0)
 
+    def test_missing_selected_exit_invalidates_period_without_survivor_reweighting(self):
+        prices = [
+            {"ticker": "AAA", "date": dt.date(2024, 1, 31), "adj_close": 100.0, "volume": 1_000_000},
+            {"ticker": "AAA", "date": dt.date(2024, 2, 29), "adj_close": 110.0, "volume": 1_000_000},
+            {"ticker": "BBB", "date": dt.date(2024, 1, 31), "adj_close": 100.0, "volume": 1_000_000},
+        ]
+        universe = [
+            {"ticker": "AAA", "market_cap": 1_000_000_000},
+            {"ticker": "BBB", "market_cap": 1_000_000_000},
+        ]
+        scores = [
+            {"factor": "test", "ticker": "AAA", "signal_date": dt.date(2024, 1, 31), "score": 2.0, "eligible": True, "skip_reason": ""},
+            {"factor": "test", "ticker": "BBB", "signal_date": dt.date(2024, 1, 31), "score": 1.0, "eligible": True, "skip_reason": ""},
+        ]
+        result = run_backtests(prices, universe, scores, [dt.date(2024, 1, 31), dt.date(2024, 2, 29)], top_n=2)
+        self.assertEqual(result["holdings"], [])
+        self.assertEqual(len(result["returns"]), 1)
+        self.assertEqual(result["returns"][0]["holdings_count"], 0)
+        self.assertEqual(result["returns"][0]["skip_reason"], "invalid_period_missing_price")
+        self.assertIn("missing_exit_price", result["skipped_reasons"])
+        self.assertIn("invalid_period_missing_price", result["skipped_reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

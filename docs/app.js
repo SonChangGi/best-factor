@@ -99,13 +99,17 @@
 
   function renderStatus(payload) {
     const summary = payload.summary || {};
-    q('#run-status').replaceChildren(
+    const lines = [
       statusLine('상태', '정적 JSON 로드 완료'),
       statusLine('생성', payload.generated_at),
       statusLine('데이터 기준', summary.data_end_date || payload.data_scope),
       statusLine('최고 팩터', summary.best_factor),
       statusLine('주의', summary.static_data_warning)
-    );
+    ];
+    if (payload.data_scope === 'fixture_sample') {
+      lines.push(statusLine('샘플', '체크인된 fixture 예시 데이터입니다. 최신 시장 데이터는 Actions 업데이트 후 확인하세요.'));
+    }
+    q('#run-status').replaceChildren(...lines);
     const generated = q('#generated-at');
     if (generated) generated.textContent = `Generated: ${fmtText(payload.generated_at)}`;
   }
@@ -113,12 +117,12 @@
   function renderSummary(payload) {
     const summary = payload.summary || {};
     const cards = [
-      ['Best factor', summary.best_factor, '종합 점수 기준 1위 팩터'],
+      ['Best tested factor', summary.best_factor, '테스트 후보 중 종합 점수 기준 1위 팩터'],
       ['Composite', fmtNumber(summary.best_composite_score, 4), '성과/위험 지표를 합산한 비교 점수'],
-      ['Factors', `${summary.effective_factor_count ?? '—'} / ${summary.tested_factor_count ?? '—'}`, '유효 / 테스트된 팩터 수'],
+      ['Factor zoo', `${summary.selected_factor_count ?? summary.tested_factor_count ?? '—'} / ${summary.factor_library_size ?? '—'}`, '선택/라이브러리 후보 팩터 수'],
+      ['Effective', `${summary.effective_factor_count ?? '—'} / ${summary.tested_factor_count ?? '—'}`, '유효 / 테스트된 팩터 수'],
       ['Holdings', summary.holding_count, '최신 최고 팩터 편입 종목 수'],
       ['Data end', summary.data_end_date || payload.data_scope, '가격 데이터 기준일'],
-      ['Source hash', summary.source_hash || 'missing', '재현성 확인용 입력 파일 해시'],
     ];
     q('#summary-cards').replaceChildren(...cards.map(([label, value, help]) => card(label, value, help)));
   }
@@ -136,6 +140,9 @@
         ['Provider', summary.provider || metadata.provider || 'unknown'],
       ]),
       diagnosticListCard('팩터/랭킹 게이트', [
+        gateItem('팩터 프리셋', summary.factor_preset || metadata.factor_preset || 'unknown', 'pass'),
+        gateItem('라이브러리 후보', `${summary.factor_library_size ?? metadata.factor_library_size ?? 'unknown'}개`, Number(summary.factor_library_size ?? metadata.factor_library_size) >= 200 ? 'pass' : 'warn'),
+        gateItem('선택 후보', `${summary.selected_factor_count ?? metadata.selected_factor_count ?? summary.tested_factor_count ?? 'unknown'}개`, Number(summary.selected_factor_count ?? metadata.selected_factor_count ?? summary.tested_factor_count) >= 200 ? 'pass' : 'warn'),
         gateItem('테스트 팩터', `${summary.tested_factor_count ?? 'unknown'}개`, 'pass'),
         gateItem('유효 팩터', `${summary.effective_factor_count ?? 'unknown'}개`, Number(summary.effective_factor_count) > 0 ? 'pass' : 'warn'),
         gateItem('랭킹 행', `${summary.ranking_count ?? 0}개`, Number(summary.ranking_count) > 0 ? 'pass' : 'warn'),
@@ -312,6 +319,15 @@
       ['data_end_date', summary.data_end_date || metadata.data_end_date || 'unknown'],
       ['universe_name', metadata.universe_name || 'unknown'],
       ['universe_ticker_count', metadata.universe_ticker_count || 'unknown'],
+      ['universe_is_point_in_time', metadata.universe_is_point_in_time ?? 'unknown'],
+      ['market_cap_filter_basis', metadata.market_cap_filter_basis || 'unknown'],
+      ['current_screen_note', metadata.current_screen_note || 'unknown'],
+      ['factor_preset', summary.factor_preset || metadata.factor_preset || 'unknown'],
+      ['requested_factor_preset', metadata.requested_factor_preset || 'unknown'],
+      ['factor_library_size', summary.factor_library_size || metadata.factor_library_size || 'unknown'],
+      ['selected_factor_count', summary.selected_factor_count || metadata.selected_factor_count || 'unknown'],
+      ['factor_category_counts', metadata.factor_category_counts || 'unknown'],
+      ['factor_library_note', metadata.factor_library_note || 'unknown'],
       ['timing_convention', metadata.timing_convention || 'unknown'],
       ['static_data_warning', summary.static_data_warning],
     ];
@@ -509,6 +525,13 @@
 
   function fmtText(value) {
     if (value === null || value === undefined || value === '') return '—';
+    if (Array.isArray(value) || typeof value === 'object') {
+      try {
+        return JSON.stringify(value);
+      } catch (_) {
+        return String(value);
+      }
+    }
     return String(value);
   }
 

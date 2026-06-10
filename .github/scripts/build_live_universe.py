@@ -63,7 +63,7 @@ def fetch_rows(tickers: list[str]) -> list[dict[str, object]]:
             "active": True,
             "market_cap": "",
             "sector": "UNKNOWN",
-            "source": "yfinance_best_effort_metadata",
+            "source": "yfinance_current_metadata_screen",
             "as_of_date": today,
         }
         try:

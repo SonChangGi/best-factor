@@ -60,13 +60,12 @@ class Revision2ContractsTest(unittest.TestCase):
         )
         self.assertIn("missing_exit_price", result["skipped_reasons"])
         self.assertIn("missing_rebalance_price", result["skipped_reasons"])
-        self.assertEqual(len(result["holdings"]), 2)
-        self.assertEqual([row["holdings_count"] for row in result["returns"]], [1, 1])
-        self.assertAlmostEqual(result["returns"][0]["turnover"], 0.5)
-        self.assertAlmostEqual(result["returns"][0]["return"], 0.095)
-        self.assertAlmostEqual(result["returns"][1]["turnover"], 0.0)
-        self.assertAlmostEqual(result["returns"][1]["return"], 0.1)
-        self.assertTrue(all(abs(row["weight"] - 1.0) < 1e-9 for row in result["holdings"]))
+        self.assertIn("invalid_period_missing_price", result["skipped_reasons"])
+        self.assertEqual(len(result["holdings"]), 0)
+        self.assertEqual([row["holdings_count"] for row in result["returns"]], [0, 0])
+        self.assertEqual([row["skip_reason"] for row in result["returns"]], ["invalid_period_missing_price", "invalid_period_missing_price"])
+        self.assertAlmostEqual(result["returns"][0]["return"], 0.0)
+        self.assertAlmostEqual(result["returns"][1]["return"], 0.0)
 
     def test_inactive_non_stock_and_not_enough_assets(self):
         prices = _simple_prices([dt.date(2024, 1, 31), dt.date(2024, 2, 29)], [100, 110])
@@ -145,6 +144,8 @@ def _run_cli(output_dir, *extra):
         "M",
         "--top-n",
         "3",
+        "--factor-preset",
+        "core",
         *extra,
     ]
     return subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True)

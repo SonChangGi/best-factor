@@ -49,7 +49,7 @@ def compute_metrics(portfolio_returns: list[dict[str, object]], frequency: str) 
 
 
 def max_drawdown(equity: Iterable[float]) -> float:
-    peak = -math.inf
+    peak = 1.0
     worst = 0.0
     for value in equity:
         peak = max(peak, value)
@@ -59,7 +59,7 @@ def max_drawdown(equity: Iterable[float]) -> float:
 
 
 def _equity_curve(returns: list[float]) -> list[float]:
-    equity = []
+    equity = [1.0]
     value = 1.0
     for ret in returns:
         value *= 1.0 + ret

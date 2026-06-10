@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from typing import Iterable
 
 from .data import group_prices
-from .factors import factor_names, rows_for_factor_date
+from .factors import build_score_index, rows_for_factor_date
 from .schemas import HOLDING_COLUMNS, PORTFOLIO_RETURN_COLUMNS
 
 
@@ -24,18 +24,20 @@ def run_backtests(
 ) -> dict[str, object]:
     grouped = group_prices(prices)
     universe_by_ticker = {str(row["ticker"]): row for row in universe}
-    all_factor_names = factor_names(scores)
+    score_index = build_score_index(scores)
+    all_factor_names = sorted({factor for factor, _ in score_index})
     all_holdings: list[dict[str, object]] = []
     all_returns: list[dict[str, object]] = []
     skipped: Counter[str] = Counter()
     previous_holdings: dict[str, dict[str, float]] = {factor: {} for factor in all_factor_names}
+    adv_cache: dict[tuple[str, dt.date, int], float] = {}
 
     if len(rebalance_dates) < 2:
         return {"holdings": [], "returns": [], "skipped_reasons": {"insufficient_history": 1}}
 
     for factor in all_factor_names:
         for start, end in zip(rebalance_dates, rebalance_dates[1:]):
-            score_rows = rows_for_factor_date(scores, factor, start)
+            score_rows = rows_for_factor_date(score_index, factor, start)
             selected, reasons = _select_holdings(
                 score_rows,
                 grouped,
@@ -45,25 +47,60 @@ def run_backtests(
                 weighting,
                 min_market_cap,
                 min_dollar_volume,
+                adv_cache,
             )
             skipped.update(reasons)
+            if not selected:
+                skipped["empty_after_filters"] += 1
+                _append_empty_period(
+                    all_returns,
+                    factor,
+                    start,
+                    end,
+                    previous_holdings[factor],
+                    transaction_cost_bps,
+                    "empty_after_filters",
+                )
+                previous_holdings[factor] = {}
+                continue
             tradable = []
+            missing_price = False
             for holding in selected:
                 ticker = str(holding["ticker"])
                 ret = _forward_return(grouped[ticker], start, end)
                 if ret is None:
                     start_prices = {r["date"] for r in grouped[ticker]}
                     skipped["missing_rebalance_price" if start not in start_prices else "missing_exit_price"] += 1
+                    missing_price = True
                     continue
                 tradable.append((holding, ret))
-            if not tradable:
-                skipped["empty_after_filters"] += 1
+            if missing_price or len(tradable) != len(selected):
+                skipped["invalid_period_missing_price"] += 1
+                _append_empty_period(
+                    all_returns,
+                    factor,
+                    start,
+                    end,
+                    previous_holdings[factor],
+                    transaction_cost_bps,
+                    "invalid_period_missing_price",
+                )
+                previous_holdings[factor] = {}
                 continue
             weight_total = sum(float(holding["weight"]) for holding, _ in tradable)
             if weight_total <= 0:
                 skipped["empty_after_filters"] += 1
+                _append_empty_period(
+                    all_returns,
+                    factor,
+                    start,
+                    end,
+                    previous_holdings[factor],
+                    transaction_cost_bps,
+                    "empty_after_filters",
+                )
+                previous_holdings[factor] = {}
                 continue
-            tradable = [({**holding, "weight": float(holding["weight"]) / weight_total}, ret) for holding, ret in tradable]
             current_holdings = {str(holding["ticker"]): float(holding["weight"]) for holding, _ in tradable}
             turnover = _turnover(previous_holdings[factor], current_holdings)
             period_return = 0.0
@@ -89,6 +126,7 @@ def run_backtests(
                     "return": period_return - cost,
                     "turnover": turnover,
                     "holdings_count": len(tradable),
+                    "skip_reason": "",
                 }
             )
             previous_holdings[factor] = current_holdings
@@ -134,6 +172,7 @@ def _select_holdings(
     weighting: str,
     min_market_cap: float,
     min_dollar_volume: float,
+    adv_cache: dict[tuple[str, dt.date, int], float] | None = None,
 ) -> tuple[list[dict[str, object]], Counter[str]]:
     reasons: Counter[str] = Counter()
     candidates = []
@@ -155,7 +194,13 @@ def _select_holdings(
                 reasons["market_cap_below_min"] += 1
                 continue
         if min_dollar_volume > 0:
-            adv = _average_dollar_volume(grouped_prices.get(ticker, []), signal_date, 63)
+            cache_key = (ticker, signal_date, 63)
+            if adv_cache is not None and cache_key in adv_cache:
+                adv = adv_cache[cache_key]
+            else:
+                adv = _average_dollar_volume(grouped_prices.get(ticker, []), signal_date, 63)
+                if adv_cache is not None:
+                    adv_cache[cache_key] = adv
             if adv < min_dollar_volume:
                 reasons["insufficient_volume"] += 1
                 continue
@@ -207,6 +252,37 @@ def _average_dollar_volume(rows: list[dict[str, object]], signal_date: dt.date, 
         return 0.0
     values = [float(r.get("volume", 0) or 0) * float(r["adj_close"]) for r in eligible[-window:]]
     return sum(values) / len(values)
+
+
+def _append_empty_period(
+    all_returns: list[dict[str, object]],
+    factor: str,
+    start: dt.date,
+    end: dt.date,
+    previous: dict[str, float],
+    transaction_cost_bps: float,
+    skip_reason: str,
+) -> None:
+    """Record an attempted but uninvested/invalid period as explicit cash-like output.
+
+    Emitting a zero-holding period keeps coverage denominators auditable and
+    avoids survivor-only renormalization when one selected name lacks an entry
+    or exit price. Transaction costs are applied if the factor had to move from
+    a prior non-empty portfolio into cash.
+    """
+    turnover = _turnover(previous, {})
+    cost = (transaction_cost_bps / 10000.0) * turnover
+    all_returns.append(
+        {
+            "factor": factor,
+            "period_start": start,
+            "period_end": end,
+            "return": -cost,
+            "turnover": turnover,
+            "holdings_count": 0,
+            "skip_reason": skip_reason,
+        }
+    )
 
 
 def _turnover(previous: dict[str, float], current: dict[str, float]) -> float:

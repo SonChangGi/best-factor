@@ -33,6 +33,8 @@ class CliIntegrationTest(unittest.TestCase):
             "M",
             "--top-n",
             "3",
+            "--factor-preset",
+            "core",
             *extra,
         ]
         completed = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True)
@@ -73,6 +75,10 @@ class CliIntegrationTest(unittest.TestCase):
         metadata = json.loads((out / "run_metadata.json").read_text())
         self.assertIn("ranking_formula", metadata)
         self.assertIn("timing_convention", metadata)
+        self.assertIn("same-close", metadata["timing_convention"])
+        self.assertFalse(metadata["universe_is_point_in_time"])
+        self.assertIn("market_cap_filter_basis", metadata)
+        self.assertIn("current_screen_note", metadata)
         self.assertTrue(metadata["caveats"])
         report = (out / "report.md").read_text()
         html_report = (out / "report.html").read_text()
@@ -88,10 +94,43 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertNotIn('src="http', html_report.lower())
         self.assertNotIn('href="http', html_report.lower())
         self.assertNotIn("@import", html_report.lower())
+        self.assertNotIn(str(FIXTURES), report)
+        self.assertNotIn(str(FIXTURES), html_report)
         for caveat in CAVEATS[:2]:
             self.assertIn(caveat, report)
             self.assertIn(caveat, html_report)
 
+    def test_default_run_uses_zoo_preset_metadata(self):
+        out = tempfile.TemporaryDirectory()
+        self.addCleanup(out.cleanup)
+        cmd = [
+            sys.executable,
+            "-m",
+            "best_factor.cli",
+            "run",
+            "--prices-file",
+            str(FIXTURES / "prices.csv"),
+            "--universe-file",
+            str(FIXTURES / "universe.csv"),
+            "--fundamentals-file",
+            str(FIXTURES / "fundamentals.csv"),
+            "--output-dir",
+            out.name,
+            "--rebalance",
+            "M",
+            "--top-n",
+            "3",
+        ]
+        completed = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        metadata = json.loads((Path(out.name) / "run_metadata.json").read_text())
+        self.assertEqual(metadata["factor_preset"], "zoo")
+        self.assertEqual(metadata["requested_factor_preset"], "zoo")
+        self.assertGreaterEqual(metadata["factor_library_size"], 200)
+        self.assertGreaterEqual(metadata["selected_factor_count"], 200)
+        self.assertGreaterEqual(metadata["tested_factor_count"], 200)
+        self.assertIn("factor_category_counts", metadata)
+        self.assertIn("multiple-testing", " ".join(metadata["caveats"]))
 
     def test_site_subcommand_exports_github_pages_json(self):
         out = self.run_cli()

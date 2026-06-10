@@ -74,8 +74,17 @@ class SiteExportTest(unittest.TestCase):
                         "source": "csv:/Users/example/private/prices.csv",
                         "cache_dir": "/Users/example/.cache/best-factor",
                         "source_hash": "abc123",
+                        "universe_is_point_in_time": False,
+                        "market_cap_filter_basis": "current_yfinance_metadata_screen_not_point_in_time",
+                        "current_screen_note": "Current screen, not PIT.",
                         "tested_factor_count": 2,
                         "effective_factor_count": 1,
+                        "factor_preset": "zoo",
+                        "requested_factor_preset": "zoo",
+                        "factor_library_size": 249,
+                        "selected_factor_count": 249,
+                        "factor_category_counts": {"momentum": 90, "risk": 25},
+                        "factor_library_note": "Best among tested candidates.",
                         "run_config": {"prices_file": "/Users/example/private/prices.csv", "output_dir": "/tmp/private-run"},
                         "caveats": ["Use <care>"],
                     }
@@ -89,6 +98,9 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["data_scope"], "fixture_sample")
         self.assertEqual(payload["summary"]["best_factor"], '<script>alert("factor")</script>')
         self.assertEqual(payload["summary"]["source_hash"], "abc123")
+        self.assertEqual(payload["summary"]["factor_preset"], "zoo")
+        self.assertEqual(payload["summary"]["factor_library_size"], 249)
+        self.assertEqual(payload["summary"]["selected_factor_count"], 249)
         self.assertIn("not live market data", payload["summary"]["static_data_warning"])
         self.assertIsInstance(payload["rankings"][0]["rank"], int)
         self.assertIsInstance(payload["rankings"][0]["cagr"], float)
@@ -98,6 +110,11 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["skipped_reasons"][0]["count"], 2)
         self.assertEqual(payload["latest_holdings"][0]["weight"], 0.5)
         self.assertEqual(payload["metadata"]["source_kind"], "csv")
+        self.assertFalse(payload["metadata"]["universe_is_point_in_time"])
+        self.assertEqual(payload["metadata"]["market_cap_filter_basis"], "current_yfinance_metadata_screen_not_point_in_time")
+        self.assertEqual(payload["metadata"]["current_screen_note"], "Current screen, not PIT.")
+        self.assertEqual(payload["metadata"]["factor_category_counts"], {"momentum": 90, "risk": 25})
+        self.assertEqual(payload["metadata"]["factor_library_note"], "Best among tested candidates.")
         self.assertNotIn("source", payload["metadata"])
         self.assertNotIn("run_config", payload["metadata"])
         self.assertNotIn("cache_dir", payload["metadata"])

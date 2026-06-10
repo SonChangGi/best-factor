@@ -73,6 +73,9 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("schema_version !== 1", app)
         self.assertIn("SonChangGi", app)
         self.assertIn("best-factor", app)
+        self.assertIn("JSON.stringify", app)
+        self.assertIn("fixture_sample", app)
+        self.assertIn("market_cap_filter_basis", app)
         self.assertIn("Number.isFinite(numeric) ? numeric : Number.NEGATIVE_INFINITY", app)
         self.assertNotIn("|| -Infinity", app)
         unsafe_sinks = ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function"]
@@ -120,6 +123,14 @@ class DocsSiteTest(unittest.TestCase):
         self.assertNotIn("prices_file", json.dumps(payload["metadata"]))
         self.assertTrue(payload["rankings"])
         self.assertTrue(payload["latest_holdings"])
+        self.assertGreaterEqual(payload["summary"].get("factor_library_size", 0), 200)
+        self.assertGreaterEqual(payload["summary"].get("selected_factor_count", 0), 200)
+        self.assertIn("factor_category_counts", payload["metadata"])
+        self.assertIn("market_cap_filter_basis", payload["metadata"])
+        self.assertIn("current_screen_note", payload["metadata"])
+        self.assertFalse(payload["metadata"].get("universe_is_point_in_time"))
+        self.assertIn("same-close", payload["metadata"].get("timing_convention", ""))
+        self.assertIn("multiple-testing", " ".join(payload["caveats"]))
 
     def test_hostile_json_would_not_be_injected_into_static_shell(self):
         html = (DOCS / "index.html").read_text(encoding="utf-8")
