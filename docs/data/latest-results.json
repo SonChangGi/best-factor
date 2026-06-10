@@ -7,7 +7,7 @@
     "Outputs are research artifacts, not investment advice or trade instructions."
   ],
   "data_scope": "live_yfinance_curated_us_large_liquid_actions",
-  "generated_at": "2026-06-10T13:21:49Z",
+  "generated_at": "2026-06-10T13:36:30Z",
   "latest_holdings": [
     {
       "factor": "momentum_12_1",
@@ -15,7 +15,7 @@
       "rebalance_date": "2026-05-29",
       "score": 1.986974867,
       "ticker": "AMD",
-      "weight": 0.3207176124
+      "weight": 0.3207176002
     },
     {
       "factor": "momentum_12_1",
@@ -23,7 +23,7 @@
       "rebalance_date": "2026-05-29",
       "score": 1.382066239,
       "ticker": "AMAT",
-      "weight": 0.1907072106
+      "weight": 0.1907072034
     },
     {
       "factor": "momentum_12_1",
@@ -31,7 +31,7 @@
       "rebalance_date": "2026-05-29",
       "score": 1.342890588,
       "ticker": "CAT",
-      "weight": 0.182287357
+      "weight": 0.1822873501
     },
     {
       "factor": "momentum_12_1",
@@ -39,7 +39,7 @@
       "rebalance_date": "2026-05-29",
       "score": 1.037325402,
       "ticker": "GOOGL",
-      "weight": 0.1166135499
+      "weight": 0.1166135455
     },
     {
       "factor": "momentum_12_1",
@@ -47,7 +47,7 @@
       "rebalance_date": "2026-05-29",
       "score": 1.010097312,
       "ticker": "GOOG",
-      "weight": 0.1107615341
+      "weight": 0.1107615299
     },
     {
       "factor": "momentum_12_1",
@@ -55,15 +55,15 @@
       "rebalance_date": "2026-05-29",
       "score": 0.7071178039,
       "ticker": "AVGO",
-      "weight": 0.04564345555
+      "weight": 0.04564345382
     },
     {
       "factor": "momentum_12_1",
       "price_date_used": "2026-05-29",
       "rebalance_date": "2026-05-29",
-      "score": 0.5525503755,
+      "score": 0.5525505515,
       "ticker": "NVDA",
-      "weight": 0.01242294502
+      "weight": 0.01242298237
     },
     {
       "factor": "momentum_12_1",
@@ -71,7 +71,7 @@
       "rebalance_date": "2026-05-29",
       "score": 0.5524857257,
       "ticker": "XOM",
-      "weight": 0.01240905011
+      "weight": 0.01240904964
     },
     {
       "factor": "momentum_12_1",
@@ -79,7 +79,7 @@
       "rebalance_date": "2026-05-29",
       "score": 0.519231503,
       "ticker": "GS",
-      "weight": 0.0052618635
+      "weight": 0.005261863301
     },
     {
       "factor": "momentum_12_1",
@@ -87,15 +87,15 @@
       "rebalance_date": "2026-05-29",
       "score": 0.509523768,
       "ticker": "MRK",
-      "weight": 0.003175421905
+      "weight": 0.003175421784
     }
   ],
   "metadata": {
-    "data_end_date": "2026-06-09",
+    "data_end_date": "2026-06-10",
     "data_start_date": "2021-06-10",
     "effective_factor_count": 7,
     "failed_tickers": [],
-    "fetched_at": "2026-06-10T13:21:37.000359Z",
+    "fetched_at": "2026-06-10T13:36:16.259170Z",
     "price_ticker_count": 50,
     "provider": "yfinance",
     "provider_version": "1.4.1",
@@ -171,7 +171,7 @@
       "GS",
       "AMGN"
     ],
-    "source_hash": "53b23262e0caaf13",
+    "source_hash": "81604fb0082894fd",
     "source_kind": "yfinance",
     "succeeded_tickers": [
       "AAPL",
@@ -233,195 +233,195 @@
   },
   "metrics": [
     {
-      "annual_return": 0.4325539411,
-      "cagr": 0.4751390499,
-      "calmar": 2.499383002,
-      "composite_score": 0.9496355431,
+      "annual_return": 0.4313753449,
+      "cagr": 0.473378465,
+      "calmar": 2.492573234,
+      "composite_score": 0.9496799529,
       "coverage": 1.0,
       "factor": "momentum_12_1",
-      "max_drawdown": -0.1730642885,
-      "sharpe": 1.529641981,
-      "sortino": 3.96579207,
-      "turnover": 0.2812957563,
-      "volatility": 0.2827811649
+      "max_drawdown": -0.173064261,
+      "sharpe": 1.524371877,
+      "sortino": 3.94987306,
+      "turnover": 0.281295766,
+      "volatility": 0.2829856359
     },
     {
-      "annual_return": 0.2437245331,
-      "cagr": 0.2452556172,
-      "calmar": 2.033294028,
-      "composite_score": 0.5569947274,
+      "annual_return": 0.2440427024,
+      "cagr": 0.2456454252,
+      "calmar": 2.035945533,
+      "composite_score": 0.5590046182,
       "coverage": 1.0,
       "factor": "risk_adjusted_momentum",
-      "max_drawdown": -0.1198668416,
-      "sharpe": 1.134122152,
-      "sortino": 2.335345372,
-      "turnover": 0.4716339452,
-      "volatility": 0.2149014837
+      "max_drawdown": -0.1198670095,
+      "sharpe": 1.135632075,
+      "sortino": 2.338392797,
+      "turnover": 0.4716341402,
+      "volatility": 0.2148959226
     },
     {
-      "annual_return": 0.2821875907,
-      "cagr": 0.2753377277,
-      "calmar": 1.23494217,
-      "composite_score": 0.386303876,
+      "annual_return": 0.2817095893,
+      "cagr": 0.274728402,
+      "calmar": 1.232849854,
+      "composite_score": 0.3850336278,
       "coverage": 1.0,
       "factor": "momentum_6m",
-      "max_drawdown": -0.2285026761,
-      "sharpe": 1.030517895,
-      "sortino": 1.950033671,
-      "turnover": 0.428686276,
-      "volatility": 0.2738308496
+      "max_drawdown": -0.2285027559,
+      "sharpe": 1.028619776,
+      "sortino": 1.946722683,
+      "turnover": 0.4286861749,
+      "volatility": 0.2738714498
     },
     {
-      "annual_return": 0.1044411126,
-      "cagr": 0.09910753965,
-      "calmar": 0.9505414437,
-      "composite_score": 0.1990515104,
+      "annual_return": 0.1060578679,
+      "cagr": 0.1008458366,
+      "calmar": 0.9652581356,
+      "composite_score": 0.2039943364,
       "coverage": 1.0,
       "factor": "low_volatility",
-      "max_drawdown": -0.1098753908,
-      "sharpe": 0.7444215582,
-      "sortino": 1.492159457,
-      "turnover": 0.1599490705,
-      "volatility": 0.140298345
+      "max_drawdown": -0.1098751349,
+      "sharpe": 0.7550588813,
+      "sortino": 1.515259662,
+      "turnover": 0.1599491852,
+      "volatility": 0.1404630427
     },
     {
-      "annual_return": 0.2209323274,
-      "cagr": 0.1990903452,
-      "calmar": 0.9638666885,
-      "composite_score": 0.1958505309,
+      "annual_return": 0.219244885,
+      "cagr": 0.1969610857,
+      "calmar": 0.9565039728,
+      "composite_score": 0.1884707611,
       "coverage": 1.0,
       "factor": "short_reversal",
-      "max_drawdown": -0.2292146103,
-      "sharpe": 0.7895933476,
-      "sortino": 1.386165512,
-      "turnover": 0.8615084282,
-      "volatility": 0.2798052036
+      "max_drawdown": -0.229214819,
+      "sharpe": 0.7824017273,
+      "sortino": 1.370979947,
+      "turnover": 0.86150835,
+      "volatility": 0.2802203489
     },
     {
-      "annual_return": 0.175194258,
-      "cagr": 0.1605966884,
-      "calmar": 0.8575658263,
-      "composite_score": 0.1802815694,
+      "annual_return": 0.174055584,
+      "cagr": 0.1592370544,
+      "calmar": 0.8519919947,
+      "composite_score": 0.1738477555,
       "coverage": 1.0,
       "factor": "composite_defensive",
-      "max_drawdown": -0.20429249,
-      "sharpe": 0.765254466,
-      "sortino": 1.45061012,
-      "turnover": 0.3821841155,
-      "volatility": 0.2289359498
+      "max_drawdown": -0.204292511,
+      "sharpe": 0.7595691669,
+      "sortino": 1.437977733,
+      "turnover": 0.3821843171,
+      "volatility": 0.2291504073
     },
     {
-      "annual_return": 0.2785372487,
-      "cagr": 0.2428011272,
-      "calmar": 0.5531897319,
-      "composite_score": 0.0983470825,
+      "annual_return": 0.2766098128,
+      "cagr": 0.2402397227,
+      "calmar": 0.5493616814,
+      "composite_score": 0.09153865641,
       "coverage": 1.0,
       "factor": "liquidity",
-      "max_drawdown": -0.5035112416,
-      "sharpe": 0.8005608484,
-      "sortino": 1.438364152,
-      "turnover": 0.05507898312,
-      "volatility": 0.3479276426
+      "max_drawdown": -0.5035112972,
+      "sharpe": 0.7938982427,
+      "sortino": 1.423607589,
+      "turnover": 0.05507898317,
+      "volatility": 0.3484197319
     }
   ],
   "rankings": [
     {
-      "annual_return": 0.4325539411,
-      "cagr": 0.4751390499,
-      "calmar": 2.499383002,
-      "composite_score": 0.9496355431,
+      "annual_return": 0.4313753449,
+      "cagr": 0.473378465,
+      "calmar": 2.492573234,
+      "composite_score": 0.9496799529,
       "coverage": 1.0,
       "factor": "momentum_12_1",
-      "max_drawdown": -0.1730642885,
+      "max_drawdown": -0.173064261,
       "rank": 1,
-      "sharpe": 1.529641981,
-      "sortino": 3.96579207,
-      "turnover": 0.2812957563,
-      "volatility": 0.2827811649
+      "sharpe": 1.524371877,
+      "sortino": 3.94987306,
+      "turnover": 0.281295766,
+      "volatility": 0.2829856359
     },
     {
-      "annual_return": 0.2437245331,
-      "cagr": 0.2452556172,
-      "calmar": 2.033294028,
-      "composite_score": 0.5569947274,
+      "annual_return": 0.2440427024,
+      "cagr": 0.2456454252,
+      "calmar": 2.035945533,
+      "composite_score": 0.5590046182,
       "coverage": 1.0,
       "factor": "risk_adjusted_momentum",
-      "max_drawdown": -0.1198668416,
+      "max_drawdown": -0.1198670095,
       "rank": 2,
-      "sharpe": 1.134122152,
-      "sortino": 2.335345372,
-      "turnover": 0.4716339452,
-      "volatility": 0.2149014837
+      "sharpe": 1.135632075,
+      "sortino": 2.338392797,
+      "turnover": 0.4716341402,
+      "volatility": 0.2148959226
     },
     {
-      "annual_return": 0.2821875907,
-      "cagr": 0.2753377277,
-      "calmar": 1.23494217,
-      "composite_score": 0.386303876,
+      "annual_return": 0.2817095893,
+      "cagr": 0.274728402,
+      "calmar": 1.232849854,
+      "composite_score": 0.3850336278,
       "coverage": 1.0,
       "factor": "momentum_6m",
-      "max_drawdown": -0.2285026761,
+      "max_drawdown": -0.2285027559,
       "rank": 3,
-      "sharpe": 1.030517895,
-      "sortino": 1.950033671,
-      "turnover": 0.428686276,
-      "volatility": 0.2738308496
+      "sharpe": 1.028619776,
+      "sortino": 1.946722683,
+      "turnover": 0.4286861749,
+      "volatility": 0.2738714498
     },
     {
-      "annual_return": 0.1044411126,
-      "cagr": 0.09910753965,
-      "calmar": 0.9505414437,
-      "composite_score": 0.1990515104,
+      "annual_return": 0.1060578679,
+      "cagr": 0.1008458366,
+      "calmar": 0.9652581356,
+      "composite_score": 0.2039943364,
       "coverage": 1.0,
       "factor": "low_volatility",
-      "max_drawdown": -0.1098753908,
+      "max_drawdown": -0.1098751349,
       "rank": 4,
-      "sharpe": 0.7444215582,
-      "sortino": 1.492159457,
-      "turnover": 0.1599490705,
-      "volatility": 0.140298345
+      "sharpe": 0.7550588813,
+      "sortino": 1.515259662,
+      "turnover": 0.1599491852,
+      "volatility": 0.1404630427
     },
     {
-      "annual_return": 0.2209323274,
-      "cagr": 0.1990903452,
-      "calmar": 0.9638666885,
-      "composite_score": 0.1958505309,
+      "annual_return": 0.219244885,
+      "cagr": 0.1969610857,
+      "calmar": 0.9565039728,
+      "composite_score": 0.1884707611,
       "coverage": 1.0,
       "factor": "short_reversal",
-      "max_drawdown": -0.2292146103,
+      "max_drawdown": -0.229214819,
       "rank": 5,
-      "sharpe": 0.7895933476,
-      "sortino": 1.386165512,
-      "turnover": 0.8615084282,
-      "volatility": 0.2798052036
+      "sharpe": 0.7824017273,
+      "sortino": 1.370979947,
+      "turnover": 0.86150835,
+      "volatility": 0.2802203489
     },
     {
-      "annual_return": 0.175194258,
-      "cagr": 0.1605966884,
-      "calmar": 0.8575658263,
-      "composite_score": 0.1802815694,
+      "annual_return": 0.174055584,
+      "cagr": 0.1592370544,
+      "calmar": 0.8519919947,
+      "composite_score": 0.1738477555,
       "coverage": 1.0,
       "factor": "composite_defensive",
-      "max_drawdown": -0.20429249,
+      "max_drawdown": -0.204292511,
       "rank": 6,
-      "sharpe": 0.765254466,
-      "sortino": 1.45061012,
-      "turnover": 0.3821841155,
-      "volatility": 0.2289359498
+      "sharpe": 0.7595691669,
+      "sortino": 1.437977733,
+      "turnover": 0.3821843171,
+      "volatility": 0.2291504073
     },
     {
-      "annual_return": 0.2785372487,
-      "cagr": 0.2428011272,
-      "calmar": 0.5531897319,
-      "composite_score": 0.0983470825,
+      "annual_return": 0.2766098128,
+      "cagr": 0.2402397227,
+      "calmar": 0.5493616814,
+      "composite_score": 0.09153865641,
       "coverage": 1.0,
       "factor": "liquidity",
-      "max_drawdown": -0.5035112416,
+      "max_drawdown": -0.5035112972,
       "rank": 7,
-      "sharpe": 0.8005608484,
-      "sortino": 1.438364152,
-      "turnover": 0.05507898312,
-      "volatility": 0.3479276426
+      "sharpe": 0.7938982427,
+      "sortino": 1.423607589,
+      "turnover": 0.05507898317,
+      "volatility": 0.3484197319
     }
   ],
   "schema_version": 1,
@@ -444,15 +444,15 @@
     }
   ],
   "summary": {
-    "best_composite_score": 0.9496355431,
+    "best_composite_score": 0.9496799529,
     "best_factor": "momentum_12_1",
-    "data_end_date": "2026-06-09",
+    "data_end_date": "2026-06-10",
     "effective_factor_count": 7,
-    "fetched_at": "2026-06-10T13:21:37.000359Z",
+    "fetched_at": "2026-06-10T13:36:16.259170Z",
     "holding_count": 10,
     "provider": "yfinance",
     "ranking_count": 7,
-    "source_hash": "53b23262e0caaf13",
+    "source_hash": "81604fb0082894fd",
     "static_data_warning": "Static snapshot generated from a prior run; not live market data or investment advice.",
     "tested_factor_count": 9,
     "universe_as_of_date": "2026-06-10"
