@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from best_factor.report import _bar_width, write_html_report
+from best_factor.report import _bar_width, write_html_report, write_report
 
 
 class WebReportTest(unittest.TestCase):
@@ -96,6 +96,27 @@ class WebReportTest(unittest.TestCase):
         self.assertIn("No metrics available.", html)
         self.assertIn("No latest holdings were available", html)
         self.assertIn("No skipped diagnostics were recorded.", html)
+
+    def test_report_metadata_sanitizes_windows_paths(self):
+        rankings = [{"rank": 1, "factor": "momentum", "composite_score": 0.5, "cagr": 0.1, "sharpe": 1, "sortino": 1, "calmar": 1, "max_drawdown": -0.1, "volatility": 0.2, "coverage": 1}]
+        metadata = {
+            "provider": "csv",
+            "source": r"csv:C:\Users\alice\private\prices.csv",
+            "cache_dir": r"C:\Users\alice\.cache\best-factor",
+            "tested_factor_count": 1,
+            "effective_factor_count": 1,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            md_path = Path(tmp) / "report.md"
+            html_path = Path(tmp) / "report.html"
+            write_report(md_path, rankings, [], {}, metadata)
+            write_html_report(html_path, rankings, [], {}, metadata)
+            combined = md_path.read_text() + html_path.read_text()
+        self.assertIn("csv:prices.csv", combined)
+        self.assertIn("best-factor", combined)
+        self.assertNotIn("alice", combined)
+        self.assertNotIn("private", combined)
+        self.assertNotIn("Users", combined)
 
 
 if __name__ == "__main__":

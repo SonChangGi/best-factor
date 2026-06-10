@@ -93,7 +93,7 @@ Each run writes:
 - `report.html`
 - optional GitHub Pages JSON via `best-factor site`: `docs/data/latest-results.json`
 
-The latest best-tested-factor holdings include `rebalance_date`, `factor`, `ticker`, `weight`, `score`, and `price_date_used`. Weights sum to approximately 1.0 for non-empty eligible portfolios.
+The latest best-tested-factor holdings include `rebalance_date`, `factor`, `ticker`, `weight`, `score`, and `price_date_used`. Weights sum to approximately 1.0 for non-empty eligible portfolios. These are research portfolio weights under the close-to-close convention, not executable trade instructions.
 
 Open `report.html` in a browser to inspect the analysis visually. It is a static file with inline CSS only; no CDN, JavaScript, or remote chart dependency is required. Visual bars are clamped to `0-100%` and exact numeric metric values remain visible in text.
 
@@ -139,7 +139,7 @@ For manual and scheduled updates, the deployed Pages artifact is the freshness s
 
 ### Live dashboard universe
 
-`.github/best-factor-dashboard-tickers.txt` is the committed public dashboard universe. It is a curated list of individual large/liquid US stocks, not a survivorship-free historical universe and not the whole US market. The workflow builds best-effort current universe metadata from yfinance, applies a liquidity filter, attempts a market-cap filter when metadata is available, and retries with liquidity-only filtering if free metadata is insufficient.
+`.github/best-factor-dashboard-tickers.txt` is the committed public dashboard universe. It is a curated list of individual large/liquid US stocks, not a survivorship-free historical universe and not the whole US market. The workflow builds best-effort current universe metadata from yfinance, applies a liquidity filter, attempts a market-cap filter when metadata is available, and retries with liquidity-only filtering if free metadata is insufficient. The final run metadata records whether the market-cap filter was attempted, whether it was effective, and any fallback reason so two dashboard snapshots are not silently compared under different screens.
 
 This keeps the public page reproducible and cheap to update, but the results remain research-grade and current-universe biased.
 
@@ -166,7 +166,7 @@ The default composite score is deterministic:
 - Metrics are min-max normalized across tested factors.
 - Missing metrics receive the worst normalized score.
 - Equal/single-factor metric ranges receive a deterministic 0.5 normalized score.
-- Tie-break order: composite score desc, Sharpe desc, CAGR desc, max drawdown desc (less negative is better), factor name asc. Undefined or extreme positive Sortino/Calmar ratios from zero or near-zero downside are capped at 999 for deterministic, non-misleading reports.
+- Calmar is computed as CAGR divided by absolute max drawdown. Tie-break order: composite score desc, Sharpe desc, CAGR desc, max drawdown desc (less negative is better), factor name asc. Undefined or extreme positive Sortino/Calmar ratios from zero or near-zero downside are capped at 999 for deterministic, non-misleading reports.
 
 
 ## Factor-zoo presets, rank eligibility, and universe boundaries
@@ -185,7 +185,7 @@ The default approach uses free/current-universe data and should be interpreted a
 - Yahoo/yfinance data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms.
 - Current yfinance universe membership and market-cap metadata are current screens, not historical point-in-time constituent or point-in-time market-cap filters.
 - Fundamental files must include `as_of_date` and `available_at`; rows without `available_at` are treated as non-point-in-time and skipped for historical factor scoring.
-- Some factors or rows may be skipped with explicit reason codes such as `missing_fundamentals`, `insufficient_history`, `insufficient_volume`, `market_cap_unavailable`, `market_cap_below_min`, `empty_after_filters`, `provider_error`, `not_enough_assets`, `missing_rebalance_price`, `missing_exit_price`, and `inactive_or_non_stock`.
+- Some factors or rows may be skipped with explicit reason codes such as `missing_fundamentals`, `insufficient_history`, `insufficient_volume`, `market_cap_unavailable`, `market_cap_below_min`, `empty_after_filters`, `provider_error`, `not_enough_assets`, `missing_rebalance_price`, `missing_exit_price`, `invalid_period_missing_price`, `inactive_or_non_stock`, and dynamic `zero_coverage:<factor>` diagnostics.
 - Factor-zoo mode compares many related definitions. The top-ranked factor can be an in-sample winner caused by multiple-testing/data-snooping and should be rechecked with holdout periods, alternate universes, costs, and higher-quality point-in-time data before drawing investment conclusions.
 
 For higher-confidence research, use a survivorship-aware universe and point-in-time fundamentals from a licensed data source through a new provider adapter.

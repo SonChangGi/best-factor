@@ -74,9 +74,14 @@ class SiteExportTest(unittest.TestCase):
                         "source": "csv:/Users/example/private/prices.csv",
                         "cache_dir": "/Users/example/.cache/best-factor",
                         "source_hash": "abc123",
+                        "universe_scope_note": "Curated current ticker set, not the whole market.",
                         "universe_is_point_in_time": False,
                         "market_cap_filter_basis": "current_yfinance_metadata_screen_not_point_in_time",
+                        "market_cap_filter_attempted": True,
+                        "market_cap_filter_effective": False,
+                        "filter_fallback_reason": "market_cap_metadata_filter_failed_retried_liquidity_only",
                         "current_screen_note": "Current screen, not PIT.",
+                        "coverage_denominator": "emitted_portfolio_return_periods_per_factor_including_zero_holding_attempts",
                         "tested_factor_count": 2,
                         "effective_factor_count": 1,
                         "factor_preset": "zoo",
@@ -111,8 +116,13 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["latest_holdings"][0]["weight"], 0.5)
         self.assertEqual(payload["metadata"]["source_kind"], "csv")
         self.assertFalse(payload["metadata"]["universe_is_point_in_time"])
+        self.assertEqual(payload["metadata"]["universe_scope_note"], "Curated current ticker set, not the whole market.")
         self.assertEqual(payload["metadata"]["market_cap_filter_basis"], "current_yfinance_metadata_screen_not_point_in_time")
+        self.assertTrue(payload["metadata"]["market_cap_filter_attempted"])
+        self.assertFalse(payload["metadata"]["market_cap_filter_effective"])
+        self.assertEqual(payload["metadata"]["filter_fallback_reason"], "market_cap_metadata_filter_failed_retried_liquidity_only")
         self.assertEqual(payload["metadata"]["current_screen_note"], "Current screen, not PIT.")
+        self.assertIn("zero_holding", payload["metadata"]["coverage_denominator"])
         self.assertEqual(payload["metadata"]["factor_category_counts"], {"momentum": 90, "risk": 25})
         self.assertEqual(payload["metadata"]["factor_library_note"], "Best among tested candidates.")
         self.assertNotIn("source", payload["metadata"])

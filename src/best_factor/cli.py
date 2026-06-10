@@ -76,6 +76,16 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--min-market-cap", type=float, default=0.0)
     run.add_argument("--min-dollar-volume", type=float, default=0.0)
     run.add_argument("--transaction-cost-bps", type=float, default=0.0)
+    run.add_argument(
+        "--market-cap-filter-attempted",
+        action="store_true",
+        help="record that a market-cap-filtered run was attempted before this final run",
+    )
+    run.add_argument(
+        "--filter-fallback-reason",
+        default="",
+        help="optional reason when the final run falls back from a stricter filter path",
+    )
     run.add_argument("--tickers", nargs="*", default=[])
     run.add_argument("--period", default="5y")
     run.add_argument("--cache-dir", default=".cache/best-factor")
@@ -171,6 +181,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     universe_as_of = _universe_as_of(universe)
     data_end_date = dates[-1].isoformat() if dates else "unknown"
     data_start_date = dates[0].isoformat() if dates else "unknown"
+    market_cap_effective = float(args.min_market_cap or 0.0) > 0
+    market_cap_attempted = bool(args.market_cap_filter_attempted or market_cap_effective)
     metadata = {
         **provider_metadata,
         "source_hash": _source_hash_for_run(args),
@@ -178,14 +190,22 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "universe_name": _universe_name(args, universe),
         "universe_ticker_count": len(universe),
         "price_ticker_count": len(tickers),
+        "universe_scope_note": (
+            "Universe is the supplied or committed current ticker set for this run; "
+            "it is not the whole US equity market and not historical point-in-time constituents."
+        ),
         "data_start_date": data_start_date,
         "data_end_date": data_end_date,
         "universe_is_point_in_time": False,
         "market_cap_filter_basis": _market_cap_filter_basis(args, universe),
+        "market_cap_filter_attempted": market_cap_attempted,
+        "market_cap_filter_effective": market_cap_effective,
+        "filter_fallback_reason": str(args.filter_fallback_reason or "none"),
         "current_screen_note": (
             "Universe membership and market-cap filters use the supplied/current metadata snapshot; "
             "they are not historical point-in-time constituent or market-cap screens."
         ),
+        "coverage_denominator": "emitted_portfolio_return_periods_per_factor_including_zero_holding_attempts",
         "tested_factor_count": tested_factor_count,
         "effective_factor_count": effective_factor_count,
         "factor_preset": factor_preset,

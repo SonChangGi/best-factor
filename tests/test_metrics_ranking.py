@@ -16,6 +16,15 @@ class MetricsRankingTest(unittest.TestCase):
         self.assertAlmostEqual(result["max_drawdown"], -0.1)
         self.assertLess(result["calmar"], 0.0)
 
+    def test_calmar_uses_cagr_not_arithmetic_annual_return(self):
+        rows = [
+            {"factor": "path", "period_end": 1, "return": 0.5, "turnover": 0.0, "holdings_count": 1},
+            {"factor": "path", "period_end": 2, "return": -0.25, "turnover": 0.0, "holdings_count": 1},
+        ]
+        result = compute_metrics(rows, "M")[0]
+        self.assertAlmostEqual(result["calmar"], result["cagr"] / abs(result["max_drawdown"]))
+        self.assertNotAlmostEqual(result["calmar"], result["annual_return"] / abs(result["max_drawdown"]))
+
     def test_compute_metrics_contains_required_fields(self):
         rows = [
             {"factor": "a", "period_end": i, "return": r, "turnover": 0.1, "holdings_count": 2}

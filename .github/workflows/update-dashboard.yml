@@ -73,7 +73,9 @@ jobs:
           if ! python -m best_factor.cli run "${COMMON_ARGS[@]}" --min-market-cap 10000000000; then
             echo "Market-cap metadata filter was not usable for enough names; retrying with liquidity filter only." >&2
             rm -rf /tmp/best-factor-live-run
-            python -m best_factor.cli run "${COMMON_ARGS[@]}"
+            python -m best_factor.cli run "${COMMON_ARGS[@]}" \
+              --market-cap-filter-attempted \
+              --filter-fallback-reason market_cap_metadata_filter_failed_retried_liquidity_only
           fi
           python -m best_factor.cli site \
             --run-dir /tmp/best-factor-live-run \

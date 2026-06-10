@@ -27,7 +27,10 @@ def compute_metrics(portfolio_returns: list[dict[str, object]], frequency: str) 
         downside_dev = math.sqrt(statistics.fmean([d * d for d in downside])) * math.sqrt(periods_per_year) if downside else 0.0
         sortino = _cap_ratio(annual_return / downside_dev) if downside_dev > 0 else (0.0 if annual_return <= 0 else 999.0)
         mdd = max_drawdown(equity)
-        calmar = _cap_ratio(annual_return / abs(mdd)) if mdd < 0 else (0.0 if annual_return <= 0 else 999.0)
+        # Standard Calmar uses CAGR over absolute max drawdown.  Keep
+        # ``annual_return`` as a separate arithmetic-return metric for Sharpe,
+        # but do not mix it into the Calmar denominator.
+        calmar = _cap_ratio(cagr / abs(mdd)) if mdd < 0 else (0.0 if cagr <= 0 else 999.0)
         turnover = statistics.fmean([float(r.get("turnover", 0.0)) for r in rows]) if rows else 0.0
         coverage = sum(1 for r in rows if int(r.get("holdings_count", 0)) > 0) / len(rows) if rows else 0.0
         metrics.append(

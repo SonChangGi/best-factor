@@ -81,8 +81,10 @@ SKIP_REASONS = {
     "not_enough_assets",
     "missing_rebalance_price",
     "missing_exit_price",
+    "invalid_period_missing_price",
     "inactive_or_non_stock",
     "unknown_factor",
+    "zero_coverage:<factor>",
 }
 
 CAVEATS = [
@@ -90,7 +92,7 @@ CAVEATS = [
     "Yahoo/yfinance data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms; use for research/education only.",
     "Fundamental fields from free sources can be sparse or not point-in-time; unavailable factor rows are skipped with explicit reason codes.",
     "Factor-zoo mode evaluates many related candidates; the selected winner is best among tested candidates in this run, not out-of-sample validated, and may reflect multiple-testing/data-snooping.",
-    "Coverage is measured over emitted portfolio-return periods after missing-price and eligibility skips, not over every scheduled calendar rebalance.",
+    "Coverage is measured as non-empty portfolio-return periods divided by attempted scheduled periods; dynamic diagnostics may use zero_coverage:<factor> reason codes.",
     "Outputs are research artifacts, not investment advice or trade instructions.",
     "Current yfinance universe and market-cap metadata are current-screen inputs, not historical point-in-time membership or point-in-time market capitalization.",
 ]

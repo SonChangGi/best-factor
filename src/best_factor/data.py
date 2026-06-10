@@ -5,6 +5,7 @@ import datetime as dt
 import hashlib
 import importlib.metadata
 import math
+import time
 import urllib.request
 from collections import defaultdict
 from pathlib import Path
@@ -177,7 +178,10 @@ def fetch_yfinance_prices(tickers: list[str], period: str, cache_dir: str | Path
         raise RuntimeError("Install optional live dependency with `pip install -e .[live]` to use provider yfinance") from exc
 
     fetched_at = dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z")
-    data = yf.download(tickers, period=period, auto_adjust=False, progress=False, group_by="ticker")
+    data = _retry_yfinance_call(
+        lambda: yf.download(tickers, period=period, auto_adjust=False, progress=False, group_by="ticker"),
+        operation="price download",
+    )
     rows: list[dict[str, object]] = []
     failed_tickers: list[str] = []
     succeeded_tickers: list[str] = []
@@ -265,3 +269,17 @@ def _package_version(package: str) -> str:
         return importlib.metadata.version(package)
     except importlib.metadata.PackageNotFoundError:
         return "unknown"
+
+
+def _retry_yfinance_call(call, operation: str, attempts: int = 3, initial_delay: float = 1.0):
+    """Run a yfinance call with bounded retry/backoff for transient provider failures."""
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return call()
+        except Exception as exc:  # pragma: no cover - network/provider variability
+            last_exc = exc
+            if attempt >= attempts:
+                break
+            time.sleep(initial_delay * (2 ** (attempt - 1)))
+    raise RuntimeError(f"yfinance {operation} failed after {attempts} attempts") from last_exc

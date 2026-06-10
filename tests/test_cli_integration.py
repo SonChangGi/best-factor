@@ -78,6 +78,11 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertIn("same-close", metadata["timing_convention"])
         self.assertFalse(metadata["universe_is_point_in_time"])
         self.assertIn("market_cap_filter_basis", metadata)
+        self.assertFalse(metadata["market_cap_filter_attempted"])
+        self.assertFalse(metadata["market_cap_filter_effective"])
+        self.assertEqual(metadata["filter_fallback_reason"], "none")
+        self.assertIn("universe_scope_note", metadata)
+        self.assertIn("coverage_denominator", metadata)
         self.assertIn("current_screen_note", metadata)
         self.assertTrue(metadata["caveats"])
         report = (out / "report.md").read_text()
@@ -131,6 +136,18 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertGreaterEqual(metadata["tested_factor_count"], 200)
         self.assertIn("factor_category_counts", metadata)
         self.assertIn("multiple-testing", " ".join(metadata["caveats"]))
+
+    def test_market_cap_filter_fallback_metadata_is_explicit(self):
+        out = self.run_cli(
+            "--market-cap-filter-attempted",
+            "--filter-fallback-reason",
+            "market_cap_metadata_filter_failed_retried_liquidity_only",
+        )
+        metadata = json.loads((out / "run_metadata.json").read_text())
+        self.assertTrue(metadata["market_cap_filter_attempted"])
+        self.assertFalse(metadata["market_cap_filter_effective"])
+        self.assertEqual(metadata["market_cap_filter_basis"], "not_applied")
+        self.assertEqual(metadata["filter_fallback_reason"], "market_cap_metadata_filter_failed_retried_liquidity_only")
 
     def test_site_subcommand_exports_github_pages_json(self):
         out = self.run_cli()

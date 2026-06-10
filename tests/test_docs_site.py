@@ -127,6 +127,11 @@ class DocsSiteTest(unittest.TestCase):
         self.assertGreaterEqual(payload["summary"].get("selected_factor_count", 0), 200)
         self.assertIn("factor_category_counts", payload["metadata"])
         self.assertIn("market_cap_filter_basis", payload["metadata"])
+        self.assertIn("market_cap_filter_attempted", payload["metadata"])
+        self.assertIn("market_cap_filter_effective", payload["metadata"])
+        self.assertIn("filter_fallback_reason", payload["metadata"])
+        self.assertIn("universe_scope_note", payload["metadata"])
+        self.assertIn("coverage_denominator", payload["metadata"])
         self.assertIn("current_screen_note", payload["metadata"])
         self.assertFalse(payload["metadata"].get("universe_is_point_in_time"))
         self.assertIn("same-close", payload["metadata"].get("timing_convention", ""))
@@ -154,6 +159,8 @@ class DocsSiteTest(unittest.TestCase):
             "github.repository == 'SonChangGi/best-factor'",
             "github.ref == 'refs/heads/main'",
             "live_yfinance_curated_us_large_liquid_actions",
+            "--market-cap-filter-attempted",
+            "market_cap_metadata_filter_failed_retried_liquidity_only",
         ]:
             self.assertIn(marker, workflow)
         self.assertNotIn("git commit", workflow)

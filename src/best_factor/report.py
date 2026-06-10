@@ -5,7 +5,7 @@ import html
 import json
 import math
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from .schemas import CAVEATS, TIMING_CONVENTION
 
@@ -96,9 +96,14 @@ def write_report(
         "cache_dir",
         "universe_as_of_date",
         "source_hash",
+        "universe_scope_note",
         "universe_is_point_in_time",
         "market_cap_filter_basis",
+        "market_cap_filter_attempted",
+        "market_cap_filter_effective",
+        "filter_fallback_reason",
         "current_screen_note",
+        "coverage_denominator",
         "factor_preset",
         "requested_factor_preset",
         "factor_library_size",
@@ -279,9 +284,14 @@ def _metadata_section(metadata: dict[str, object]) -> str:
         "cache_dir",
         "universe_as_of_date",
         "source_hash",
+        "universe_scope_note",
         "universe_is_point_in_time",
         "market_cap_filter_basis",
+        "market_cap_filter_attempted",
+        "market_cap_filter_effective",
+        "filter_fallback_reason",
         "current_screen_note",
+        "coverage_denominator",
         "factor_preset",
         "requested_factor_preset",
         "factor_library_size",
@@ -363,7 +373,7 @@ def _safe_metadata_value(key: str, value: object) -> str:
     if key == "source":
         return _safe_source_summary(value)
     if key == "cache_dir":
-        return Path(str(value)).name if value else ""
+        return _basename_any_platform(str(value)) if value else ""
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     return str(value)
@@ -372,10 +382,17 @@ def _safe_metadata_value(key: str, value: object) -> str:
 def _safe_source_summary(value: object) -> str:
     text = str(value or "")
     if text.startswith("csv:"):
-        return f"csv:{Path(text.split(':', 1)[1]).name}"
+        return f"csv:{_basename_any_platform(text.split(':', 1)[1])}"
     if "/" in text or "\\" in text:
-        return Path(text).name
+        return _basename_any_platform(text)
     return text
+
+
+def _basename_any_platform(value: str) -> str:
+    """Return a basename for POSIX or Windows-style paths on any host OS."""
+    if "\\" in value:
+        return PureWindowsPath(value).name
+    return Path(value).name
 
 
 def _bar_width(value: object) -> float:

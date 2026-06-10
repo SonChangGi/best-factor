@@ -10,6 +10,7 @@ import csv
 import datetime as dt
 import math
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -68,8 +69,8 @@ def fetch_rows(tickers: list[str]) -> list[dict[str, object]]:
         }
         try:
             instrument = yf.Ticker(ticker)
-            fast = getattr(instrument, "fast_info", {}) or {}
-            info = safe_info(instrument)
+            fast = retry(lambda: getattr(instrument, "fast_info", {}) or {}, f"{ticker} fast_info")
+            info = retry(lambda: safe_info(instrument, swallow=False), f"{ticker} info")
             market_cap = first_number(
                 get_value(fast, "market_cap"),
                 get_value(fast, "marketCap"),
@@ -86,10 +87,12 @@ def fetch_rows(tickers: list[str]) -> list[dict[str, object]]:
     return rows
 
 
-def safe_info(instrument: Any) -> dict[str, Any]:
+def safe_info(instrument: Any, swallow: bool = True) -> dict[str, Any]:
     try:
         info = getattr(instrument, "info", {}) or {}
     except Exception:
+        if not swallow:
+            raise
         return {}
     return info if isinstance(info, dict) else {}
 
@@ -112,6 +115,19 @@ def first_number(*values: Any) -> float | None:
         if math.isfinite(number) and number > 0:
             return number
     return None
+
+
+def retry(call, operation: str, attempts: int = 3, initial_delay: float = 1.0):
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return call()
+        except Exception as exc:  # pragma: no cover - network/provider variability
+            last_exc = exc
+            if attempt >= attempts:
+                break
+            time.sleep(initial_delay * (2 ** (attempt - 1)))
+    raise RuntimeError(f"yfinance metadata {operation} failed after {attempts} attempts") from last_exc
 
 
 if __name__ == "__main__":  # pragma: no cover

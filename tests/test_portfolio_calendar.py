@@ -3,9 +3,15 @@ import unittest
 
 from best_factor.calendar import rebalance_dates
 from best_factor.portfolio import run_backtests
+from best_factor.schemas import SKIP_REASONS
+from best_factor.schemas import SKIP_REASONS
 
 
 class PortfolioCalendarTest(unittest.TestCase):
+    def test_skip_reason_schema_includes_dynamic_missing_price_codes(self):
+        self.assertIn("invalid_period_missing_price", SKIP_REASONS)
+        self.assertIn("zero_coverage:<factor>", SKIP_REASONS)
+
     def test_monthly_and_weekly_rebalance_use_last_available_date(self):
         dates = [
             dt.date(2024, 1, 30),
@@ -85,6 +91,7 @@ class PortfolioCalendarTest(unittest.TestCase):
         self.assertEqual(result["returns"][0]["skip_reason"], "invalid_period_missing_price")
         self.assertIn("missing_exit_price", result["skipped_reasons"])
         self.assertIn("invalid_period_missing_price", result["skipped_reasons"])
+        self.assertIn("invalid_period_missing_price", SKIP_REASONS)
 
 
 if __name__ == "__main__":
