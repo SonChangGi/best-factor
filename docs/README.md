@@ -1,6 +1,6 @@
 # Best Factor Lab static dashboard
 
-This directory is a GitHub Pages-ready static site for `best-factor` outputs. The dashboard is designed for the factor-zoo default run, so the JSON should normally include 200+ tested candidate factors and explicit multiple-testing/free-data caveats.
+This directory is a GitHub Pages-ready static site for `best-factor` outputs. The dashboard is designed for the factor-zoo default run, so the JSON should normally include 300+ tested candidate factors, public factor-family metadata, and explicit multiple-testing/free-data caveats. The ranking-card section shows Top 20 by default and lets readers add extra factors for comparison instead of rendering every candidate card at once.
 
 Fast local smoke run with the compact preset:
 

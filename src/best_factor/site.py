@@ -41,6 +41,9 @@ PUBLIC_METADATA_KEYS = {
     "factor_library_size",
     "selected_factor_count",
     "factor_category_counts",
+    "factor_kind_counts",
+    "factor_family_summary",
+    "skip_resolution_note",
     "factor_library_note",
     "timing_convention",
     "source_hash",
@@ -88,6 +91,8 @@ def build_site_payload(
     caveats = metadata.get("caveats") if isinstance(metadata.get("caveats"), list) else CAVEATS
     public_metadata = _public_metadata(metadata)
     best = rankings[0] if rankings else {}
+    factor_catalog = metadata.get("factor_catalog") if isinstance(metadata.get("factor_catalog"), list) else []
+    factor_family_summary = metadata.get("factor_family_summary") if isinstance(metadata.get("factor_family_summary"), list) else []
 
     payload: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
@@ -114,6 +119,8 @@ def build_site_payload(
         "metrics": metrics,
         "latest_holdings": latest_holdings,
         "skipped_reasons": skipped_reasons,
+        "factor_catalog": factor_catalog,
+        "factor_family_summary": factor_family_summary,
         "metadata": public_metadata,
         "caveats": [str(c) for c in caveats],
     }

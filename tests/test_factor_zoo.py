@@ -7,7 +7,10 @@ from best_factor.factors import (
     DEFAULT_FACTORS,
     build_score_index,
     compute_factor_scores,
+    factor_catalog,
     factor_category_counts,
+    factor_family_summary,
+    factor_kind_counts,
     factor_names_for_preset,
     rows_for_factor_date,
 )
@@ -25,19 +28,39 @@ REPRESENTATIVE_FACTORS = [
     "range_pos_63d",
     "drawdown_high_126d",
     "accel_21d_126d_skip_0d",
+    "skew_63d",
+    "kurtosis_low_63d",
+    "tail_loss_63d",
+    "trend_efficiency_63d",
+    "return_consistency_63d",
+    "dvol_shock_21d_63d",
+    "price_volume_corr_63d",
+    "breakout_63d",
+    "range_contraction_21d_63d",
+    "overnight_return_21d",
+    "intraday_return_21d",
 ]
 
 
 class FactorZooTest(unittest.TestCase):
     def test_default_factor_library_is_zoo_scale_and_unique(self):
         names = [factor.name for factor in DEFAULT_FACTORS]
-        self.assertGreaterEqual(len(names), 200)
+        self.assertGreaterEqual(len(names), 300)
         self.assertEqual(len(names), len(set(names)))
         self.assertEqual(len(factor_names_for_preset("core")), 9)
         self.assertEqual(len(factor_names_for_preset("zoo")), len(names))
         counts = factor_category_counts()
-        for category in ["momentum", "risk", "risk_adjusted_momentum", "liquidity", "trend", "composite"]:
+        for category in ["momentum", "risk", "risk_adjusted_momentum", "liquidity", "trend", "trend_quality", "distribution", "tail", "accumulation", "intraday", "composite"]:
             self.assertGreater(counts.get(category, 0), 0, category)
+        kinds = factor_kind_counts()
+        for kind in ["return_skew", "tail_loss", "trend_efficiency", "price_volume_corr", "overnight_return", "intraday_return"]:
+            self.assertGreater(kinds.get(kind, 0), 0, kind)
+        families = factor_family_summary()
+        self.assertGreaterEqual(len(families), 12)
+        self.assertTrue(any(family["category"] == "intraday" for family in families))
+        catalog = factor_catalog(["skew_63d", "overnight_return_21d"])
+        self.assertEqual([row["name"] for row in catalog], ["skew_63d", "overnight_return_21d"])
+        self.assertIn("category_description", catalog[0])
 
     def test_representative_generated_factors_score_with_sufficient_history(self):
         prices = _factor_prices(tickers=("AAA", "BBB"), days=800)

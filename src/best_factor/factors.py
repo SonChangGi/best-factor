@@ -48,6 +48,25 @@ CORE_FACTOR_NAMES = (
 )
 
 
+FACTOR_CATEGORY_DESCRIPTIONS = {
+    "momentum": "Price momentum and acceleration signals using only historical adjusted closes.",
+    "reversal": "Short-horizon contrarian signals that prefer recent underperformance.",
+    "risk": "Realized volatility, downside/upside dispersion, intraday range, and tail-risk controls.",
+    "risk_adjusted_momentum": "Momentum scaled by realized volatility to penalize unstable trends.",
+    "liquidity": "Dollar-volume, liquidity trend, and Amihud-style tradability proxies.",
+    "trend": "Moving-average, range-position, breakout, and drawdown-to-high trend signals.",
+    "trend_quality": "Smoothness and consistency of price trends, not just endpoint return.",
+    "distribution": "Higher-moment return-shape signals such as skewness and kurtosis.",
+    "tail": "Lower-tail loss signals that penalize severe recent losses.",
+    "accumulation": "Price/volume confirmation signals intended to proxy accumulation pressure.",
+    "intraday": "Open/close decomposition signals using free OHLC fields when available.",
+    "value": "Optional point-in-time valuation ratios supplied by the caller.",
+    "quality": "Optional point-in-time profitability, balance-sheet, and growth fields supplied by the caller.",
+    "growth": "Optional point-in-time fundamental growth fields supplied by the caller.",
+    "composite": "Transparent blends of multiple eligible base factors.",
+}
+
+
 def _p(**kwargs: object) -> tuple[tuple[str, object], ...]:
     return tuple(sorted(kwargs.items()))
 
@@ -110,7 +129,7 @@ def _build_default_factors() -> list[FactorDefinition]:
         ))
 
     for window in (10, 21, 42, 63, 84, 126, 189, 252):
-        for measure in ("total", "downside", "range"):
+        for measure in ("total", "downside", "upside", "range"):
             factors.append(_def(
                 f"vol_{measure}_{window}d",
                 f"Negative {measure} risk over {window} trading days",
@@ -118,6 +137,43 @@ def _build_default_factors() -> list[FactorDefinition]:
                 category="risk",
                 params=_p(window=window, measure=measure),
             ))
+
+    for window in (21, 42, 63, 126, 252):
+        factors.append(_def(
+            f"skew_{window}d",
+            f"Return skewness over {window} trading days",
+            kind="return_skew",
+            category="distribution",
+            params=_p(window=window),
+        ))
+        factors.append(_def(
+            f"kurtosis_low_{window}d",
+            f"Negative excess kurtosis over {window} trading days; lower fat-tail shape is better",
+            kind="return_kurtosis",
+            category="distribution",
+            params=_p(window=window),
+        ))
+        factors.append(_def(
+            f"tail_loss_{window}d",
+            f"Average worst-decile return over {window} trading days; less severe tail loss is better",
+            kind="tail_loss",
+            category="tail",
+            params=_p(window=window),
+        ))
+        factors.append(_def(
+            f"trend_efficiency_{window}d",
+            f"Signed trend efficiency over {window} trading days: endpoint return versus path noise",
+            kind="trend_efficiency",
+            category="trend_quality",
+            params=_p(window=window),
+        ))
+        factors.append(_def(
+            f"return_consistency_{window}d",
+            f"Share of positive daily returns over {window} trading days",
+            kind="return_consistency",
+            category="trend_quality",
+            params=_p(window=window),
+        ))
 
     for lookback in (63, 84, 126, 168, 252, 378, 504):
         for skip in (0, 21, 42):
@@ -156,6 +212,22 @@ def _build_default_factors() -> list[FactorDefinition]:
             category="liquidity",
             params=_p(short=short, long=long),
         ))
+        factors.append(_def(
+            f"dvol_shock_{short}d_{long}d",
+            f"Dollar-volume shock z-score: {short}-day average versus pre-window {long}-day baseline",
+            kind="volume_shock",
+            category="liquidity",
+            params=_p(short=short, long=long),
+        ))
+
+    for window in (21, 42, 63, 126, 252):
+        factors.append(_def(
+            f"price_volume_corr_{window}d",
+            f"Correlation between returns and dollar-volume changes over {window} trading days",
+            kind="price_volume_corr",
+            category="accumulation",
+            params=_p(window=window),
+        ))
 
     for window in (10, 20, 30, 50, 100, 150, 200):
         factors.append(_def(
@@ -186,6 +258,38 @@ def _build_default_factors() -> list[FactorDefinition]:
             params=_p(window=window),
         ))
         factors.append(_def(
+            f"breakout_{window}d",
+            f"Current close versus the prior {window}-day high",
+            kind="breakout_strength",
+            category="trend",
+            params=_p(window=window),
+        ))
+
+    for short, long in ((5, 21), (10, 42), (21, 63), (42, 126), (63, 252)):
+        factors.append(_def(
+            f"range_contraction_{short}d_{long}d",
+            f"Recent high-low range contraction: lower {short}-day range versus {long}-day baseline is better",
+            kind="range_contraction",
+            category="risk",
+            params=_p(short=short, long=long),
+        ))
+
+    for window in (5, 21, 42, 63, 126):
+        factors.append(_def(
+            f"overnight_return_{window}d",
+            f"Average open versus prior close return over {window} trading days",
+            kind="overnight_return",
+            category="intraday",
+            params=_p(window=window),
+        ))
+        factors.append(_def(
+            f"intraday_return_{window}d",
+            f"Average close versus open return over {window} trading days",
+            kind="intraday_return",
+            category="intraday",
+            params=_p(window=window),
+        ))
+        factors.append(_def(
             f"drawdown_high_{window}d",
             f"Closeness to {window}-day high",
             kind="drawdown_high",
@@ -202,6 +306,24 @@ def _build_default_factors() -> list[FactorDefinition]:
                 category="momentum",
                 params=_p(short=short, long=long, skip=skip),
             ))
+
+    optional_fundamentals = [
+        ("value_pb", "Lower price-to-book is better when point-in-time fundamentals are supplied", "value", "price_to_book", "negative"),
+        ("value_ps", "Lower price-to-sales is better when point-in-time fundamentals are supplied", "value", "price_to_sales", "negative"),
+        ("value_fcf_yield", "Higher free-cash-flow yield is better when point-in-time fundamentals are supplied", "value", "free_cash_flow_yield", "positive"),
+        ("quality_margin", "Higher profit margin is better when point-in-time fundamentals are supplied", "quality", "profit_margin", "positive"),
+        ("quality_debt_to_equity", "Lower debt-to-equity is better when point-in-time fundamentals are supplied", "quality", "debt_to_equity", "negative"),
+        ("growth_revenue", "Higher revenue growth is better when point-in-time fundamentals are supplied", "growth", "revenue_growth", "positive"),
+    ]
+    for name, description, category, field, direction in optional_fundamentals:
+        factors.append(_def(
+            name,
+            description,
+            kind="fundamental",
+            category=category,
+            params=_p(field=field, direction=direction),
+            requires_fundamentals=(field,),
+        ))
 
     composite_specs = [
         ("blend_mom126_lowvol63_liq63", ("mom_126d_skip_21d", "vol_total_63d", "dvol_avg_63d")),
@@ -253,6 +375,56 @@ def factor_category_counts(factor_names: Iterable[str] | None = None) -> dict[st
     names = validate_factor_names(factor_names or [f.name for f in DEFAULT_FACTORS])
     counts = Counter(FACTOR_REGISTRY[name].category for name in names)
     return dict(sorted(counts.items()))
+
+
+def factor_kind_counts(factor_names: Iterable[str] | None = None) -> dict[str, int]:
+    names = validate_factor_names(factor_names or [f.name for f in DEFAULT_FACTORS])
+    counts = Counter(FACTOR_REGISTRY[name].kind for name in names)
+    return dict(sorted(counts.items()))
+
+
+def factor_catalog(factor_names: Iterable[str] | None = None) -> list[dict[str, object]]:
+    """Return public, path-free factor metadata for dashboard explanations."""
+    names = validate_factor_names(factor_names or [f.name for f in DEFAULT_FACTORS])
+    catalog: list[dict[str, object]] = []
+    for name in names:
+        factor = FACTOR_REGISTRY[name]
+        catalog.append(
+            {
+                "name": factor.name,
+                "description": factor.description,
+                "category": factor.category,
+                "category_description": FACTOR_CATEGORY_DESCRIPTIONS.get(factor.category, "Other factor family."),
+                "kind": factor.kind,
+                "params": dict(factor.params),
+                "dependencies": list(factor.dependencies),
+                "requires_fundamentals": list(factor.requires_fundamentals),
+            }
+        )
+    return catalog
+
+
+def factor_family_summary(factor_names: Iterable[str] | None = None) -> list[dict[str, object]]:
+    """Summarize tested factor families so the UI can explain zoo breadth."""
+    names = validate_factor_names(factor_names or [f.name for f in DEFAULT_FACTORS])
+    grouped: dict[str, list[FactorDefinition]] = defaultdict(list)
+    for name in names:
+        grouped[FACTOR_REGISTRY[name].category].append(FACTOR_REGISTRY[name])
+    summary: list[dict[str, object]] = []
+    for category in sorted(grouped):
+        factors = sorted(grouped[category], key=lambda f: f.name)
+        kind_counts = Counter(f.kind for f in factors)
+        summary.append(
+            {
+                "category": category,
+                "description": FACTOR_CATEGORY_DESCRIPTIONS.get(category, "Other factor family."),
+                "count": len(factors),
+                "kind_counts": dict(sorted(kind_counts.items())),
+                "examples": [factor.name for factor in factors[:6]],
+                "requires_fundamentals_count": sum(1 for factor in factors if factor.requires_fundamentals),
+            }
+        )
+    return summary
 
 
 def validate_factor_names(factor_names: Iterable[str]) -> list[str]:
@@ -403,6 +575,16 @@ def _score_factor(factor: FactorDefinition, history: _History, fundamentals: dic
         return _reversal(closes, lookback=int(params["lookback"]))
     if kind == "volatility":
         return _volatility(rows, closes, window=int(params["window"]), measure=str(params.get("measure", "total")))
+    if kind == "return_skew":
+        return _return_skew(closes, window=int(params["window"]))
+    if kind == "return_kurtosis":
+        return _return_kurtosis(closes, window=int(params["window"]))
+    if kind == "tail_loss":
+        return _tail_loss(closes, window=int(params["window"]))
+    if kind == "trend_efficiency":
+        return _trend_efficiency(closes, window=int(params["window"]))
+    if kind == "return_consistency":
+        return _return_consistency(closes, window=int(params["window"]))
     if kind == "risk_adjusted_momentum":
         return _risk_adjusted_momentum(closes, lookback=int(params["lookback"]), skip=int(params.get("skip", 0)), vol_window=int(params["vol_window"]))
     if kind == "liquidity":
@@ -411,6 +593,10 @@ def _score_factor(factor: FactorDefinition, history: _History, fundamentals: dic
         return _illiquidity(closes, volumes, window=int(params["window"]))
     if kind == "volume_trend":
         return _volume_trend(volumes, short=int(params["short"]), long=int(params["long"]))
+    if kind == "volume_shock":
+        return _volume_shock(volumes, short=int(params["short"]), long=int(params["long"]))
+    if kind == "price_volume_corr":
+        return _price_volume_corr(closes, volumes, window=int(params["window"]))
     if kind == "moving_average_gap":
         return _moving_average_gap(closes, window=int(params["window"]))
     if kind == "moving_average_cross":
@@ -419,6 +605,14 @@ def _score_factor(factor: FactorDefinition, history: _History, fundamentals: dic
         return _range_position(rows, window=int(params["window"]))
     if kind == "drawdown_high":
         return _drawdown_high(closes, window=int(params["window"]))
+    if kind == "breakout_strength":
+        return _breakout_strength(rows, window=int(params["window"]))
+    if kind == "range_contraction":
+        return _range_contraction(rows, short=int(params["short"]), long=int(params["long"]))
+    if kind == "overnight_return":
+        return _overnight_return(rows, window=int(params["window"]))
+    if kind == "intraday_return":
+        return _intraday_return(rows, window=int(params["window"]))
     if kind == "acceleration":
         return _acceleration(closes, short=int(params["short"]), long=int(params["long"]), skip=int(params.get("skip", 0)))
     if kind == "fundamental":
@@ -485,6 +679,62 @@ def _volatility(rows: list[dict[str, object]], closes: list[tuple[object, float]
     return -statistics.pstdev(returns), ""
 
 
+def _return_skew(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+    returns = _window_returns(closes, window)
+    if len(returns) < window:
+        return math.nan, "insufficient_history"
+    stdev = statistics.pstdev(returns)
+    if stdev <= 0:
+        return math.nan, "insufficient_history"
+    mean = sum(returns) / len(returns)
+    third_moment = sum((ret - mean) ** 3 for ret in returns) / len(returns)
+    return third_moment / (stdev ** 3), ""
+
+
+def _return_kurtosis(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+    returns = _window_returns(closes, window)
+    if len(returns) < window:
+        return math.nan, "insufficient_history"
+    stdev = statistics.pstdev(returns)
+    if stdev <= 0:
+        return math.nan, "insufficient_history"
+    mean = sum(returns) / len(returns)
+    fourth_moment = sum((ret - mean) ** 4 for ret in returns) / len(returns)
+    excess = fourth_moment / (stdev ** 4) - 3.0
+    return -excess, ""
+
+
+def _tail_loss(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+    returns = _window_returns(closes, window)
+    if len(returns) < window:
+        return math.nan, "insufficient_history"
+    tail_count = max(1, math.ceil(len(returns) * 0.10))
+    worst = sorted(returns)[:tail_count]
+    return sum(worst) / len(worst), ""
+
+
+def _trend_efficiency(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+    if len(closes) < window + 1:
+        return math.nan, "insufficient_history"
+    window_closes = closes[-(window + 1):]
+    start = window_closes[0][1]
+    end = window_closes[-1][1]
+    if start <= 0:
+        return math.nan, "insufficient_history"
+    returns = _returns(window_closes)
+    path_noise = sum(abs(ret) for ret in returns)
+    if path_noise <= 0:
+        return 0.0, ""
+    return (end / start - 1.0) / path_noise, ""
+
+
+def _return_consistency(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+    returns = _window_returns(closes, window)
+    if len(returns) < window:
+        return math.nan, "insufficient_history"
+    return sum(1 for ret in returns if ret > 0) / len(returns), ""
+
+
 def _risk_adjusted_momentum(closes: list[tuple[object, float]], lookback: int, skip: int, vol_window: int) -> tuple[float, str]:
     mom, reason = _momentum(closes, lookback=lookback, skip=skip)
     if reason:
@@ -525,6 +775,40 @@ def _volume_trend(volumes: list[tuple[object, float, float]], short: int, long: 
     if long_avg <= 0:
         return math.nan, "insufficient_volume"
     return (sum(short_vals) / len(short_vals)) / long_avg - 1.0, ""
+
+
+def _volume_shock(volumes: list[tuple[object, float, float]], short: int, long: int) -> tuple[float, str]:
+    if len(volumes) < long or short >= long:
+        return math.nan, "insufficient_history"
+    dollar = [volume * close for _, volume, close in volumes[-long:]]
+    if any(value <= 0 for value in dollar):
+        return math.nan, "insufficient_volume"
+    baseline = dollar[:-short]
+    if not baseline:
+        return math.nan, "insufficient_history"
+    short_avg = sum(dollar[-short:]) / short
+    baseline_avg = sum(baseline) / len(baseline)
+    baseline_std = statistics.pstdev(baseline)
+    if baseline_std <= 0:
+        if baseline_avg <= 0:
+            return math.nan, "insufficient_volume"
+        return short_avg / baseline_avg - 1.0, ""
+    return (short_avg - baseline_avg) / baseline_std, ""
+
+
+def _price_volume_corr(closes: list[tuple[object, float]], volumes: list[tuple[object, float, float]], window: int) -> tuple[float, str]:
+    returns = _window_returns(closes, window)
+    if len(returns) < window or len(volumes) < window + 1:
+        return math.nan, "insufficient_history"
+    dollar = [volume * close for _, volume, close in volumes[-(window + 1):]]
+    changes = []
+    for prev, current in zip(dollar, dollar[1:]):
+        if prev <= 0:
+            return math.nan, "insufficient_volume"
+        changes.append(current / prev - 1.0)
+    if len(changes) != len(returns):
+        return math.nan, "insufficient_history"
+    return _correlation(returns, changes)
 
 
 def _moving_average_gap(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
@@ -571,6 +855,60 @@ def _drawdown_high(closes: list[tuple[object, float]], window: int) -> tuple[flo
     return closes[-1][1] / high - 1.0, ""
 
 
+def _breakout_strength(rows: list[dict[str, object]], window: int) -> tuple[float, str]:
+    if len(rows) < window + 1:
+        return math.nan, "insufficient_history"
+    prior = rows[-(window + 1):-1]
+    highs = [float(row.get("high", row.get("adj_close", math.nan))) for row in prior]
+    close = float(rows[-1].get("adj_close", rows[-1].get("close", math.nan)))
+    if not math.isfinite(close) or not highs:
+        return math.nan, "insufficient_history"
+    prior_high = max(highs)
+    if prior_high <= 0:
+        return math.nan, "insufficient_history"
+    return close / prior_high - 1.0, ""
+
+
+def _range_contraction(rows: list[dict[str, object]], short: int, long: int) -> tuple[float, str]:
+    if len(rows) < long:
+        return math.nan, "insufficient_history"
+    short_avg, short_reason = _average_range(rows[-short:])
+    long_avg, long_reason = _average_range(rows[-long:])
+    if short_reason or long_reason:
+        return math.nan, short_reason or long_reason
+    if long_avg <= 0:
+        return math.nan, "insufficient_history"
+    return -(short_avg / long_avg - 1.0), ""
+
+
+def _overnight_return(rows: list[dict[str, object]], window: int) -> tuple[float, str]:
+    if len(rows) < window + 1:
+        return math.nan, "insufficient_history"
+    returns = []
+    for prev, current in zip(rows[-(window + 1):-1], rows[-window:]):
+        prev_close = float(prev.get("close", prev.get("adj_close", math.nan)))
+        current_open = float(current.get("open", current.get("close", math.nan)))
+        if prev_close > 0 and math.isfinite(current_open):
+            returns.append(current_open / prev_close - 1.0)
+    if len(returns) < window:
+        return math.nan, "insufficient_history"
+    return sum(returns) / len(returns), ""
+
+
+def _intraday_return(rows: list[dict[str, object]], window: int) -> tuple[float, str]:
+    if len(rows) < window:
+        return math.nan, "insufficient_history"
+    returns = []
+    for row in rows[-window:]:
+        open_ = float(row.get("open", row.get("close", math.nan)))
+        close = float(row.get("close", row.get("adj_close", math.nan)))
+        if open_ > 0 and math.isfinite(close):
+            returns.append(close / open_ - 1.0)
+    if len(returns) < window:
+        return math.nan, "insufficient_history"
+    return sum(returns) / len(returns), ""
+
+
 def _acceleration(closes: list[tuple[object, float]], short: int, long: int, skip: int) -> tuple[float, str]:
     short_mom, short_reason = _momentum(closes, lookback=short, skip=skip)
     long_mom, long_reason = _momentum(closes, lookback=long, skip=skip)
@@ -591,6 +929,32 @@ def _returns(closes: list[tuple[object, float]]) -> list[float]:
         if prev > 0:
             out.append(current / prev - 1.0)
     return out
+
+
+def _average_range(rows: list[dict[str, object]]) -> tuple[float, str]:
+    ranges = []
+    for row in rows:
+        close = float(row.get("adj_close", row.get("close", math.nan)))
+        high = float(row.get("high", close))
+        low = float(row.get("low", close))
+        if close > 0 and high >= low:
+            ranges.append((high - low) / close)
+    if len(ranges) != len(rows):
+        return math.nan, "insufficient_history"
+    return sum(ranges) / len(ranges), ""
+
+
+def _correlation(xs: list[float], ys: list[float]) -> tuple[float, str]:
+    if len(xs) != len(ys) or not xs:
+        return math.nan, "insufficient_history"
+    mean_x = sum(xs) / len(xs)
+    mean_y = sum(ys) / len(ys)
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    var_y = sum((y - mean_y) ** 2 for y in ys)
+    if var_x <= 0 or var_y <= 0:
+        return math.nan, "insufficient_history"
+    cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    return cov / math.sqrt(var_x * var_y), ""
 
 
 def _score_row(factor: str, ticker: str, signal_date: object, score: float, reason: str) -> dict[str, object]:

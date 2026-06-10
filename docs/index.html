@@ -50,9 +50,33 @@
       <label>팩터 검색
         <input id="factor-filter" type="search" placeholder="예: momentum" />
       </label>
+      <label>추가 비교 팩터
+        <select id="factor-compare-select">
+          <option value="">데이터 로드 후 선택</option>
+        </select>
+      </label>
+      <div class="compare-actions" aria-label="팩터 비교 선택">
+        <button id="add-factor-compare" type="button">비교에 추가</button>
+        <button id="clear-factor-compare" type="button" class="secondary">선택 초기화</button>
+      </div>
     </section>
+    <div id="selected-factor-chips" class="selected-factor-chips" aria-live="polite"></div>
 
     <section class="cards" id="summary-cards" aria-label="요약 카드"></section>
+
+    <section class="panel factor-scope-panel" aria-labelledby="factor-scope-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Factor scope</p>
+          <h2 id="factor-scope-title">팩터 범위와 종류</h2>
+        </div>
+        <p id="factor-scope-meta" class="chart-meta">-</p>
+      </div>
+      <p class="helper">
+        기본 zoo는 단순 기간 파라미터 변형만 늘리지 않고, 모멘텀·반전·변동성·꼬리위험·유동성·가격/거래량 확인·추세 품질·장중/오버나잇·선택적 PIT 재무 팩터를 함께 비교합니다.
+      </p>
+      <div id="factor-family-grid" class="factor-family-grid" aria-live="polite"></div>
+    </section>
 
     <section class="panel update-panel" aria-labelledby="update-title">
       <div class="panel-heading">
@@ -156,6 +180,7 @@
               <p class="eyebrow">랭킹 카드</p>
               <h3>정렬 기준별 팩터 순위</h3>
             </div>
+            <span id="ranking-list-meta" class="chart-meta">Top 20</span>
           </div>
           <div id="ranking-list" class="ranking-list" aria-live="polite"></div>
         </article>
@@ -179,7 +204,7 @@
           <p class="eyebrow">Risk / Return</p>
           <h2 id="metrics-title">상세 지표 테이블</h2>
         </div>
-        <p>수익률뿐 아니라 샤프, 소르티노, 칼마, MDD, 변동성, 커버리지를 함께 보며 전략 품질을 판단합니다.</p>
+        <p>수익률뿐 아니라 샤프, 소르티노, 칼마, MDD, 변동성, 커버리지를 함께 보며 전략 품질을 판단합니다. 화면에는 기본 Top 20과 사용자가 선택한 비교 팩터만 표시합니다.</p>
       </div>
       <div id="metrics-table" class="table-wrap"></div>
     </section>

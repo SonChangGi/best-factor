@@ -7,7 +7,8 @@
   const WORKFLOW_FILE = 'update-dashboard.yml';
   const WORKFLOW_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE}`;
   const WORKFLOW_COMMAND = `gh workflow run ${WORKFLOW_FILE} --repo ${REPO_OWNER}/${REPO_NAME} --ref main`;
-  const state = { payload: null, sortMetric: 'composite_score', topN: 20, filter: '' };
+  const RANKING_DEFAULT_TOP = 20;
+  const state = { payload: null, sortMetric: 'composite_score', topN: 20, filter: '', selectedFactors: new Set() };
 
   const q = (selector) => document.querySelector(selector);
 
@@ -20,6 +21,9 @@
     const sortSelect = q('#sort-select');
     const topInput = q('#topn-input');
     const factorFilter = q('#factor-filter');
+    const compareSelect = q('#factor-compare-select');
+    const addCompare = q('#add-factor-compare');
+    const clearCompare = q('#clear-factor-compare');
     const workflowLink = q('#workflow-link');
     const workflowCommand = q('#workflow-command');
     const copyButton = q('#copy-command');
@@ -39,6 +43,18 @@
     if (factorFilter) {
       factorFilter.addEventListener('input', (event) => {
         state.filter = String(event.target.value || '').toLowerCase();
+        renderAll();
+      });
+    }
+    if (addCompare) addCompare.addEventListener('click', () => addSelectedFactor(compareSelect ? compareSelect.value : ''));
+    if (compareSelect) {
+      compareSelect.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') addSelectedFactor(compareSelect.value);
+      });
+    }
+    if (clearCompare) {
+      clearCompare.addEventListener('click', () => {
+        state.selectedFactors.clear();
         renderAll();
       });
     }
@@ -85,11 +101,13 @@
     if (!payload) return;
     renderStatus(payload);
     renderSummary(payload);
+    renderFactorExplanations(payload);
     renderDiagnostics(payload);
     renderFactorReturnChart(payload);
     renderRiskChart(payload);
     renderWeightChart(payload);
     renderCurrentOutput(payload);
+    renderCompareControls(payload);
     renderRankings(payload);
     renderHoldings(payload);
     renderMetrics(payload);
@@ -142,14 +160,46 @@
       ]),
       diagnosticListCard('팩터/랭킹 게이트', [
         gateItem('팩터 프리셋', summary.factor_preset || metadata.factor_preset || 'unknown', 'pass'),
-        gateItem('라이브러리 후보', `${summary.factor_library_size ?? metadata.factor_library_size ?? 'unknown'}개`, Number(summary.factor_library_size ?? metadata.factor_library_size) >= 200 ? 'pass' : 'warn'),
-        gateItem('선택 후보', `${summary.selected_factor_count ?? metadata.selected_factor_count ?? summary.tested_factor_count ?? 'unknown'}개`, Number(summary.selected_factor_count ?? metadata.selected_factor_count ?? summary.tested_factor_count) >= 200 ? 'pass' : 'warn'),
+        gateItem('라이브러리 후보', `${summary.factor_library_size ?? metadata.factor_library_size ?? 'unknown'}개`, Number(summary.factor_library_size ?? metadata.factor_library_size) >= 300 ? 'pass' : 'warn'),
+        gateItem('선택 후보', `${summary.selected_factor_count ?? metadata.selected_factor_count ?? summary.tested_factor_count ?? 'unknown'}개`, Number(summary.selected_factor_count ?? metadata.selected_factor_count ?? summary.tested_factor_count) >= 300 ? 'pass' : 'warn'),
         gateItem('테스트 팩터', `${summary.tested_factor_count ?? 'unknown'}개`, 'pass'),
         gateItem('유효 팩터', `${summary.effective_factor_count ?? 'unknown'}개`, Number(summary.effective_factor_count) > 0 ? 'pass' : 'warn'),
         gateItem('랭킹 행', `${summary.ranking_count ?? 0}개`, Number(summary.ranking_count) > 0 ? 'pass' : 'warn'),
       ]),
-      diagnosticListCard('스킵/현실 제약', skipped.length ? skipped.map((row) => gateItem(row.skip_reason, `${row.count}개`, 'warn')) : [gateItem('스킵 사유', '없음', 'pass')])
+      diagnosticListCard('스킵/현실 제약', [
+        ...(metadata.skip_resolution_note ? [gateItem('해결/보존 정책', metadata.skip_resolution_note, 'pass')] : []),
+        ...(skipped.length ? skipped.map((row) => gateItem(row.skip_reason, `${row.count}개`, 'warn')) : [gateItem('스킵 사유', '없음', 'pass')]),
+      ])
     );
+  }
+
+  function renderFactorExplanations(payload) {
+    const summary = payload.summary || {};
+    const families = factorFamilies(payload);
+    setText('#factor-scope-meta', `${summary.selected_factor_count ?? families.reduce((total, item) => total + (Number(item.count) || 0), 0)}개 후보 · ${families.length}개 팩터군`);
+    const root = q('#factor-family-grid');
+    if (!root) return;
+    if (!families.length) {
+      root.replaceChildren(empty('팩터 설명 메타데이터가 없습니다.'));
+      return;
+    }
+    root.replaceChildren(...families.map((family) => {
+      const article = el('article', 'factor-family-card');
+      article.append(
+        span(`${fmtText(family.category)} · ${fmtText(family.count)}개`, 'badge'),
+        strong(familyTitle(family.category)),
+        small(family.description || '팩터군 설명이 없습니다.')
+      );
+      const meta = el('div', 'factor-family-meta');
+      meta.append(
+        span(`종류 ${fmtText(Object.keys(family.kind_counts || {}).join(', ') || '—')}`),
+        span(`PIT 재무 필요 ${fmtText(family.requires_fundamentals_count ?? 0)}개`)
+      );
+      const examples = el('div', 'factor-examples');
+      (family.examples || []).slice(0, 6).forEach((name) => examples.append(span(name, 'factor-pill')));
+      article.append(meta, examples);
+      return article;
+    }));
   }
 
   function renderFactorReturnChart(payload) {
@@ -236,17 +286,34 @@
   }
 
   function renderRankings(payload) {
-    const rankings = visibleRankings(payload);
+    const rankings = rankingsForDisplay(payload);
     const root = q('#ranking-list');
+    const allVisible = visibleRankings(payload);
+    const selectedExtraCount = rankings.filter((row) => state.selectedFactors.has(String(row.factor)) && !allVisible.slice(0, RANKING_DEFAULT_TOP).some((top) => top.factor === row.factor)).length;
+    setText('#ranking-list-meta', `기본 Top ${RANKING_DEFAULT_TOP} · 선택 비교 ${selectedExtraCount}개 · 검색 결과 ${allVisible.length}개`);
     if (!rankings.length) {
       root.replaceChildren(empty('표시할 팩터가 없습니다.'));
       return;
     }
     root.replaceChildren(...rankings.map((row) => {
+      const meta = factorMeta(payload, row.factor);
       const article = el('article', 'rank-card');
+      if (state.selectedFactors.has(String(row.factor))) article.classList.add('is-selected');
       const head = el('div', 'rank-head');
-      head.append(span(`rank #${row.rank ?? '—'}`, 'rank-badge'), strong(row.factor), span(`${metricLabel(state.sortMetric)} ${fmtMetric(row[state.sortMetric], state.sortMetric)}`));
+      head.append(
+        span(`rank #${row.rank ?? '—'}`, 'rank-badge'),
+        strong(row.factor),
+        span(`${metricLabel(state.sortMetric)} ${fmtMetric(row[state.sortMetric], state.sortMetric)}`)
+      );
       article.append(head, bar(percentForMetric(row[state.sortMetric], state.sortMetric), `정렬 지표 ${state.sortMetric}`));
+      if (meta) {
+        const detail = el('div', 'rank-detail');
+        detail.append(span(`${familyTitle(meta.category)} · ${fmtText(meta.kind)}`, 'badge'), small(meta.description));
+        if ((meta.requires_fundamentals || []).length) {
+          detail.append(span(`PIT fundamentals: ${meta.requires_fundamentals.join(', ')}`, 'badge warn-badge'));
+        }
+        article.append(detail);
+      }
       const metricRow = el('div', 'metric-row');
       metricRow.append(
         span(`CAGR ${fmtPct(row.cagr)}`),
@@ -257,6 +324,39 @@
       );
       article.append(metricRow);
       return article;
+    }));
+  }
+
+  function renderCompareControls(payload) {
+    const select = q('#factor-compare-select');
+    const chips = q('#selected-factor-chips');
+    if (!select || !chips) return;
+    const previous = select.value;
+    const options = [option('', '비교할 팩터 선택')];
+    sortedRankings(payload).forEach((row) => {
+      const name = String(row.factor || '');
+      if (!name || state.selectedFactors.has(name)) return;
+      const meta = factorMeta(payload, name);
+      options.push(option(name, `#${row.rank ?? '—'} ${name} · ${familyTitle(meta ? meta.category : '')}`));
+    });
+    select.replaceChildren(...options);
+    select.value = options.some((node) => node.value === previous) ? previous : '';
+    if (!state.selectedFactors.size) {
+      chips.replaceChildren(empty('추가 비교 팩터를 선택하면 Top 20 아래에 함께 표시됩니다.'));
+      return;
+    }
+    chips.replaceChildren(...Array.from(state.selectedFactors).sort().map((name) => {
+      const chip = el('span', 'selected-chip');
+      chip.append(span(name));
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = '제거';
+      button.addEventListener('click', () => {
+        state.selectedFactors.delete(name);
+        renderAll();
+      });
+      chip.append(button);
+      return chip;
     }));
   }
 
@@ -282,14 +382,14 @@
   }
 
   function renderMetrics(payload) {
-    const rows = sortRows(payload.metrics || [], state.sortMetric);
+    const rows = rankingsForDisplay({ rankings: payload.metrics || [] });
     const root = q('#metrics-table');
     if (!rows.length) {
       root.replaceChildren(empty('상세 지표가 없습니다.'));
       return;
     }
     root.replaceChildren(table(
-      '팩터별 성과와 위험 지표. 숫자가 공식 결과입니다.',
+      `Top ${RANKING_DEFAULT_TOP} 및 선택 비교 팩터의 성과와 위험 지표. 숫자가 공식 결과입니다.`,
       ['Factor', 'Composite', 'CAGR', 'Sharpe', 'Sortino', 'Calmar', 'MDD', 'Volatility', 'Turnover', 'Coverage'],
       rows.map((row) => [
         fmtText(row.factor),
@@ -333,6 +433,9 @@
       ['factor_library_size', summary.factor_library_size || metadata.factor_library_size || 'unknown'],
       ['selected_factor_count', summary.selected_factor_count || metadata.selected_factor_count || 'unknown'],
       ['factor_category_counts', metadata.factor_category_counts || 'unknown'],
+      ['factor_kind_counts', metadata.factor_kind_counts || 'unknown'],
+      ['factor_family_count', factorFamilies(payload).length || 'unknown'],
+      ['skip_resolution_note', metadata.skip_resolution_note || 'unknown'],
       ['factor_library_note', metadata.factor_library_note || 'unknown'],
       ['timing_convention', metadata.timing_convention || 'unknown'],
       ['static_data_warning', summary.static_data_warning],
@@ -354,6 +457,15 @@
     return sortedRankings(payload).filter((row) => !state.filter || String(row.factor || '').toLowerCase().includes(state.filter));
   }
 
+  function rankingsForDisplay(payload, selectedFactors = state.selectedFactors, limit = RANKING_DEFAULT_TOP, filter = state.filter) {
+    const selected = new Set(Array.from(selectedFactors || []).map(String));
+    const sorted = sortRows(payload.rankings || [], state.sortMetric);
+    const base = sorted.filter((row) => !filter || String(row.factor || '').toLowerCase().includes(String(filter).toLowerCase())).slice(0, limit);
+    const baseNames = new Set(base.map((row) => String(row.factor)));
+    const extras = sorted.filter((row) => selected.has(String(row.factor)) && !baseNames.has(String(row.factor)));
+    return [...base, ...extras];
+  }
+
   function sortedRankings(payload) {
     return sortRows(payload.rankings || [], state.sortMetric);
   }
@@ -366,6 +478,56 @@
       if (delta !== 0) return delta;
       return fmtText(a.factor).localeCompare(fmtText(b.factor));
     });
+  }
+
+  function factorCatalog(payload) {
+    const metadata = payload.metadata || {};
+    return Array.isArray(payload.factor_catalog) ? payload.factor_catalog : (Array.isArray(metadata.factor_catalog) ? metadata.factor_catalog : []);
+  }
+
+  function factorFamilies(payload) {
+    const metadata = payload.metadata || {};
+    return Array.isArray(payload.factor_family_summary) ? payload.factor_family_summary : (Array.isArray(metadata.factor_family_summary) ? metadata.factor_family_summary : []);
+  }
+
+  function factorMeta(payload, factorName) {
+    const name = String(factorName || '');
+    return factorCatalog(payload).find((item) => String(item.name || '') === name);
+  }
+
+  function addSelectedFactor(factorName) {
+    const name = String(factorName || '').trim();
+    if (!name) return;
+    state.selectedFactors.add(name);
+    renderAll();
+  }
+
+  function familyTitle(category) {
+    const labels = {
+      accumulation: '가격·거래량 확인',
+      composite: '복합 팩터',
+      distribution: '수익률 분포',
+      growth: '성장',
+      intraday: '장중/오버나잇',
+      liquidity: '유동성',
+      momentum: '모멘텀',
+      quality: '퀄리티',
+      reversal: '반전',
+      risk: '위험',
+      risk_adjusted_momentum: '위험조정 모멘텀',
+      tail: '꼬리위험',
+      trend: '추세',
+      trend_quality: '추세 품질',
+      value: '가치',
+    };
+    return labels[category] || fmtText(category);
+  }
+
+  function option(value, label) {
+    const node = document.createElement('option');
+    node.value = value;
+    node.textContent = label;
+    return node;
   }
 
   function metricSortValue(row, metric) {
@@ -577,6 +739,13 @@
   }
 
   if (typeof globalThis !== 'undefined') {
-    globalThis.__bestFactorDashboard = { sortRowsForTest: sortRows, metricSortValueForTest: metricSortValue, clampPctForTest: clampPct, workflowUrlForTest: WORKFLOW_URL, workflowCommandForTest: WORKFLOW_COMMAND };
+    globalThis.__bestFactorDashboard = {
+      sortRowsForTest: sortRows,
+      rankingRowsForDisplayForTest: rankingsForDisplay,
+      metricSortValueForTest: metricSortValue,
+      clampPctForTest: clampPct,
+      workflowUrlForTest: WORKFLOW_URL,
+      workflowCommandForTest: WORKFLOW_COMMAND
+    };
   }
 })();

@@ -86,9 +86,33 @@ class SiteExportTest(unittest.TestCase):
                         "effective_factor_count": 1,
                         "factor_preset": "zoo",
                         "requested_factor_preset": "zoo",
-                        "factor_library_size": 249,
-                        "selected_factor_count": 249,
+                        "factor_library_size": 318,
+                        "selected_factor_count": 318,
                         "factor_category_counts": {"momentum": 90, "risk": 25},
+                        "factor_kind_counts": {"momentum": 80, "price_volume_corr": 5},
+                        "factor_family_summary": [
+                            {
+                                "category": "accumulation",
+                                "description": "Price/volume confirmation.",
+                                "count": 5,
+                                "kind_counts": {"price_volume_corr": 5},
+                                "examples": ["price_volume_corr_63d"],
+                                "requires_fundamentals_count": 0,
+                            }
+                        ],
+                        "factor_catalog": [
+                            {
+                                "name": "price_volume_corr_63d",
+                                "description": "Correlation between returns and dollar-volume changes.",
+                                "category": "accumulation",
+                                "category_description": "Price/volume confirmation.",
+                                "kind": "price_volume_corr",
+                                "params": {"window": 63},
+                                "dependencies": [],
+                                "requires_fundamentals": [],
+                            }
+                        ],
+                        "skip_resolution_note": "Actionable skips are recorded by reason.",
                         "factor_library_note": "Best among tested candidates.",
                         "run_config": {"prices_file": "/Users/example/private/prices.csv", "output_dir": "/tmp/private-run"},
                         "caveats": ["Use <care>"],
@@ -104,8 +128,8 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["best_factor"], '<script>alert("factor")</script>')
         self.assertEqual(payload["summary"]["source_hash"], "abc123")
         self.assertEqual(payload["summary"]["factor_preset"], "zoo")
-        self.assertEqual(payload["summary"]["factor_library_size"], 249)
-        self.assertEqual(payload["summary"]["selected_factor_count"], 249)
+        self.assertEqual(payload["summary"]["factor_library_size"], 318)
+        self.assertEqual(payload["summary"]["selected_factor_count"], 318)
         self.assertIn("not live market data", payload["summary"]["static_data_warning"])
         self.assertIsInstance(payload["rankings"][0]["rank"], int)
         self.assertIsInstance(payload["rankings"][0]["cagr"], float)
@@ -124,6 +148,10 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["metadata"]["current_screen_note"], "Current screen, not PIT.")
         self.assertIn("zero_holding", payload["metadata"]["coverage_denominator"])
         self.assertEqual(payload["metadata"]["factor_category_counts"], {"momentum": 90, "risk": 25})
+        self.assertEqual(payload["metadata"]["factor_kind_counts"], {"momentum": 80, "price_volume_corr": 5})
+        self.assertEqual(payload["factor_family_summary"][0]["category"], "accumulation")
+        self.assertEqual(payload["factor_catalog"][0]["name"], "price_volume_corr_63d")
+        self.assertEqual(payload["metadata"]["skip_resolution_note"], "Actionable skips are recorded by reason.")
         self.assertEqual(payload["metadata"]["factor_library_note"], "Best among tested candidates.")
         self.assertNotIn("source", payload["metadata"])
         self.assertNotIn("run_config", payload["metadata"])

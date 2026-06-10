@@ -26,6 +26,12 @@ class DocsSiteTest(unittest.TestCase):
             "weight-chart",
             "current-output-table",
             "ranking-list",
+            "ranking-list-meta",
+            "factor-scope-title",
+            "factor-family-grid",
+            "factor-compare-select",
+            "add-factor-compare",
+            "selected-factor-chips",
             "holdings-table",
             "diagnostics-title",
             "metadata-title",
@@ -76,6 +82,8 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("JSON.stringify", app)
         self.assertIn("fixture_sample", app)
         self.assertIn("market_cap_filter_basis", app)
+        self.assertIn("RANKING_DEFAULT_TOP = 20", app)
+        self.assertIn("rankingRowsForDisplayForTest", app)
         self.assertIn("Number.isFinite(numeric) ? numeric : Number.NEGATIVE_INFINITY", app)
         self.assertNotIn("|| -Infinity", app)
         unsafe_sinks = ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function"]
@@ -104,6 +112,11 @@ class DocsSiteTest(unittest.TestCase):
               {{ factor: 'zero', max_drawdown: 0 }}
             ], 'max_drawdown').map((row) => row.factor).join(',');
             if (sorted !== 'zero,minus,missing') throw new Error(sorted);
+            const displayed = context.__bestFactorDashboard.rankingRowsForDisplayForTest({{
+              rankings: Array.from({{ length: 25 }}, (_, i) => ({{ factor: `factor_${{i + 1}}`, composite_score: 100 - i, rank: i + 1 }}))
+            }}, new Set(['factor_25']), 20, '').map((row) => row.factor);
+            if (displayed.length !== 21) throw new Error(`bad length ${{displayed.length}}`);
+            if (displayed[19] !== 'factor_20' || displayed[20] !== 'factor_25') throw new Error(displayed.join(','));
             if (context.__bestFactorDashboard.workflowUrlForTest !== 'https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml') throw new Error('bad workflow URL');
             """
         )
@@ -112,7 +125,7 @@ class DocsSiteTest(unittest.TestCase):
 
     def test_sample_json_matches_schema_and_freshness_contract(self):
         payload = json.loads((DOCS / "data" / "latest-results.json").read_text(encoding="utf-8"))
-        for key in ["schema_version", "generated_at", "data_scope", "summary", "rankings", "metrics", "latest_holdings", "skipped_reasons", "metadata", "caveats"]:
+        for key in ["schema_version", "generated_at", "data_scope", "summary", "rankings", "metrics", "latest_holdings", "skipped_reasons", "factor_catalog", "factor_family_summary", "metadata", "caveats"]:
             self.assertIn(key, payload)
         self.assertEqual(payload["schema_version"], 1)
         self.assertRegex(payload["generated_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -123,9 +136,15 @@ class DocsSiteTest(unittest.TestCase):
         self.assertNotIn("prices_file", json.dumps(payload["metadata"]))
         self.assertTrue(payload["rankings"])
         self.assertTrue(payload["latest_holdings"])
-        self.assertGreaterEqual(payload["summary"].get("factor_library_size", 0), 200)
-        self.assertGreaterEqual(payload["summary"].get("selected_factor_count", 0), 200)
+        self.assertGreaterEqual(payload["summary"].get("factor_library_size", 0), 300)
+        self.assertGreaterEqual(payload["summary"].get("selected_factor_count", 0), 300)
+        self.assertTrue(payload["factor_catalog"])
+        self.assertTrue(payload["factor_family_summary"])
+        self.assertTrue(any(row.get("category") == "intraday" for row in payload["factor_family_summary"]))
         self.assertIn("factor_category_counts", payload["metadata"])
+        self.assertIn("factor_kind_counts", payload["metadata"])
+        self.assertIn("factor_family_summary", payload["metadata"])
+        self.assertIn("skip_resolution_note", payload["metadata"])
         self.assertIn("market_cap_filter_basis", payload["metadata"])
         self.assertIn("market_cap_filter_attempted", payload["metadata"])
         self.assertIn("market_cap_filter_effective", payload["metadata"])

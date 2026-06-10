@@ -131,10 +131,18 @@ class CliIntegrationTest(unittest.TestCase):
         metadata = json.loads((Path(out.name) / "run_metadata.json").read_text())
         self.assertEqual(metadata["factor_preset"], "zoo")
         self.assertEqual(metadata["requested_factor_preset"], "zoo")
-        self.assertGreaterEqual(metadata["factor_library_size"], 200)
-        self.assertGreaterEqual(metadata["selected_factor_count"], 200)
-        self.assertGreaterEqual(metadata["tested_factor_count"], 200)
+        self.assertGreaterEqual(metadata["factor_library_size"], 300)
+        self.assertGreaterEqual(metadata["selected_factor_count"], 300)
+        self.assertGreaterEqual(metadata["tested_factor_count"], 300)
         self.assertIn("factor_category_counts", metadata)
+        self.assertIn("factor_kind_counts", metadata)
+        self.assertIn("factor_family_summary", metadata)
+        self.assertIn("factor_catalog", metadata)
+        self.assertIn("skip_resolution_note", metadata)
+        categories = {row["category"] for row in metadata["factor_family_summary"]}
+        for category in ["distribution", "tail", "accumulation", "intraday", "trend_quality"]:
+            self.assertIn(category, categories)
+        self.assertTrue(any(row["name"] == "price_volume_corr_63d" for row in metadata["factor_catalog"]))
         self.assertIn("multiple-testing", " ".join(metadata["caveats"]))
 
     def test_market_cap_filter_fallback_metadata_is_explicit(self):

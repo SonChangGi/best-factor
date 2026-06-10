@@ -21,7 +21,10 @@ from .factors import (
     DEFAULT_FACTORS,
     FACTOR_PRESETS,
     compute_factor_scores,
+    factor_catalog,
     factor_category_counts,
+    factor_family_summary,
+    factor_kind_counts,
     factor_names_for_preset,
     serialize_factor_scores,
     validate_factor_names,
@@ -213,6 +216,14 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "factor_library_size": len(DEFAULT_FACTORS),
         "selected_factor_count": tested_factor_count,
         "factor_category_counts": factor_category_counts(requested_factors),
+        "factor_kind_counts": factor_kind_counts(requested_factors),
+        "factor_family_summary": factor_family_summary(requested_factors),
+        "factor_catalog": factor_catalog(requested_factors),
+        "skip_resolution_note": (
+            "Actionable skips are recorded by reason. Missing point-in-time fundamentals, current-universe bias, "
+            "same-close timing, and free-provider availability remain explicit research constraints; "
+            "OHLCV-only families avoid those fundamental skips when fundamentals are unavailable."
+        ),
         "factor_library_note": (
             "Factor-zoo mode ranks the best factor among the tested candidate definitions in this run; "
             "it is exploratory and not an out-of-sample or multiple-testing-adjusted anomaly discovery claim."

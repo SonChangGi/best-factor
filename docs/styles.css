@@ -61,9 +61,15 @@ main { padding: 1.5rem clamp(1rem, 4vw, 4rem) 3rem; }
 }
 .notice { padding: 1rem 1.25rem; border-radius: 18px; margin-bottom: 1.25rem; color: #334155; line-height: 1.65; }
 .notice.warning { background: #fff4e6; color: #8a4b00; border-color: #ffd8a8; font-weight: 800; }
-.controls { display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); gap: 1rem; padding: 1rem; border-radius: 22px; margin-bottom: 1.25rem; }
+.controls { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 1rem; padding: 1rem; border-radius: 22px; margin-bottom: .75rem; }
 label { font-size: .86rem; color: var(--muted); font-weight: 700; display: flex; flex-direction: column; gap: .45rem; }
 select, input { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: .72rem .8rem; color: var(--ink); background: #fff; font: inherit; }
+.compare-actions { display: flex; gap: .55rem; flex-wrap: wrap; align-items: end; }
+.compare-actions button { margin-top: 0; }
+.button.secondary, button.secondary { color: var(--accent); background: #fff; }
+.selected-factor-chips { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; margin: 0 0 1.25rem; min-height: 2rem; }
+.selected-chip { display: inline-flex; align-items: center; gap: .45rem; padding: .35rem .45rem .35rem .7rem; border: 1px solid #b7c9ff; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 850; }
+.selected-chip button { margin: 0; padding: .18rem .45rem; border-radius: 999px; font-size: .72rem; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
 .card { border-radius: 22px; padding: 1.1rem; min-height: 128px; }
 .card span { color: var(--muted); font-weight: 700; font-size: .85rem; }
@@ -127,6 +133,14 @@ tbody tr:hover { background: #f8fbff; }
 .gate-item.warn { border-color: #ffd8a8; background: #fff8ef; }
 .gate-item strong, .mini-item strong { display: block; margin-bottom: .25rem; overflow-wrap: anywhere; }
 .gate-item small, .mini-item small { color: var(--muted); }
+.factor-scope-panel { background: linear-gradient(180deg, #fff 0%, #f7fbff 100%); }
+.factor-family-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.factor-family-card { border: 1px solid var(--line); border-radius: 22px; padding: 1rem; background: #fff; box-shadow: 0 10px 24px rgba(15, 23, 42, .04); }
+.factor-family-card strong { display: block; margin: .6rem 0 .35rem; font-size: 1.05rem; }
+.factor-family-card small { display: block; color: var(--muted); line-height: 1.55; }
+.factor-family-meta { display: grid; gap: .35rem; margin-top: .75rem; color: var(--muted); font-size: .8rem; font-weight: 800; }
+.factor-examples { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .75rem; }
+.factor-pill { display: inline-flex; padding: .2rem .48rem; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: .75rem; font-weight: 800; }
 .viz-card.wide { grid-column: 1 / -1; }
 .viz-card-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: start; margin-bottom: .9rem; }
 .viz-card h3 { font-size: 1.05rem; }
@@ -146,8 +160,12 @@ tbody tr:hover { background: #f8fbff; }
 .metric-tile-header strong { overflow-wrap: anywhere; }
 .metric-tile-header span { color: var(--muted); font-weight: 850; font-variant-numeric: tabular-nums; }
 .ranking-list { display: grid; gap: 12px; }
+.rank-card.is-selected { border-color: #91b4ff; background: #f7fbff; }
 .rank-head, .metric-row, .weight-cell { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .rank-badge, .badge { display: inline-flex; padding: .2rem .55rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 800; }
+.warn-badge { background: #fff8ef; color: var(--warn); }
+.rank-detail { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .7rem; color: var(--muted); line-height: 1.5; }
+.rank-detail small { flex: 1 1 300px; }
 .metric-row { margin-top: 10px; color: var(--muted); font-size: 13px; font-weight: 800; }
 .weight-cell { justify-content: start; min-width: 190px; }
 .weight-cell .bar-track { width: min(210px, 48vw); }

@@ -8,7 +8,7 @@
 
 - Loads a US stock universe and long-form OHLCV prices from CSV, or optionally fetches live prices through `yfinance`.
 - Computes a factor-zoo-scale signal library that maps every tested factor to concrete tickers:
-  - Default `--factor-preset zoo`: 200+ generated OHLCV/fundamental-optional candidates spanning momentum, reversal, volatility, downside risk, risk-adjusted momentum, liquidity, Amihud-style illiquidity, volume trend, moving-average trend, range position, drawdown-to-high, acceleration, and composite blends.
+  - Default `--factor-preset zoo`: 300+ generated OHLCV/fundamental-optional candidates spanning momentum, reversal, volatility, upside/downside risk, return distribution, tail loss, risk-adjusted momentum, liquidity, Amihud-style illiquidity, volume shock/trend, price-volume confirmation, moving-average trend, range position, breakout, drawdown-to-high, trend efficiency/consistency, overnight/intraday returns, optional PIT value/quality/growth fields, and composite blends.
   - `--factor-preset core`: the legacy compact set (`momentum_12_1`, `momentum_6m`, `low_volatility`, `short_reversal`, `risk_adjusted_momentum`, `liquidity`, `value_pe`, `quality_roe`, `composite_defensive`) for fast smoke runs.
   - `--factors ...`: explicit allowlist that overrides the preset.
 - Builds long-only top-N portfolios with equal or score weights.
@@ -99,7 +99,7 @@ Open `report.html` in a browser to inspect the analysis visually. It is a static
 
 ## GitHub Pages-style dashboard
 
-The `docs/` directory contains a local-asset-only static dashboard for GitHub Pages. It reads `docs/data/latest-results.json`, renders Korean summary cards, factor ranking bars, latest holdings/weights, diagnostics, metadata, and free-data caveats, and shows an explicit static-data warning with `generated_at`, source hash, and run/fetch time when available.
+The `docs/` directory contains a local-asset-only static dashboard for GitHub Pages. It reads `docs/data/latest-results.json`, renders Korean summary cards, factor-family explanations, Top 20 ranking cards plus user-selected comparison factors, latest holdings/weights, diagnostics, metadata, and free-data caveats, and shows an explicit static-data warning with `generated_at`, source hash, and run/fetch time when available.
 
 Export a run into the site JSON schema:
 
