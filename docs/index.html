@@ -85,7 +85,7 @@
           <p class="eyebrow">Update automation</p>
           <h2 id="update-title">자동·수동 최신 데이터 갱신</h2>
         </div>
-        <p>Best Factor 전용 GitHub Actions가 한국 시간 기준 매일 09:00에 yfinance 무료 데이터를 새로 받고, 10:00와 12:00에는 공개 JSON이 없거나 stale이면 다시 실행합니다.</p>
+        <p>Best Factor 전용 GitHub Actions가 한국 시간 기준 매일 09:00에 yfinance 무료 데이터를 새로 받고, 10:00·12:00·15:00·18:00에는 공개 JSON이 없거나 stale이면 다시 실행합니다.</p>
       </div>
       <div class="update-grid">
         <div>
@@ -97,6 +97,8 @@
             <li><strong>09:00 KST</strong> 기본 자동 업데이트</li>
             <li><strong>10:00 KST</strong> stale/missing 데이터 감지 시 재실행</li>
             <li><strong>12:00 KST</strong> 공급자 지연·일시 실패 대비 2차 확인</li>
+            <li><strong>15:00 KST</strong> 무료 데이터 지연 대비 같은 날 재시도</li>
+            <li><strong>18:00 KST</strong> 최종 같은 날 stale 데이터 확인</li>
           </ul>
           <p id="update-status" class="helper" role="status" aria-live="polite">저장소 권한 필요 · 실행 완료 후 이 페이지의 생성 시각과 데이터 기준일을 확인하세요.</p>
           <p id="freshness-detail" class="helper">공개 JSON의 generated_at과 data_end_date를 기준으로 최신성 게이트를 판단합니다.</p>

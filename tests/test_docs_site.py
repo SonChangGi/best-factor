@@ -43,6 +43,8 @@ class DocsSiteTest(unittest.TestCase):
             "09:00 KST",
             "10:00 KST",
             "12:00 KST",
+            "15:00 KST",
+            "18:00 KST",
             "economic-analysis-title",
             "economic-analysis-grid",
             "저장소 권한 필요",
@@ -132,8 +134,8 @@ class DocsSiteTest(unittest.TestCase):
             if (displayed.length !== 21) throw new Error(`bad length ${{displayed.length}}`);
             if (displayed[19] !== 'factor_20' || displayed[20] !== 'factor_25') throw new Error(displayed.join(','));
             if (context.__bestFactorDashboard.workflowUrlForTest !== 'https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml') throw new Error('bad workflow URL');
-            const scheduleText = context.__bestFactorDashboard.updateScheduleTextForTest({{ automation: {{ primary_refresh_kst: '09:00', fallback_refresh_kst: ['10:00', '12:00'] }} }});
-            if (!scheduleText.includes('09:00 KST') || !scheduleText.includes('10:00/12:00 KST')) throw new Error(scheduleText);
+            const scheduleText = context.__bestFactorDashboard.updateScheduleTextForTest({{ automation: {{ primary_refresh_kst: '09:00' }} }});
+            if (!scheduleText.includes('09:00 KST') || !scheduleText.includes('10:00/12:00/15:00/18:00 KST')) throw new Error(scheduleText);
             if (!context.__bestFactorDashboard.economicNarrativeForTest('momentum').includes('가격 지속성')) throw new Error('bad economic narrative');
             """
         )
@@ -178,6 +180,8 @@ class DocsSiteTest(unittest.TestCase):
         self.assertEqual(payload["automation"].get("primary_refresh_kst"), "09:00")
         self.assertIn("10:00", payload["automation"].get("fallback_refresh_kst", []))
         self.assertIn("12:00", payload["automation"].get("fallback_refresh_kst", []))
+        self.assertIn("15:00", payload["automation"].get("fallback_refresh_kst", []))
+        self.assertIn("18:00", payload["automation"].get("fallback_refresh_kst", []))
 
     def test_hostile_json_would_not_be_injected_into_static_shell(self):
         html = (DOCS / "index.html").read_text(encoding="utf-8")
@@ -195,6 +199,8 @@ class DocsSiteTest(unittest.TestCase):
             "cron: \"0 0 * * *\"",
             "cron: \"0 1 * * *\"",
             "cron: \"0 3 * * *\"",
+            "cron: \"0 6 * * *\"",
+            "cron: \"0 9 * * *\"",
             "Check KST dashboard freshness gate",
             "check_dashboard_freshness.py",
             "steps.freshness.outputs.should_update == 'true'",

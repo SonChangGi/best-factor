@@ -59,6 +59,31 @@ class DashboardFreshnessTest(unittest.TestCase):
         self.assertEqual(result["should_update"], "true")
         self.assertEqual(result["freshness_reason"], "stale_data_end_before_expected_us_session")
 
+    def test_every_fallback_schedule_skips_current_and_reruns_stale_data(self):
+        for schedule in freshness.DEFAULT_FALLBACK_CRONS:
+            hour_utc = int(schedule.split()[1])
+            now_utc = dt.datetime(2026, 6, 11, hour_utc, 0, tzinfo=dt.UTC)
+            with self.subTest(schedule=schedule, payload="current"):
+                current_path = self.write_payload(generated_at="2026-06-11T00:20:00Z", data_end_date="2026-06-10")
+                current = freshness.decide_update(
+                    event_name="schedule",
+                    event_schedule=schedule,
+                    now_utc=now_utc,
+                    json_file=current_path,
+                )
+                self.assertEqual(current["should_update"], "false")
+                self.assertEqual(current["freshness_reason"], "fresh_for_kst_today_and_expected_us_session")
+            with self.subTest(schedule=schedule, payload="stale_data_end"):
+                stale_path = self.write_payload(generated_at="2026-06-11T00:20:00Z", data_end_date="2026-06-09")
+                stale = freshness.decide_update(
+                    event_name="schedule",
+                    event_schedule=schedule,
+                    now_utc=now_utc,
+                    json_file=stale_path,
+                )
+                self.assertEqual(stale["should_update"], "true")
+                self.assertEqual(stale["freshness_reason"], "stale_data_end_before_expected_us_session")
+
     def test_ten_kst_fallback_reruns_when_generation_is_not_today_kst(self):
         path = self.write_payload(generated_at="2026-06-10T12:00:00Z", data_end_date="2026-06-10")
         result = freshness.decide_update(
@@ -73,8 +98,8 @@ class DashboardFreshnessTest(unittest.TestCase):
     def test_fallback_reruns_when_public_json_is_missing_or_broken(self):
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 3 * * *",
-            now_utc=dt.datetime(2026, 6, 11, 3, 0, tzinfo=dt.UTC),
+            event_schedule="0 9 * * *",
+            now_utc=dt.datetime(2026, 6, 11, 9, 0, tzinfo=dt.UTC),
             json_file=Path("/tmp/definitely-missing-best-factor.json"),
         )
         self.assertEqual(result["should_update"], "true")

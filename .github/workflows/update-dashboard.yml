@@ -9,6 +9,10 @@ on:
     - cron: "0 1 * * *"
     # 12:00 KST second fallback check for provider/API delays.
     - cron: "0 3 * * *"
+    # 15:00 KST same-day stale-data retry for slower free-data availability.
+    - cron: "0 6 * * *"
+    # 18:00 KST final same-day stale-data retry.
+    - cron: "0 9 * * *"
   push:
     branches: [main]
     paths:

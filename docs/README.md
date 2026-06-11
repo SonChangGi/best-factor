@@ -49,6 +49,8 @@ The deployed `best-factor` page is refreshed by the `SonChangGi/best-factor` Git
 - `0 0 * * *` = 09:00 KST primary refresh.
 - `0 1 * * *` = 10:00 KST freshness fallback.
 - `0 3 * * *` = 12:00 KST second fallback.
+- `0 6 * * *` = 15:00 KST same-day stale-data retry.
+- `0 9 * * *` = 18:00 KST final same-day stale-data retry.
 
 Fallback runs first inspect the deployed `docs/data/latest-results.json`; they skip deployment when the JSON was generated today in KST and already covers the latest expected US regular session. The dashboard's manual update button opens the same workflow dispatch page because a static GitHub Pages site cannot safely run Python or store a GitHub token in the browser.
 
