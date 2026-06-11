@@ -99,8 +99,9 @@ SKIP_REASONS = {
 }
 
 CAVEATS = [
-    "Default live runs use free public/current-universe data and are not survivorship-bias free.",
+    "Default live runs use a validated current Nasdaq Trader common-stock screen with a 500+ live-price minimum; it is still not survivorship-bias free or historical point-in-time membership.",
     "Yahoo/yfinance data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms; use for research/education only.",
+    "The live updater hard-fails when too few requested stocks return prices or latest-date coverage is too low, but free-provider outages can still delay dashboard refreshes.",
     "Live OHLC prices are scaled to the adjusted-close basis before scoring OHLC-derived factors so dividends/splits do not mix raw and adjusted price scales.",
     "Fundamental fields from free sources can be sparse or not point-in-time; unavailable factor rows are skipped with explicit reason codes.",
     "Factor-zoo mode evaluates many related candidates; the selected winner is best among tested candidates in this run. Recent-tail holdout rank is only a robustness diagnostic, not fully untouched out-of-sample validation, and the winner may reflect multiple-testing/data-snooping.",

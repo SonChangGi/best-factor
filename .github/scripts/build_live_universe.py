@@ -1,44 +1,95 @@
-"""Build a best-factor universe CSV from a committed ticker list and yfinance metadata.
+"""Build the live Best Factor stock universe from a committed priority list.
 
-This helper is intentionally best-effort. Missing yfinance metadata is written as
-blank fields so the main CLI can either apply a market-cap filter when possible
-or retry without that filter in the workflow.
+The committed ticker file is the reproducible priority list.  This helper
+validates that list against the current Nasdaq Trader symbol directories and
+emits only conservative listed common-stock rows for the live dashboard.
+
+Important economic limitation: Nasdaq Trader directories are current-universe
+files, not historical point-in-time constituent data.  The dashboard discloses
+that survivor/current-screen limitation in run metadata and caveats.
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import datetime as dt
-import math
+import hashlib
+import json
 import sys
-import time
+import urllib.request
+from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Iterable
+
+from best_factor.data import (
+    NASDAQ_LISTED_URL,
+    OTHER_LISTED_URL,
+    SYMBOL_DIRECTORY_URLS,
+    normalize_ticker,
+    parse_nasdaq_symbol_directory,
+)
 
 FIELDNAMES = ["ticker", "name", "exchange", "asset_type", "active", "market_cap", "sector", "source", "as_of_date"]
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = argv if argv is not None else sys.argv[1:]
-    if len(args) != 2:
-        print("usage: build_live_universe.py TICKERS_TXT OUTPUT_CSV", file=sys.stderr)
-        return 2
-    tickers = read_tickers(Path(args[0]))
-    rows = fetch_rows(tickers)
-    output = Path(args[1])
+    args = build_parser().parse_args(argv)
+    priority_tickers = read_tickers(args.tickers_txt)
+    candidates, metadata = load_symbol_directory_candidates(args.symbol_directory_url)
+    rows, selection = select_committed_common_stocks(priority_tickers, candidates)
+    if len(rows) < args.min_symbols:
+        missing = args.min_symbols - len(rows)
+        invalid_preview = ",".join(selection["invalid_tickers"][:20])
+        raise ValueError(
+            f"validated common-stock universe has {len(rows)} rows, below --min-symbols {args.min_symbols} "
+            f"(short by {missing}; invalid preview: {invalid_preview})"
+        )
+    output = Path(args.output_csv)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=FIELDNAMES)
         writer.writeheader()
-        writer.writerows(rows)
-    print(f"wrote {len(rows)} universe rows to {output}")
+        writer.writerows([{key: row.get(key, "") for key in FIELDNAMES} for row in rows])
+    universe_metadata = {
+        **metadata,
+        **selection,
+        "committed_priority_ticker_count": len(priority_tickers),
+        "selected_universe_ticker_count": len(rows),
+        "min_validated_symbol_count": args.min_symbols,
+        "generated_at": dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z"),
+        "universe_construction_note": (
+            "Current Nasdaq Trader symbol directories validate the committed dashboard priority list; "
+            "only conservative common-stock rows are emitted. This is not historical point-in-time membership."
+        ),
+    }
+    if args.metadata_json:
+        metadata_path = Path(args.metadata_json)
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata_path.write_text(json.dumps(universe_metadata, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    print(f"wrote {len(rows)} validated common-stock universe rows to {output}")
     return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Build a validated best-factor live universe CSV")
+    parser.add_argument("tickers_txt", type=Path, help="committed priority ticker list")
+    parser.add_argument("output_csv", type=Path, help="universe CSV output path")
+    parser.add_argument("--metadata-json", type=Path, help="optional universe-construction metadata JSON")
+    parser.add_argument("--min-symbols", type=int, default=500, help="minimum validated stock rows required")
+    parser.add_argument(
+        "--symbol-directory-url",
+        action="append",
+        default=[],
+        help="override/add Nasdaq Trader symbol directory URL; defaults to nasdaqlisted and otherlisted",
+    )
+    return parser
 
 
 def read_tickers(path: Path) -> list[str]:
     seen: set[str] = set()
     tickers: list[str] = []
     for raw in path.read_text(encoding="utf-8").splitlines():
-        ticker = raw.split("#", 1)[0].strip().upper()
+        ticker = normalize_ticker(raw.split("#", 1)[0])
         if ticker and ticker not in seen:
             seen.add(ticker)
             tickers.append(ticker)
@@ -47,82 +98,66 @@ def read_tickers(path: Path) -> list[str]:
     return tickers
 
 
-def fetch_rows(tickers: list[str]) -> list[dict[str, object]]:
-    try:
-        import yfinance as yf  # type: ignore
-    except Exception as exc:  # pragma: no cover - optional CI/live path
-        raise RuntimeError("Install yfinance to build live universe metadata") from exc
+def load_symbol_directory_candidates(urls: Iterable[str] | None = None) -> tuple[dict[str, dict[str, object]], dict[str, object]]:
+    source_urls = list(urls or SYMBOL_DIRECTORY_URLS)
+    by_ticker: dict[str, dict[str, object]] = {}
+    source_metadata: list[dict[str, object]] = []
+    combined_exclusions: Counter[str] = Counter()
+    raw_payloads: list[bytes] = []
+    for url in source_urls:
+        payload = download_text(url)
+        raw_payloads.append(payload.encode("utf-8"))
+        rows, metadata = parse_nasdaq_symbol_directory(payload, source_url=url)
+        source_metadata.append(metadata)
+        combined_exclusions.update(metadata.get("excluded_symbol_counts", {}))
+        for row in rows:
+            ticker = str(row["ticker"])
+            by_ticker.setdefault(ticker, row)
+    metadata = {
+        "universe_source_urls": source_urls,
+        "symbol_directory_source_hash": hashlib.sha256(b"\n".join(raw_payloads)).hexdigest()[:16],
+        "symbol_directory_sources": source_metadata,
+        "raw_symbol_count": sum(int(item.get("raw_symbol_count", 0)) for item in source_metadata),
+        "common_stock_candidate_count": len(by_ticker),
+        "excluded_symbol_counts": dict(sorted(combined_exclusions.items())),
+    }
+    return by_ticker, metadata
 
-    today = dt.date.today().isoformat()
+
+def select_committed_common_stocks(
+    priority_tickers: list[str],
+    candidates_by_ticker: dict[str, dict[str, object]],
+) -> tuple[list[dict[str, object]], dict[str, object]]:
     rows: list[dict[str, object]] = []
-    for ticker in tickers:
-        row = {
-            "ticker": ticker,
-            "name": ticker,
-            "exchange": "UNKNOWN",
-            "asset_type": "stock",
-            "active": True,
-            "market_cap": "",
-            "sector": "UNKNOWN",
-            "source": "yfinance_current_metadata_screen",
-            "as_of_date": today,
-        }
-        try:
-            instrument = yf.Ticker(ticker)
-            fast = retry(lambda: getattr(instrument, "fast_info", {}) or {}, f"{ticker} fast_info")
-            info = retry(lambda: read_info(instrument), f"{ticker} info")
-            market_cap = first_number(
-                get_value(fast, "market_cap"),
-                get_value(fast, "marketCap"),
-                info.get("marketCap"),
-            )
-            if market_cap is not None:
-                row["market_cap"] = int(market_cap)
-            row["name"] = info.get("shortName") or info.get("longName") or ticker
-            row["exchange"] = info.get("exchange") or info.get("fullExchangeName") or "UNKNOWN"
-            row["sector"] = info.get("sector") or "UNKNOWN"
-        except Exception as exc:  # pragma: no cover - network/provider variability
-            row["source"] = f"yfinance_metadata_error:{type(exc).__name__}"
-        rows.append(row)
-    return rows
-
-
-def read_info(instrument: Any) -> dict[str, Any]:
-    info = getattr(instrument, "info", {}) or {}
-    return info if isinstance(info, dict) else {}
-
-
-def get_value(obj: Any, key: str) -> Any:
-    if isinstance(obj, dict):
-        return obj.get(key)
-    try:
-        return getattr(obj, key)
-    except Exception:
-        return None
-
-
-def first_number(*values: Any) -> float | None:
-    for value in values:
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
+    invalid: list[str] = []
+    seen: set[str] = set()
+    for ticker in priority_tickers:
+        if ticker in seen:
             continue
-        if math.isfinite(number) and number > 0:
-            return number
-    return None
+        seen.add(ticker)
+        candidate = candidates_by_ticker.get(ticker)
+        if not candidate:
+            invalid.append(ticker)
+            continue
+        rows.append({key: candidate.get(key, "") for key in FIELDNAMES})
+    return rows, {
+        "invalid_tickers": invalid,
+        "invalid_ticker_count": len(invalid),
+        "selected_tickers": [str(row["ticker"]) for row in rows],
+    }
 
 
-def retry(call, operation: str, attempts: int = 3, initial_delay: float = 1.0):
-    last_exc: Exception | None = None
-    for attempt in range(1, attempts + 1):
-        try:
-            return call()
-        except Exception as exc:  # pragma: no cover - network/provider variability
-            last_exc = exc
-            if attempt >= attempts:
-                break
-            time.sleep(initial_delay * (2 ** (attempt - 1)))
-    raise RuntimeError(f"yfinance metadata {operation} failed after {attempts} attempts") from last_exc
+def download_text(url: str) -> str:
+    if url not in {NASDAQ_LISTED_URL, OTHER_LISTED_URL}:
+        # Reuse the package URL validation surface by allowing only Nasdaq Trader https hosts.
+        from best_factor.data import download_nasdaq_symbol_directory
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = download_nasdaq_symbol_directory(url, Path(tmp) / "symbols.txt")
+            return path.read_text(encoding="utf-8", errors="replace")
+    with urllib.request.urlopen(url, timeout=30) as response:  # nosec - fixed public Nasdaq Trader URLs
+        return response.read().decode("utf-8", errors="replace")
 
 
 if __name__ == "__main__":  # pragma: no cover

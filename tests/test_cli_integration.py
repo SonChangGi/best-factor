@@ -91,6 +91,7 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(metadata["filter_fallback_reason"], "none")
         self.assertIn("universe_scope_note", metadata)
         self.assertIn("coverage_denominator", metadata)
+        self.assertIn("rankable_stock_universe_count", metadata)
         self.assertIn("rebalance_frequency", metadata)
         self.assertIn("benchmark_tickers", metadata)
         self.assertIn("benchmark_note", metadata)
@@ -239,6 +240,7 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(benchmark_returns[0]["benchmark"], "Nasdaq Composite")
         self.assertEqual(benchmark_returns[0]["ticker"], "^IXIC")
         self.assertEqual(metadata["benchmark_tickers"], ["^IXIC"])
+        self.assertEqual(metadata["price_ticker_count"], 8)
         self.assertEqual(metadata["benchmark_return_count"], len(benchmark_returns))
         self.assertIn("never included in stock selection", metadata["benchmark_note"])
 
@@ -250,7 +252,7 @@ class CliIntegrationTest(unittest.TestCase):
             stock_prices = load_prices_csv(FIXTURES / "prices.csv")
             calls = []
 
-            def fake_fetch(tickers, period, cache_dir_arg):
+            def fake_fetch(tickers, period, cache_dir_arg, **kwargs):
                 calls.append(list(tickers))
                 if list(tickers) == ["^IXIC"]:
                     raise RuntimeError("benchmark provider unavailable")
@@ -322,7 +324,7 @@ class CliIntegrationTest(unittest.TestCase):
                 cloned["source"] = "fixture_benchmark_proxy"
                 benchmark_prices.append(cloned)
 
-            def fake_fetch(tickers, period, cache_dir_arg):
+            def fake_fetch(tickers, period, cache_dir_arg, **kwargs):
                 if list(tickers) == ["^IXIC", "ONEQ"]:
                     return benchmark_prices, {
                         "provider": "yfinance",
@@ -384,6 +386,119 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(metadata["benchmark_tickers"], ["^IXIC", "ONEQ"])
         self.assertEqual(metadata["benchmark_succeeded_tickers"], ["ONEQ"])
         self.assertEqual(metadata["benchmark_failed_tickers"], ["^IXIC"])
+
+    def test_min_price_tickers_gate_fails_before_claiming_large_universe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "out"
+            cache_dir = Path(tmp) / "cache"
+            args = cli_module.build_parser().parse_args([
+                "run",
+                "--provider",
+                "yfinance",
+                "--tickers",
+                "AAA",
+                "BBB",
+                "CCC",
+                "--period",
+                "5y",
+                "--cache-dir",
+                str(cache_dir),
+                "--universe-file",
+                str(FIXTURES / "universe.csv"),
+                "--fundamentals-file",
+                str(FIXTURES / "fundamentals.csv"),
+                "--output-dir",
+                str(output_dir),
+                "--rebalance",
+                "M",
+                "--top-n",
+                "3",
+                "--factor-preset",
+                "core",
+                "--min-price-tickers",
+                "9",
+            ])
+
+            def fake_fetch(tickers, period, cache_dir_arg, **kwargs):
+                return load_prices_csv(FIXTURES / "prices.csv"), {
+                    "provider": "yfinance",
+                    "provider_version": "test",
+                    "fetched_at": "2026-06-11T00:00:00Z",
+                    "source": "yfinance:test",
+                    "cache_dir": str(cache_dir_arg),
+                    "requested_ticker_count": len(tickers),
+                    "succeeded_tickers": ["AAA", "BBB", "CCC"],
+                    "failed_tickers": [],
+                }
+
+            with mock.patch("best_factor.cli.fetch_yfinance_prices", side_effect=fake_fetch):
+                with self.assertRaisesRegex(ValueError, "below --min-price-tickers"):
+                    cli_module.run(args)
+
+    def test_price_coverage_gates_fail_before_claiming_large_universe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "out"
+            cache_dir = Path(tmp) / "cache"
+            args = cli_module.build_parser().parse_args([
+                "run",
+                "--provider",
+                "yfinance",
+                "--tickers",
+                "AAA",
+                "BBB",
+                "CCC",
+                "DDD",
+                "EEE",
+                "FFF",
+                "GGG",
+                "HHH",
+                "III",
+                "JJJ",
+                "--period",
+                "5y",
+                "--cache-dir",
+                str(cache_dir),
+                "--universe-file",
+                str(FIXTURES / "universe.csv"),
+                "--fundamentals-file",
+                str(FIXTURES / "fundamentals.csv"),
+                "--output-dir",
+                str(output_dir),
+                "--rebalance",
+                "M",
+                "--top-n",
+                "3",
+                "--factor-preset",
+                "core",
+                "--min-price-coverage-ratio",
+                "0.90",
+            ])
+
+            def fake_fetch(tickers, period, cache_dir_arg, **kwargs):
+                return load_prices_csv(FIXTURES / "prices.csv"), {
+                    "provider": "yfinance",
+                    "provider_version": "test",
+                    "fetched_at": "2026-06-11T00:00:00Z",
+                    "source": "yfinance:test",
+                    "cache_dir": str(cache_dir_arg),
+                    "requested_ticker_count": len(tickers),
+                    "succeeded_tickers": ["AAA", "BBB", "CCC"],
+                    "failed_tickers": ["III", "JJJ"],
+                }
+
+            with mock.patch("best_factor.cli.fetch_yfinance_prices", side_effect=fake_fetch):
+                with self.assertRaisesRegex(ValueError, "below --min-price-coverage-ratio"):
+                    cli_module.run(args)
+
+    def test_skip_factor_scores_csv_uses_streaming_backtest_and_records_metadata(self):
+        out = self.run_cli("--skip-factor-scores-csv")
+        self.assertFalse((out / "factor_scores.csv").exists())
+        metadata = json.loads((out / "run_metadata.json").read_text())
+        rankings = _read_csv(out / "factor_rankings.csv")
+        self.assertEqual(metadata["factor_scores_archive"], "skipped_for_large_live_run")
+        self.assertEqual(metadata["min_price_coverage_ratio"], 0.0)
+        self.assertEqual(metadata["min_latest_data_coverage_ratio"], 0.0)
+        self.assertTrue(rankings)
 
     def test_skipped_reasons_are_stable(self):
         out = self.run_cli("--top-n", "99")

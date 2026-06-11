@@ -103,6 +103,8 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("JSON.stringify", app)
         self.assertIn("fixture_sample", app)
         self.assertIn("market_cap_filter_basis", app)
+        self.assertIn("분석 주식 수", app)
+        self.assertIn("price_coverage_ratio", app)
         self.assertIn("RANKING_DEFAULT_TOP = 20", app)
         self.assertIn("Holdout 보조 검증", app)
         self.assertIn("UPDATE_AUTOMATION_DEFAULT", app)
@@ -225,6 +227,10 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("rebalance_frequency", payload["metadata"])
         self.assertIn("benchmark_tickers", payload["metadata"])
         self.assertIn("benchmark_return_count", payload["metadata"])
+        self.assertIn("requested_ticker_count", payload["metadata"])
+        self.assertIn("price_coverage_ratio", payload["metadata"])
+        self.assertIn("latest_data_coverage_ratio", payload["metadata"])
+        self.assertIn("rankable_stock_universe_count", payload["metadata"])
         self.assertIn("benchmark_note", payload["metadata"])
         self.assertIn("current_screen_note", payload["metadata"])
         self.assertFalse(payload["metadata"].get("universe_is_point_in_time"))
@@ -274,6 +280,15 @@ class DocsSiteTest(unittest.TestCase):
             "market_cap_metadata_insufficient_preflight",
             "--top-n \"${TOP_N}\"",
             "--benchmark-tickers '^IXIC' ONEQ QQQ",
+            "--min-symbols 700",
+            "--min-price-tickers",
+            "MIN_PRICE_TICKERS=500",
+            "--min-price-coverage-ratio",
+            "MIN_PRICE_COVERAGE_RATIO=0.90",
+            "--min-latest-data-coverage-ratio",
+            "MIN_LATEST_DATA_COVERAGE_RATIO=0.90",
+            "--skip-factor-scores-csv",
+            "--universe-metadata-file /tmp/best-factor-universe-metadata.json",
         ]:
             self.assertIn(marker, workflow)
         self.assertNotIn("30 22 * * 1-5", workflow)
@@ -286,9 +301,9 @@ class DocsSiteTest(unittest.TestCase):
         self.assertTrue(ticker_file.exists())
         tickers = [line.split("#", 1)[0].strip() for line in ticker_file.read_text(encoding="utf-8").splitlines()]
         tickers = [ticker for ticker in tickers if ticker]
-        self.assertGreaterEqual(len(tickers), 40)
+        self.assertGreaterEqual(len(tickers), 700)
         self.assertEqual(len(tickers), len(set(tickers)))
-        for forbidden in {"SPY", "QQQ", "IWM", "DIA", "VTI", "VOO"}:
+        for forbidden in {"SPY", "QQQ", "ONEQ", "^IXIC", "IWM", "DIA", "VTI", "VOO"}:
             self.assertNotIn(forbidden, tickers)
 
     def test_live_universe_helper_parses_ticker_file_without_network(self):
@@ -299,7 +314,17 @@ class DocsSiteTest(unittest.TestCase):
         spec.loader.exec_module(module)
         tickers = module.read_tickers(ROOT / ".github" / "best-factor-dashboard-tickers.txt")
         self.assertIn("AAPL", tickers)
+        self.assertGreaterEqual(len(tickers), 700)
         self.assertNotIn("SPY", tickers)
+        rows, selection = module.select_committed_common_stocks(
+            ["AAPL", "SPY", "MSFT"],
+            {
+                "AAPL": {"ticker": "AAPL", "name": "Apple Inc.", "exchange": "Q", "asset_type": "stock", "active": True, "market_cap": "", "sector": "UNKNOWN", "source": "test", "as_of_date": "2026-06-11"},
+                "MSFT": {"ticker": "MSFT", "name": "Microsoft Corporation", "exchange": "Q", "asset_type": "stock", "active": True, "market_cap": "", "sector": "UNKNOWN", "source": "test", "as_of_date": "2026-06-11"},
+            },
+        )
+        self.assertEqual([row["ticker"] for row in rows], ["AAPL", "MSFT"])
+        self.assertEqual(selection["invalid_tickers"], ["SPY"])
 
 
 if __name__ == "__main__":

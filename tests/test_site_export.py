@@ -111,6 +111,21 @@ class SiteExportTest(unittest.TestCase):
                         "filter_fallback_reason": "market_cap_metadata_insufficient_preflight",
                         "current_screen_note": "Current screen, not PIT.",
                         "coverage_denominator": "emitted_portfolio_return_periods_per_factor_including_zero_holding_attempts",
+                        "requested_ticker_count": 750,
+                        "price_ticker_count": 720,
+                        "min_price_tickers": 500,
+                        "min_price_coverage_ratio": 0.9,
+                        "min_latest_data_coverage_ratio": 0.9,
+                        "price_coverage_ratio": 0.96,
+                        "latest_data_ticker_count": 715,
+                        "latest_data_coverage_ratio": 0.993,
+                        "rankable_stock_universe_count": 718,
+                        "failed_price_ticker_count": 30,
+                        "price_download_chunk_size": 100,
+                        "price_download_success_rate": 0.96,
+                        "factor_scores_archive": "skipped_for_large_live_run",
+                        "universe_build_common_stock_candidate_count": 3740,
+                        "universe_build_excluded_symbol_counts": {"etf": 1200},
                         "rebalance_frequency": "M",
                         "benchmark_tickers": ["^IXIC"],
                         "benchmark_label": "Nasdaq Composite",
@@ -206,6 +221,18 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["metadata"]["filter_fallback_reason"], "market_cap_metadata_insufficient_preflight")
         self.assertEqual(payload["metadata"]["current_screen_note"], "Current screen, not PIT.")
         self.assertIn("zero_holding", payload["metadata"]["coverage_denominator"])
+        self.assertEqual(payload["metadata"]["requested_ticker_count"], 750)
+        self.assertEqual(payload["metadata"]["price_ticker_count"], 720)
+        self.assertEqual(payload["metadata"]["min_price_tickers"], 500)
+        self.assertAlmostEqual(payload["metadata"]["min_price_coverage_ratio"], 0.9)
+        self.assertAlmostEqual(payload["metadata"]["min_latest_data_coverage_ratio"], 0.9)
+        self.assertAlmostEqual(payload["metadata"]["price_coverage_ratio"], 0.96)
+        self.assertAlmostEqual(payload["metadata"]["latest_data_coverage_ratio"], 0.993)
+        self.assertEqual(payload["metadata"]["rankable_stock_universe_count"], 718)
+        self.assertEqual(payload["metadata"]["price_download_chunk_size"], 100)
+        self.assertEqual(payload["metadata"]["factor_scores_archive"], "skipped_for_large_live_run")
+        self.assertEqual(payload["metadata"]["universe_build_common_stock_candidate_count"], 3740)
+        self.assertEqual(payload["metadata"]["universe_build_excluded_symbol_counts"], {"etf": 1200})
         self.assertEqual(payload["metadata"]["rebalance_frequency"], "M")
         self.assertEqual(payload["metadata"]["benchmark_tickers"], ["^IXIC"])
         self.assertEqual(payload["metadata"]["benchmark_return_count"], 1)

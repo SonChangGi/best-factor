@@ -133,6 +133,130 @@ def run_backtests(
     return {"holdings": all_holdings, "returns": all_returns, "skipped_reasons": dict(skipped)}
 
 
+def run_backtests_from_score_batches(
+    prices: list[dict[str, object]],
+    universe: list[dict[str, object]],
+    score_batches: Iterable[tuple[object, str, list[dict[str, object]]]],
+    rebalance_dates: list[dt.date],
+    top_n: int,
+    weighting: str = "equal",
+    min_market_cap: float = 0.0,
+    min_dollar_volume: float = 0.0,
+    transaction_cost_bps: float = 0.0,
+) -> dict[str, object]:
+    """Backtest directly from ranked score batches without materializing all scores."""
+    grouped = group_prices(prices)
+    universe_by_ticker = {str(row["ticker"]): row for row in universe}
+    end_by_start = {start: end for start, end in zip(rebalance_dates, rebalance_dates[1:])}
+    all_holdings: list[dict[str, object]] = []
+    all_returns: list[dict[str, object]] = []
+    skipped: Counter[str] = Counter()
+    previous_holdings: defaultdict[str, dict[str, float]] = defaultdict(dict)
+    adv_cache: dict[tuple[str, dt.date, int], float] = {}
+
+    if len(rebalance_dates) < 2:
+        return {"holdings": [], "returns": [], "skipped_reasons": {"insufficient_history": 1}}
+
+    for signal_date, factor, score_rows in score_batches:
+        if signal_date not in end_by_start:
+            continue
+        start = signal_date
+        end = end_by_start[start]
+        selected, reasons = _select_holdings(
+            score_rows,
+            grouped,
+            universe_by_ticker,
+            start,
+            top_n,
+            weighting,
+            min_market_cap,
+            min_dollar_volume,
+            adv_cache,
+        )
+        skipped.update(reasons)
+        if not selected:
+            skipped["empty_after_filters"] += 1
+            _append_empty_period(
+                all_returns,
+                factor,
+                start,
+                end,
+                previous_holdings[factor],
+                transaction_cost_bps,
+                "empty_after_filters",
+            )
+            previous_holdings[factor] = {}
+            continue
+        tradable = []
+        missing_price = False
+        for holding in selected:
+            ticker = str(holding["ticker"])
+            ret = _forward_return(grouped[ticker], start, end)
+            if ret is None:
+                start_prices = {r["date"] for r in grouped[ticker]}
+                skipped["missing_rebalance_price" if start not in start_prices else "missing_exit_price"] += 1
+                missing_price = True
+                continue
+            tradable.append((holding, ret))
+        if missing_price or len(tradable) != len(selected):
+            skipped["invalid_period_missing_price"] += 1
+            _append_empty_period(
+                all_returns,
+                factor,
+                start,
+                end,
+                previous_holdings[factor],
+                transaction_cost_bps,
+                "invalid_period_missing_price",
+            )
+            previous_holdings[factor] = {}
+            continue
+        weight_total = sum(float(holding["weight"]) for holding, _ in tradable)
+        if weight_total <= 0:
+            skipped["empty_after_filters"] += 1
+            _append_empty_period(
+                all_returns,
+                factor,
+                start,
+                end,
+                previous_holdings[factor],
+                transaction_cost_bps,
+                "empty_after_filters",
+            )
+            previous_holdings[factor] = {}
+            continue
+        current_holdings = {str(holding["ticker"]): float(holding["weight"]) for holding, _ in tradable}
+        turnover = _turnover(previous_holdings[factor], current_holdings)
+        period_return = 0.0
+        for holding, ret in tradable:
+            ticker = str(holding["ticker"])
+            period_return += float(holding["weight"]) * ret
+            all_holdings.append(
+                {
+                    "rebalance_date": start,
+                    "factor": factor,
+                    "ticker": ticker,
+                    "weight": float(holding["weight"]),
+                    "score": float(holding["score"]),
+                    "price_date_used": start,
+                }
+            )
+        cost = (transaction_cost_bps / 10000.0) * turnover
+        all_returns.append(
+            {
+                "factor": factor,
+                "period_start": start,
+                "period_end": end,
+                "return": period_return - cost,
+                "turnover": turnover,
+                "holdings_count": len(tradable),
+                "skip_reason": "",
+            }
+        )
+        previous_holdings[factor] = current_holdings
+    return {"holdings": all_holdings, "returns": all_returns, "skipped_reasons": dict(skipped)}
+
+
 def latest_holdings_for_best(all_holdings: list[dict[str, object]], best_factor: str) -> list[dict[str, object]]:
     rows = [h for h in all_holdings if h["factor"] == best_factor]
     if not rows:

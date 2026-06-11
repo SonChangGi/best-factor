@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import sys
 from collections import Counter
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 from .calendar import rebalance_dates as build_rebalance_dates
 from .data import (
     fetch_yfinance_prices,
+    group_prices,
     load_fundamentals_csv,
     load_prices_csv,
     load_universe_csv,
@@ -22,6 +24,7 @@ from .factors import (
     DEFAULT_FACTORS,
     FACTOR_PRESETS,
     compute_factor_scores,
+    iter_factor_score_batches,
     factor_catalog,
     factor_category_counts,
     factor_family_summary,
@@ -36,6 +39,7 @@ from .portfolio import (
     benchmark_returns_for_schedule,
     latest_holdings_for_best,
     run_backtests,
+    run_backtests_from_score_batches,
     serialize_benchmark_returns,
     serialize_holdings,
     serialize_returns,
@@ -101,6 +105,17 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--tickers", nargs="*", default=[])
     run.add_argument("--period", default="5y")
     run.add_argument("--cache-dir", default=".cache/best-factor")
+    run.add_argument("--price-chunk-size", type=int, default=100, help="ticker chunk size for yfinance price downloads")
+    run.add_argument("--min-price-tickers", type=int, default=0, help="fail if fewer unique stock tickers have price data")
+    run.add_argument("--min-price-coverage-ratio", type=float, default=0.0, help="fail if price coverage is below this requested-ticker ratio")
+    run.add_argument(
+        "--min-latest-data-coverage-ratio",
+        type=float,
+        default=0.0,
+        help="fail if fewer tickers than this ratio share the latest available price date",
+    )
+    run.add_argument("--skip-factor-scores-csv", action="store_true", help="skip raw factor_scores.csv archive for large live runs")
+    run.add_argument("--universe-metadata-file", help="optional JSON emitted by build_live_universe.py")
     run.add_argument(
         "--benchmark-tickers",
         nargs="*",
@@ -144,8 +159,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         price_path = Path(args.prices_file)
         if not price_path.exists():
             raise FileNotFoundError(f"prices file not found: {price_path}")
-        prices = load_prices_csv(price_path)
-        benchmark_prices = _benchmark_prices_from_csv(prices, args.benchmark_tickers)
+        loaded_prices = load_prices_csv(price_path)
+        benchmark_tickers_for_csv = set(_normalize_symbols(args.benchmark_tickers))
+        benchmark_prices = _benchmark_prices_from_csv(loaded_prices, args.benchmark_tickers)
+        prices = [row for row in loaded_prices if str(row.get("ticker", "")).upper() not in benchmark_tickers_for_csv]
         benchmark_provider_metadata: dict[str, object] = {}
         provider_metadata = {
             "provider": "csv",
@@ -158,11 +175,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         tickers = [t.upper() for t in args.tickers]
         if not tickers:
             raise ValueError("--tickers are required when --provider yfinance")
-        prices, provider_metadata = fetch_yfinance_prices(tickers, args.period, cache_dir)
+        prices, provider_metadata = fetch_yfinance_prices(tickers, args.period, cache_dir, chunk_size=args.price_chunk_size)
         benchmark_tickers = _normalize_symbols(args.benchmark_tickers)
         if benchmark_tickers:
             try:
-                benchmark_prices, benchmark_provider_metadata = fetch_yfinance_prices(benchmark_tickers, args.period, cache_dir)
+                benchmark_prices, benchmark_provider_metadata = fetch_yfinance_prices(benchmark_tickers, args.period, cache_dir, chunk_size=args.price_chunk_size)
             except Exception as exc:
                 benchmark_prices = []
                 benchmark_provider_metadata = {
@@ -175,7 +192,30 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     if not prices:
         raise ValueError("no prices loaded")
     tickers = sorted({str(row["ticker"]) for row in prices})
+    requested_count = max(int(provider_metadata.get("requested_ticker_count") or len(getattr(args, "tickers", []) or tickers)), len(tickers))
+    price_coverage_ratio = _safe_ratio(len(tickers), requested_count)
+    if int(args.min_price_tickers or 0) > 0 and len(tickers) < int(args.min_price_tickers):
+        raise ValueError(
+            f"price_ticker_count {len(tickers)} is below --min-price-tickers {args.min_price_tickers} "
+            f"for requested_ticker_count {requested_count}"
+        )
+    if float(args.min_price_coverage_ratio or 0.0) > 0 and price_coverage_ratio < float(args.min_price_coverage_ratio):
+        raise ValueError(
+            f"price_coverage_ratio {price_coverage_ratio:.4f} is below --min-price-coverage-ratio "
+            f"{float(args.min_price_coverage_ratio):.4f} for {len(tickers)}/{requested_count} price tickers"
+        )
+    latest_price_coverage = _latest_price_coverage(prices)
+    latest_data_coverage_ratio = float(latest_price_coverage.get("latest_data_coverage_ratio") or 0.0)
+    if (
+        float(args.min_latest_data_coverage_ratio or 0.0) > 0
+        and latest_data_coverage_ratio < float(args.min_latest_data_coverage_ratio)
+    ):
+        raise ValueError(
+            f"latest_data_coverage_ratio {latest_data_coverage_ratio:.4f} is below "
+            f"--min-latest-data-coverage-ratio {float(args.min_latest_data_coverage_ratio):.4f}"
+        )
     universe = load_universe_csv(args.universe_file, tickers)
+    universe_build_metadata = _read_json_file(args.universe_metadata_file)
     fundamentals = load_fundamentals_csv(args.fundamentals_file)
     dates = price_dates(prices)
     schedule = build_rebalance_dates(dates, args.rebalance)
@@ -183,18 +223,33 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         raise ValueError("not enough price history to form at least two rebalance dates")
     benchmark_tickers = _normalize_symbols(args.benchmark_tickers)
 
-    scores = compute_factor_scores(prices, schedule[:-1], fundamentals, requested_factors, requested_factors)
-    backtest = run_backtests(
-        prices,
-        universe,
-        scores,
-        schedule,
-        args.top_n,
-        args.weighting,
-        args.min_market_cap,
-        args.min_dollar_volume,
-        args.transaction_cost_bps,
-    )
+    if args.skip_factor_scores_csv:
+        scores: list[dict[str, object]] = []
+        score_batches = iter_factor_score_batches(prices, schedule[:-1], fundamentals, requested_factors, requested_factors)
+        backtest = run_backtests_from_score_batches(
+            prices,
+            universe,
+            score_batches,
+            schedule,
+            args.top_n,
+            args.weighting,
+            args.min_market_cap,
+            args.min_dollar_volume,
+            args.transaction_cost_bps,
+        )
+    else:
+        scores = compute_factor_scores(prices, schedule[:-1], fundamentals, requested_factors, requested_factors)
+        backtest = run_backtests(
+            prices,
+            universe,
+            scores,
+            schedule,
+            args.top_n,
+            args.weighting,
+            args.min_market_cap,
+            args.min_dollar_volume,
+            args.transaction_cost_bps,
+        )
     returns = list(backtest["returns"])
     holdings = list(backtest["holdings"])
     skipped_reasons = dict(backtest["skipped_reasons"])
@@ -235,6 +290,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "universe_name": _universe_name(args, universe),
         "universe_ticker_count": len(universe),
         "price_ticker_count": len(tickers),
+        "requested_ticker_count": requested_count,
+        "min_price_tickers": int(args.min_price_tickers or 0),
+        "min_price_coverage_ratio": float(args.min_price_coverage_ratio or 0.0),
+        "min_latest_data_coverage_ratio": float(args.min_latest_data_coverage_ratio or 0.0),
+        "price_coverage_ratio": price_coverage_ratio,
+        **latest_price_coverage,
+        "rankable_stock_universe_count": _rankable_stock_universe_count(universe, tickers),
+        **_universe_build_public_metadata(universe_build_metadata),
+        "factor_scores_archive": "skipped_for_large_live_run" if args.skip_factor_scores_csv else "written",
         "universe_scope_note": (
             "Universe is the supplied or committed current ticker set for this run; "
             "it is not the whole US equity market and not historical point-in-time constituents."
@@ -322,7 +386,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
     write_csv_dicts(output_dir / "prices_snapshot.csv", _serialize_prices(prices), PRICE_COLUMNS)
     write_universe_snapshot(output_dir / "universe_snapshot.csv", universe)
-    write_csv_dicts(output_dir / "factor_scores.csv", serialize_factor_scores(scores), FACTOR_SCORE_COLUMNS)
+    if not args.skip_factor_scores_csv:
+        write_csv_dicts(output_dir / "factor_scores.csv", serialize_factor_scores(scores), FACTOR_SCORE_COLUMNS)
     write_csv_dicts(output_dir / "portfolio_returns.csv", serialize_returns(returns), PORTFOLIO_RETURN_COLUMNS)
     write_csv_dicts(output_dir / "benchmark_returns.csv", serialize_benchmark_returns(benchmark_returns), BENCHMARK_RETURN_COLUMNS)
     holdout_score_by_factor = {str(row["factor"]): row.get("composite_score", 0.0) for row in holdout_rankings}
@@ -357,6 +422,67 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     write_report(output_dir / "report.md", rankings, latest, skipped_reasons, metadata)
     write_html_report(output_dir / "report.html", rankings, latest, skipped_reasons, metadata)
     return {"output_dir": str(output_dir), "best_factor": best_factor, "latest_holdings": latest}
+
+
+def _read_json_file(path: str | None) -> dict[str, object]:
+    if not path:
+        return {}
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"metadata JSON must be an object: {path}")
+    return payload
+
+
+def _latest_price_coverage(prices: list[dict[str, object]]) -> dict[str, object]:
+    grouped = group_prices(prices)
+    latest_date = max((row["date"] for row in prices if hasattr(row.get("date"), "isoformat")), default=None)
+    if latest_date is None or not grouped:
+        return {"latest_data_ticker_count": 0, "latest_data_coverage_ratio": 0.0}
+    count = sum(1 for rows in grouped.values() if rows and rows[-1]["date"] == latest_date)
+    return {"latest_data_ticker_count": count, "latest_data_coverage_ratio": _safe_ratio(count, len(grouped))}
+
+
+def _safe_ratio(numerator: int, denominator: int) -> float:
+    return float(numerator) / float(denominator) if denominator > 0 else 0.0
+
+
+def _rankable_stock_universe_count(universe: list[dict[str, object]], price_tickers: list[str]) -> int:
+    priced = set(price_tickers)
+    return sum(1 for row in universe if str(row.get("ticker") or "").upper() in priced and _is_active_stock_row(row))
+
+
+def _is_active_stock_row(row: dict[str, object]) -> bool:
+    active_value = row.get("active", True)
+    if isinstance(active_value, bool):
+        active = active_value
+    elif isinstance(active_value, (int, float)):
+        active = active_value != 0
+    else:
+        text = str(active_value).strip().lower()
+        if text in {"", "1", "true", "t", "yes", "y", "active"}:
+            active = True
+        elif text in {"0", "false", "f", "no", "n", "inactive"}:
+            active = False
+        else:
+            active = bool(text)
+    asset_type = str(row.get("asset_type", "stock") or "stock").strip().lower()
+    return active and asset_type in {"stock", "equity", "common_stock", "common stock"}
+
+
+def _universe_build_public_metadata(payload: dict[str, object]) -> dict[str, object]:
+    keys = {
+        "universe_source_urls",
+        "symbol_directory_source_hash",
+        "raw_symbol_count",
+        "common_stock_candidate_count",
+        "excluded_symbol_counts",
+        "committed_priority_ticker_count",
+        "selected_universe_ticker_count",
+        "min_validated_symbol_count",
+        "invalid_ticker_count",
+        "universe_construction_note",
+    }
+    return {f"universe_build_{key}": payload[key] for key in keys if key in payload}
 
 
 def _source_hash_for_run(args: argparse.Namespace) -> str | None:

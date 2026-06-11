@@ -137,7 +137,7 @@ The `docs/` dashboard includes an update panel. Because GitHub Pages is static, 
 gh workflow run update-dashboard.yml --repo SonChangGi/best-factor --ref main
 ```
 
-The workflow pins the live yfinance dependency, runs network-free tests plus syntax/static import checks before live generation, archives each generated run artifact, and uses GitHub Pages custom workflow deployment (`actions/configure-pages`, `actions/upload-pages-artifact`, and `actions/deploy-pages`) so the generated `docs/` artifact is published by that same run. It intentionally does not rely on a workflow self-commit to trigger a branch-based Pages build.
+The workflow installs the live-data extra, runs network-free tests plus syntax/static import checks before live generation, archives each generated run artifact, and uses GitHub Pages custom workflow deployment (`actions/configure-pages`, `actions/upload-pages-artifact`, and `actions/deploy-pages`) so the generated `docs/` artifact is published by that same run. It intentionally does not rely on a workflow self-commit to trigger a branch-based Pages build.
 
 ### KST daily update automation
 
@@ -155,7 +155,18 @@ For manual and scheduled updates, the deployed Pages artifact is the freshness s
 
 ### Live dashboard universe
 
-`.github/best-factor-dashboard-tickers.txt` is the committed public dashboard universe. It is a curated list of individual large/liquid US stocks, not a survivorship-free historical universe and not the whole US market. The workflow builds best-effort current universe metadata from yfinance, applies a liquidity filter, and runs a market-cap-filtered backtest only after a metadata preflight confirms enough names meet the threshold. If the preflight is insufficient, it runs a liquidity-only fallback and records `market_cap_metadata_insufficient_preflight`; other CLI/provider failures are not swallowed by the fallback. The final run metadata records whether the market-cap filter was attempted, whether it was effective, and any fallback reason so two dashboard snapshots are not silently compared under different screens.
+`.github/best-factor-dashboard-tickers.txt` is the committed public dashboard priority universe. It currently contains **750** individual-stock priorities generated from the current Nasdaq Trader symbol directories plus a yfinance dollar-volume screen. It is not a survivorship-free historical universe and not the whole US market.
+
+Each live workflow run first rebuilds a validated universe CSV from the public Nasdaq Trader `nasdaqlisted.txt` and `otherlisted.txt` symbol directories. The validator emits only conservative current common-stock rows and excludes benchmarks, ETFs, funds, preferred/depositary shares, units, warrants, rights, ADR/ADS/ordinary-share rows, unsupported symbol formats, and other non-common-stock patterns. The live run then requests prices for the validated stocks in chunks and fails closed unless all configured data-coverage gates pass:
+
+- at least **700** validated current common-stock universe rows before price fetching;
+- at least **500** unique stock tickers with successful price data;
+- at least **90%** requested-price coverage;
+- at least **90%** latest-date price coverage.
+
+For large live runs, the workflow skips the raw `factor_scores.csv` archive and uses streaming factor-score/backtest construction to avoid turning the factor zoo into a massive CI artifact. The final run metadata records requested, priced, rankable, failed, coverage, source-hash, and exclusion-count fields so the dashboard can show whether the 500+ stock requirement was actually met.
+
+The workflow applies a liquidity filter and runs a market-cap-filtered backtest only after a metadata preflight confirms enough names meet the threshold. If the preflight is insufficient, it runs a liquidity-only fallback and records `market_cap_metadata_insufficient_preflight`; other CLI/provider failures are not swallowed by the fallback. The final run metadata records whether the market-cap filter was attempted, whether it was effective, and any fallback reason so two dashboard snapshots are not silently compared under different screens.
 
 This keeps the public page reproducible and cheap to update, but the results remain research-grade and current-universe biased.
 

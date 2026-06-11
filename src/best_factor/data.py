@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import datetime as dt
+import csv
 import hashlib
 import importlib.metadata
 import math
+import re
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 import urllib.request
 from pathlib import Path
 from typing import Iterable
@@ -16,6 +18,23 @@ from .io_utils import read_csv_dicts, write_csv_dicts
 from .schemas import PRICE_COLUMNS, UNIVERSE_COLUMNS
 
 ALLOWED_SYMBOL_DIRECTORY_HOSTS = {"www.nasdaqtrader.com", "nasdaqtrader.com"}
+NASDAQ_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt"
+OTHER_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/symdir/otherlisted.txt"
+SYMBOL_DIRECTORY_URLS = (NASDAQ_LISTED_URL, OTHER_LISTED_URL)
+BENCHMARK_AND_FUND_TICKERS = {"^IXIC", "QQQ", "ONEQ", "SPY", "VOO", "VTI", "DIA", "IWM"}
+_EXCLUDED_SECURITY_NAME_PATTERNS = {
+    "etf": (" ETF", "EXCHANGE TRADED", "ETF -", " ETF"),
+    "fund": (" FUND", "CLOSED-END", "MUTUAL FUND"),
+    "etn_note_bond": (" ETN", "NOTE", "NOTES", "BOND", "DEBENTURE"),
+    "preferred": ("PREFERRED", "PREFERENCE", "PREF ", "DEPOSITARY SHARES"),
+    "unit": (" UNIT", "UNITS", "- UNIT"),
+    "warrant": ("WARRANT", "WARRANTS"),
+    "right": (" RIGHT", "RIGHTS"),
+    "adr_ads": ("AMERICAN DEPOSITARY", " ADR", " ADS"),
+    "ordinary_or_foreign_share": ("ORDINARY SHARE", "ORDINARY SHARES", "COMMON SHARES"),
+    "spac_or_blank_check": ("ACQUISITION CORP", "ACQUISITION CORPORATION", "BLANK CHECK"),
+    "convertible_or_certificate": ("CONVERTIBLE", "CERTIFICATE", "REDEEMABLE", "SUBORDINATED"),
+}
 
 
 def parse_date(value: str | dt.date | dt.datetime) -> dt.date:
@@ -180,66 +199,91 @@ def write_universe_snapshot(path: str | Path, universe: list[dict[str, object]])
     write_csv_dicts(path, serialize_universe(universe), UNIVERSE_COLUMNS)
 
 
-def fetch_yfinance_prices(tickers: list[str], period: str, cache_dir: str | Path | None = None) -> tuple[list[dict[str, object]], dict[str, object]]:
-    """Fetch prices through yfinance if the optional extra is installed."""
+def fetch_yfinance_prices(
+    tickers: list[str],
+    period: str,
+    cache_dir: str | Path | None = None,
+    *,
+    chunk_size: int = 100,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    """Fetch prices through yfinance if the optional extra is installed.
+
+    Large live universes are downloaded in bounded chunks so one provider
+    timeout does not make a 500+ stock run opaque.  Success/failure is reported
+    per ticker and enforced by the CLI's ``--min-price-tickers`` gate.
+    """
     try:
         import yfinance as yf  # type: ignore
     except Exception as exc:  # pragma: no cover - optional dependency path
         raise RuntimeError("Install optional live dependency with `pip install -e .[live]` to use provider yfinance") from exc
 
+    requested = [normalize_ticker(ticker) for ticker in tickers if normalize_ticker(ticker)]
+    chunk_size = max(1, int(chunk_size or 100))
     fetched_at = dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z")
-    data = _retry_yfinance_call(
-        lambda: yf.download(tickers, period=period, auto_adjust=False, progress=False, group_by="ticker"),
-        operation="price download",
-    )
     rows: list[dict[str, object]] = []
     failed_tickers: list[str] = []
     succeeded_tickers: list[str] = []
-    # yfinance returns pandas objects; keep import optional and access duck-typed.
-    for ticker in tickers:
-        ticker_row_count = 0
+    chunk_errors: list[dict[str, object]] = []
+
+    for start in range(0, len(requested), chunk_size):
+        chunk = requested[start : start + chunk_size]
+        if not chunk:
+            continue
         try:
-            table = data[ticker] if len(tickers) > 1 else data
-        except Exception:
-            failed_tickers.append(ticker)
+            data = _retry_yfinance_call(
+                lambda c=chunk: yf.download(c, period=period, auto_adjust=False, progress=False, group_by="ticker", threads=True),
+                operation=f"price download chunk {start // chunk_size + 1}",
+            )
+        except Exception as exc:  # pragma: no cover - network/provider variability
+            failed_tickers.extend(chunk)
+            chunk_errors.append({"chunk_index": start // chunk_size, "tickers": chunk, "error": f"{type(exc).__name__}: {exc}"})
             continue
-        if getattr(table, "empty", False):
-            failed_tickers.append(ticker)
-            continue
-        for idx, rec in table.iterrows():
-            close = float(rec.get("Close", math.nan))
-            adj = float(rec.get("Adj Close", close)) if "Adj Close" in rec else close
-            if math.isnan(adj):
+        for ticker in chunk:
+            ticker_row_count = 0
+            try:
+                table = data[ticker] if len(chunk) > 1 else data
+            except Exception:
+                failed_tickers.append(ticker)
                 continue
-            open_, high, low, adjusted_close = adjusted_ohlc_to_adj_close(
-                float(rec.get("Open", close)),
-                float(rec.get("High", close)),
-                float(rec.get("Low", close)),
-                close,
-                adj,
-            )
-            rows.append(
-                {
-                    "ticker": normalize_ticker(ticker),
-                    "date": parse_date(idx.date() if hasattr(idx, "date") else str(idx)[:10]),
-                    "open": open_,
-                    "high": high,
-                    "low": low,
-                    "close": adjusted_close,
-                    "adj_close": adj,
-                    "volume": int(float(rec.get("Volume", 0) or 0)),
-                    "source": "yfinance",
-                    "fetched_at": fetched_at,
-                }
-            )
-            ticker_row_count += 1
-        if ticker_row_count:
-            succeeded_tickers.append(ticker)
-        else:
-            failed_tickers.append(ticker)
+            if getattr(table, "empty", False):
+                failed_tickers.append(ticker)
+                continue
+            for idx, rec in table.iterrows():
+                close = float(rec.get("Close", math.nan))
+                adj = float(rec.get("Adj Close", close)) if "Adj Close" in rec else close
+                if math.isnan(adj):
+                    continue
+                open_, high, low, adjusted_close = adjusted_ohlc_to_adj_close(
+                    float(rec.get("Open", close)),
+                    float(rec.get("High", close)),
+                    float(rec.get("Low", close)),
+                    close,
+                    adj,
+                )
+                rows.append(
+                    {
+                        "ticker": normalize_ticker(ticker),
+                        "date": parse_date(idx.date() if hasattr(idx, "date") else str(idx)[:10]),
+                        "open": open_,
+                        "high": high,
+                        "low": low,
+                        "close": adjusted_close,
+                        "adj_close": adj,
+                        "volume": int(float(rec.get("Volume", 0) or 0)),
+                        "source": "yfinance",
+                        "fetched_at": fetched_at,
+                    }
+                )
+                ticker_row_count += 1
+            if ticker_row_count:
+                succeeded_tickers.append(ticker)
+            else:
+                failed_tickers.append(ticker)
     rows.sort(key=lambda r: (r["ticker"], r["date"]))
+    succeeded_tickers = sorted(set(succeeded_tickers))
+    failed_tickers = sorted(set(failed_tickers) - set(succeeded_tickers))
     if cache_dir:
-        cache_path = Path(cache_dir) / f"yfinance-{hashlib.sha256(' '.join(tickers).encode()).hexdigest()[:12]}.csv"
+        cache_path = Path(cache_dir) / f"yfinance-{hashlib.sha256(' '.join(requested).encode()).hexdigest()[:12]}.csv"
         write_csv_dicts(cache_path, serialize_prices(rows), PRICE_COLUMNS)
     metadata = {
         "provider": "yfinance",
@@ -247,9 +291,15 @@ def fetch_yfinance_prices(tickers: list[str], period: str, cache_dir: str | Path
         "fetched_at": fetched_at,
         "source": "Yahoo Finance public APIs via yfinance",
         "cache_dir": str(cache_dir or ""),
-        "requested_tickers": list(tickers),
+        "requested_tickers": list(requested),
+        "requested_ticker_count": len(requested),
         "succeeded_tickers": succeeded_tickers,
         "failed_tickers": failed_tickers,
+        "failed_price_ticker_count": len(failed_tickers),
+        "price_download_chunk_size": chunk_size,
+        "price_download_chunk_count": math.ceil(len(requested) / chunk_size) if requested else 0,
+        "price_download_chunk_errors": chunk_errors,
+        "price_download_success_rate": (len(succeeded_tickers) / len(requested)) if requested else 0.0,
         "price_adjustment": "open_high_low_close_scaled_to_adj_close",
     }
     return rows, metadata
@@ -265,6 +315,88 @@ def download_nasdaq_symbol_directory(url: str, output_path: str | Path) -> Path:
     with urllib.request.urlopen(url, timeout=30) as response:  # nosec - restricted public Nasdaq Trader host
         output.write_bytes(response.read())
     return output
+
+
+def parse_nasdaq_symbol_directory(text: str, *, source_url: str) -> tuple[list[dict[str, object]], dict[str, object]]:
+    """Parse and conservatively screen a Nasdaq Trader symbol directory file.
+
+    The output is a current-universe candidate list, not a historical/PIT
+    constituent set.  The filter intentionally prefers listed common-stock
+    names and excludes ETF/fund/preferred/unit/warrant/right/ADR-style rows.
+    """
+    directory_rows, file_creation_time = _symbol_directory_rows(text)
+    accepted: list[dict[str, object]] = []
+    exclusions: Counter[str] = Counter()
+    for row in directory_rows:
+        ticker = normalize_ticker(row.get("Symbol") or row.get("ACT Symbol"))
+        reason = symbol_directory_exclusion_reason(row)
+        if reason:
+            exclusions[reason] += 1
+            continue
+        accepted.append(
+            {
+                "ticker": ticker,
+                "name": (row.get("Security Name") or ticker).strip(),
+                "exchange": (row.get("Exchange") or row.get("Market Category") or "UNKNOWN").strip() or "UNKNOWN",
+                "asset_type": "stock",
+                "active": True,
+                "market_cap": math.nan,
+                "sector": "UNKNOWN",
+                "source": "nasdaq_trader_symbol_directory_current_screen",
+                "as_of_date": file_creation_time or dt.date.today().isoformat(),
+                "security_name": (row.get("Security Name") or "").strip(),
+                "symbol_directory_url": source_url,
+            }
+        )
+    metadata = {
+        "source_url": source_url,
+        "file_creation_time": file_creation_time,
+        "raw_symbol_count": len(directory_rows),
+        "common_stock_candidate_count": len(accepted),
+        "excluded_symbol_counts": dict(sorted(exclusions.items())),
+    }
+    return accepted, metadata
+
+
+def symbol_directory_exclusion_reason(row: dict[str, str]) -> str:
+    ticker = normalize_ticker(row.get("Symbol") or row.get("ACT Symbol"))
+    name = str(row.get("Security Name") or "").upper()
+    if not ticker or ticker in BENCHMARK_AND_FUND_TICKERS:
+        return "benchmark_or_blank"
+    if not re.fullmatch(r"[A-Z]{1,5}", ticker):
+        return "unsupported_symbol_format"
+    if str(row.get("ETF") or "").strip().upper() == "Y":
+        return "etf"
+    if str(row.get("Test Issue") or "").strip().upper() == "Y":
+        return "test_issue"
+    financial_status = str(row.get("Financial Status") or "N").strip().upper()
+    if financial_status not in {"", "N"}:
+        return "non_normal_financial_status"
+    if str(row.get("NextShares") or "N").strip().upper() == "Y":
+        return "nextshares"
+    for reason, patterns in _EXCLUDED_SECURITY_NAME_PATTERNS.items():
+        if any(pattern in f" {name} " for pattern in patterns):
+            return reason
+    if "COMMON STOCK" not in name:
+        return "not_common_stock_name"
+    return ""
+
+
+def _symbol_directory_rows(text: str) -> tuple[list[dict[str, str]], str]:
+    lines = [line for line in text.splitlines() if line.strip()]
+    file_creation_time = ""
+    data_lines: list[str] = []
+    for line in lines:
+        if line.startswith("File Creation Time"):
+            parts = line.split(":", 1)
+            file_creation_time = parts[1].strip() if len(parts) == 2 else line.strip()
+            continue
+        data_lines.append(line)
+    if not data_lines:
+        return [], file_creation_time
+    reader = csv.DictReader(data_lines, delimiter="|")
+    rows = [dict(row) for row in reader if row and not str(row.get(reader.fieldnames[0] if reader.fieldnames else "") or "").startswith("File Creation Time")]
+    return rows, file_creation_time
 
 
 def adjusted_ohlc_to_adj_close(open_: float, high: float, low: float, close: float, adj_close: float) -> tuple[float, float, float, float]:

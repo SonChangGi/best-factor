@@ -457,64 +457,72 @@ def compute_factor_scores(
     factor_names: Iterable[str] | None = None,
     emit_factor_names: Iterable[str] | None = None,
 ) -> list[dict[str, object]]:
+    scored: list[dict[str, object]] = []
+    for _, _, rows in iter_factor_score_batches(prices, signal_dates, fundamentals, factor_names, emit_factor_names):
+        scored.extend(rows)
+    return scored
+
+
+def iter_factor_score_batches(
+    prices: list[dict[str, object]],
+    signal_dates: list[object],
+    fundamentals: dict[str, list[dict[str, object]]] | None = None,
+    factor_names: Iterable[str] | None = None,
+    emit_factor_names: Iterable[str] | None = None,
+) -> Iterable[tuple[object, str, list[dict[str, object]]]]:
+    """Yield ranked score rows one signal-date/factor batch at a time.
+
+    This keeps large live runs from retaining every raw factor-score row in
+    memory before portfolio construction.  ``compute_factor_scores`` remains
+    the materializing compatibility wrapper for small/offline runs and raw CSV
+    archives.
+    """
     grouped = group_prices(prices)
     fundamentals = fundamentals or {}
     selected = expand_factor_dependencies(factor_names or [f.name for f in DEFAULT_FACTORS])
     emit = set(emit_factor_names or selected)
     definitions = [FACTOR_REGISTRY[name] for name in selected]
-    raw_by_date_factor: dict[tuple[object, str], list[dict[str, object]]] = defaultdict(list)
 
     for signal_date in signal_dates:
         histories = {ticker: _history_through(rows, signal_date) for ticker, rows in grouped.items()}
         pit_fundamentals = {ticker: _fundamentals_asof(fundamentals.get(ticker, []), signal_date) for ticker in grouped}
+        raw_by_factor: dict[str, list[dict[str, object]]] = defaultdict(list)
         for factor in definitions:
             if factor.kind == "composite":
                 continue
             for ticker, history in histories.items():
                 score, reason = _score_factor(factor, history, pit_fundamentals.get(ticker))
-                raw_by_date_factor[(signal_date, factor.name)].append(
-                    _score_row(factor.name, ticker, signal_date, score, reason)
-                )
+                raw_by_factor[factor.name].append(_score_row(factor.name, ticker, signal_date, score, reason))
 
-    for factor in definitions:
-        if factor.kind != "composite":
-            continue
-        for signal_date in signal_dates:
-            base_names = factor.dependencies
+        for factor in definitions:
+            if factor.kind != "composite":
+                continue
             normalized: dict[str, list[float]] = defaultdict(list)
-            for name in base_names:
-                rows = raw_by_date_factor.get((signal_date, name), [])
+            for name in factor.dependencies:
+                rows = raw_by_factor.get(name, [])
                 scores = [float(r["score"]) for r in rows if r["eligible"]]
                 by_ticker = {str(r["ticker"]): float(r["score"]) for r in rows if r["eligible"]}
                 for ticker, value in by_ticker.items():
                     normalized[ticker].append(_normalize_value(value, scores))
             for ticker in grouped:
                 vals = normalized.get(ticker, [])
-                if len(vals) == len(base_names):
-                    raw_by_date_factor[(signal_date, factor.name)].append(
-                        _score_row(factor.name, ticker, signal_date, sum(vals) / len(vals), "")
-                    )
+                if len(vals) == len(factor.dependencies):
+                    raw_by_factor[factor.name].append(_score_row(factor.name, ticker, signal_date, sum(vals) / len(vals), ""))
                 else:
-                    raw_by_date_factor[(signal_date, factor.name)].append(
-                        _score_row(factor.name, ticker, signal_date, math.nan, "insufficient_history")
-                    )
+                    raw_by_factor[factor.name].append(_score_row(factor.name, ticker, signal_date, math.nan, "insufficient_history"))
 
-    scored: list[dict[str, object]] = []
-    for key in sorted(raw_by_date_factor, key=lambda k: (str(k[0]), k[1])):
-        signal_date, factor_name = key
-        if factor_name not in emit:
-            continue
-        rows = raw_by_date_factor[key]
-        eligible_rows = sorted(
-            [r for r in rows if r["eligible"]],
-            key=lambda r: (-float(r["score"]), str(r["ticker"])),
-        )
-        rank_by_ticker = {str(r["ticker"]): idx + 1 for idx, r in enumerate(eligible_rows)}
-        for row in sorted(rows, key=lambda r: str(r["ticker"])):
-            row = dict(row)
-            row["rank"] = rank_by_ticker.get(str(row["ticker"]), "")
-            scored.append(row)
-    return scored
+        for factor_name in sorted(raw_by_factor):
+            if factor_name not in emit:
+                continue
+            rows = raw_by_factor[factor_name]
+            eligible_rows = sorted([r for r in rows if r["eligible"]], key=lambda r: (-float(r["score"]), str(r["ticker"])))
+            rank_by_ticker = {str(r["ticker"]): idx + 1 for idx, r in enumerate(eligible_rows)}
+            ranked_rows = []
+            for row in sorted(rows, key=lambda r: str(r["ticker"])):
+                ranked = dict(row)
+                ranked["rank"] = rank_by_ticker.get(str(row["ticker"]), "")
+                ranked_rows.append(ranked)
+            yield signal_date, factor_name, ranked_rows
 
 
 def build_score_index(scores: Iterable[dict[str, object]]) -> dict[tuple[str, object], list[dict[str, object]]]:

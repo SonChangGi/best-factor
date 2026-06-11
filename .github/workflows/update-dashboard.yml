@@ -38,7 +38,7 @@ jobs:
   update-and-deploy:
     if: github.repository == 'SonChangGi/best-factor' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -71,9 +71,9 @@ jobs:
         if: steps.freshness.outputs.should_update == 'true'
         run: PYTHONPATH=src python -m compileall -q src tests .github/scripts
 
-      - name: Build live yfinance universe metadata
+      - name: Build validated Nasdaq Trader stock universe
         if: steps.freshness.outputs.should_update == 'true'
-        run: python .github/scripts/build_live_universe.py .github/best-factor-dashboard-tickers.txt /tmp/best-factor-universe.csv
+        run: python .github/scripts/build_live_universe.py .github/best-factor-dashboard-tickers.txt /tmp/best-factor-universe.csv --metadata-json /tmp/best-factor-universe-metadata.json --min-symbols 700
 
       - name: Generate latest dashboard JSON
         if: steps.freshness.outputs.should_update == 'true'
@@ -83,12 +83,27 @@ jobs:
           TOP_N=20
           MIN_MARKET_CAP=10000000000
           MIN_MARKET_CAP_NAMES=20
-          TICKERS=($(grep -Ev '^[[:space:]]*(#|$)' .github/best-factor-dashboard-tickers.txt | tr '[:lower:]' '[:upper:]'))
+          MIN_PRICE_TICKERS=500
+          MIN_PRICE_COVERAGE_RATIO=0.90
+          MIN_LATEST_DATA_COVERAGE_RATIO=0.90
+          PRICE_CHUNK_SIZE=100
+          TICKERS=($(python - <<'PY'
+          import csv
+          with open("/tmp/best-factor-universe.csv", newline="", encoding="utf-8") as fh:
+              print(" ".join(row["ticker"].upper() for row in csv.DictReader(fh) if row.get("ticker")))
+          PY
+          ))
           rm -rf /tmp/best-factor-live-run
           COMMON_ARGS=(
             --provider yfinance
             --tickers "${TICKERS[@]}"
             --period 5y
+            --price-chunk-size "${PRICE_CHUNK_SIZE}"
+            --min-price-tickers "${MIN_PRICE_TICKERS}"
+            --min-price-coverage-ratio "${MIN_PRICE_COVERAGE_RATIO}"
+            --min-latest-data-coverage-ratio "${MIN_LATEST_DATA_COVERAGE_RATIO}"
+            --skip-factor-scores-csv
+            --universe-metadata-file /tmp/best-factor-universe-metadata.json
             --output-dir /tmp/best-factor-live-run
             --rebalance M
             --top-n "${TOP_N}"
@@ -144,6 +159,7 @@ jobs:
             /tmp/best-factor-live-run/*.json
             /tmp/best-factor-live-run/report.md
             /tmp/best-factor-live-run/report.html
+            /tmp/best-factor-universe-metadata.json
             docs/data/latest-results.json
 
       - name: Configure GitHub Pages
