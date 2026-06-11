@@ -51,6 +51,35 @@ def compute_metrics(portfolio_returns: list[dict[str, object]], frequency: str) 
     return metrics
 
 
+def compute_holdout_metrics(
+    portfolio_returns: list[dict[str, object]],
+    frequency: str,
+    *,
+    fraction: float = 0.25,
+    min_periods: int = 6,
+) -> list[dict[str, object]]:
+    """Compute metrics on each factor's most recent holdout window.
+
+    The ranking winner is selected in-sample by design, so this secondary
+    artifact makes recent-period robustness visible without changing the
+    deterministic primary ranking contract.  For short fixture runs, the
+    available tail is used and metadata should be interpreted accordingly.
+    """
+    if fraction <= 0 or fraction > 1:
+        raise ValueError("holdout fraction must be in (0, 1]")
+    by_factor: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for row in portfolio_returns:
+        by_factor[str(row["factor"])].append(row)
+    holdout_rows: list[dict[str, object]] = []
+    for rows in by_factor.values():
+        rows.sort(key=lambda r: r["period_end"])
+        if not rows:
+            continue
+        tail_count = min(len(rows), max(1, min_periods, math.ceil(len(rows) * fraction)))
+        holdout_rows.extend(rows[-tail_count:])
+    return compute_metrics(holdout_rows, frequency)
+
+
 def max_drawdown(equity: Iterable[float]) -> float:
     peak = 1.0
     worst = 0.0

@@ -79,7 +79,7 @@ class SiteExportTest(unittest.TestCase):
                         "market_cap_filter_basis": "current_yfinance_metadata_screen_not_point_in_time",
                         "market_cap_filter_attempted": True,
                         "market_cap_filter_effective": False,
-                        "filter_fallback_reason": "market_cap_metadata_filter_failed_retried_liquidity_only",
+                        "filter_fallback_reason": "market_cap_metadata_insufficient_preflight",
                         "current_screen_note": "Current screen, not PIT.",
                         "coverage_denominator": "emitted_portfolio_return_periods_per_factor_including_zero_holding_attempts",
                         "tested_factor_count": 2,
@@ -114,6 +114,15 @@ class SiteExportTest(unittest.TestCase):
                         ],
                         "skip_resolution_note": "Actionable skips are recorded by reason.",
                         "factor_library_note": "Best among tested candidates.",
+                        "holdout_validation": {
+                            "method": "recent_tail_by_factor",
+                            "holdout_fraction": 0.25,
+                            "min_periods": 6,
+                            "best_factor_holdout_rank": 1,
+                            "best_factor_holdout_cagr": 0.2,
+                            "best_factor_holdout_sharpe": 1.5,
+                            "holdout_ranked_factor_count": 1,
+                        },
                         "run_config": {"prices_file": "/Users/example/private/prices.csv", "output_dir": "/tmp/private-run"},
                         "caveats": ["Use <care>"],
                     }
@@ -130,6 +139,9 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["factor_preset"], "zoo")
         self.assertEqual(payload["summary"]["factor_library_size"], 318)
         self.assertEqual(payload["summary"]["selected_factor_count"], 318)
+        self.assertEqual(payload["summary"]["interpretation_label"], "in_sample_exploratory_with_recent_holdout_check")
+        self.assertEqual(payload["summary"]["best_factor_holdout_rank"], 1)
+        self.assertEqual(payload["summary"]["best_factor_holdout_cagr"], 0.2)
         self.assertIn("not live market data", payload["summary"]["static_data_warning"])
         self.assertIsInstance(payload["rankings"][0]["rank"], int)
         self.assertIsInstance(payload["rankings"][0]["cagr"], float)
@@ -144,7 +156,7 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["metadata"]["market_cap_filter_basis"], "current_yfinance_metadata_screen_not_point_in_time")
         self.assertTrue(payload["metadata"]["market_cap_filter_attempted"])
         self.assertFalse(payload["metadata"]["market_cap_filter_effective"])
-        self.assertEqual(payload["metadata"]["filter_fallback_reason"], "market_cap_metadata_filter_failed_retried_liquidity_only")
+        self.assertEqual(payload["metadata"]["filter_fallback_reason"], "market_cap_metadata_insufficient_preflight")
         self.assertEqual(payload["metadata"]["current_screen_note"], "Current screen, not PIT.")
         self.assertIn("zero_holding", payload["metadata"]["coverage_denominator"])
         self.assertEqual(payload["metadata"]["factor_category_counts"], {"momentum": 90, "risk": 25})
@@ -153,6 +165,9 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["factor_catalog"][0]["name"], "price_volume_corr_63d")
         self.assertEqual(payload["metadata"]["skip_resolution_note"], "Actionable skips are recorded by reason.")
         self.assertEqual(payload["metadata"]["factor_library_note"], "Best among tested candidates.")
+        self.assertEqual(payload["metadata"]["holdout_validation"]["best_factor_holdout_rank"], 1)
+        self.assertEqual(payload["holdout_rankings"], [])
+        self.assertEqual(payload["holdout_metrics"], [])
         self.assertNotIn("source", payload["metadata"])
         self.assertNotIn("run_config", payload["metadata"])
         self.assertNotIn("cache_dir", payload["metadata"])

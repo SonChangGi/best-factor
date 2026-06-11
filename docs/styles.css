@@ -75,6 +75,7 @@ select, input { width: 100%; border: 1px solid var(--line); border-radius: 12px;
 .card span { color: var(--muted); font-weight: 700; font-size: .85rem; }
 .card strong { display: block; margin: .45rem 0; font-size: clamp(1.05rem, 2vw, 1.35rem); line-height: 1.25; overflow-wrap: anywhere; }
 .card small { color: var(--muted); line-height: 1.5; }
+.card-badge { margin-top: .75rem; font-size: .76rem; }
 .panel { border-radius: 26px; padding: 1.25rem; margin-bottom: 1.25rem; }
 .panel-heading { display: flex; justify-content: space-between; gap: 1.5rem; align-items: end; margin-bottom: 1rem; }
 .panel-heading h2, .explain h2, .disclaimer h2 { margin: 0; }

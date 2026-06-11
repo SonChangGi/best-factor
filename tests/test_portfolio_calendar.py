@@ -4,7 +4,6 @@ import unittest
 from best_factor.calendar import rebalance_dates
 from best_factor.portfolio import run_backtests
 from best_factor.schemas import SKIP_REASONS
-from best_factor.schemas import SKIP_REASONS
 
 
 class PortfolioCalendarTest(unittest.TestCase):

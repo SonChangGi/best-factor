@@ -29,8 +29,9 @@
   <main>
     <section class="notice" aria-label="research notice">
       <strong>중요:</strong> 이 페이지는 연구용 정적 스냅샷입니다. 표시된 결과는 투자 조언이나 매매 지시가 아니며,
-      “최고 팩터”는 수백 개 테스트 후보 중 이번 실행에서 1위라는 뜻입니다. 우주(universe), 리밸런싱, 필터,
-      무료 데이터 품질, 랭킹 공식, 다중검정/데이터 스누핑 위험에 따라 결론은 달라집니다.
+      “최고 팩터”는 수백 개 테스트 후보 중 이번 실행에서 1위라는 뜻입니다. 최근 tail holdout 보조 검증을 함께 표시하지만
+      완전한 out-of-sample 검정은 아니므로 우주(universe), 리밸런싱, 필터, 무료 데이터 품질, 랭킹 공식,
+      다중검정/데이터 스누핑 위험에 따라 결론은 달라집니다.
     </section>
 
     <section class="controls" aria-label="대시보드 입력값">
@@ -105,7 +106,7 @@
           <p class="eyebrow">현실성 점검</p>
           <h2 id="diagnostics-title">데이터 품질 · 최신성 · 매매 가능성 게이트</h2>
         </div>
-          <p>정적 결과가 언제 생성되었는지, 얼마나 많은 팩터 후보를 비교했는지, 어떤 무료 데이터/필터 조건을 통과했는지 먼저 확인하세요.</p>
+        <p>정적 결과가 언제 생성되었는지, 얼마나 많은 팩터 후보를 비교했는지, 어떤 무료 데이터/필터 조건을 통과했는지 먼저 확인하세요.</p>
       </div>
       <div class="diagnostic-grid three" id="diagnostics-grid"></div>
     </section>
@@ -153,7 +154,7 @@
           <div class="viz-card-heading">
             <div>
               <p class="eyebrow">최신 출력</p>
-          <h3>최고 테스트 팩터의 연구용 편입 종목과 비중</h3>
+              <h3>최고 테스트 팩터의 연구용 편입 종목과 비중</h3>
             </div>
             <span id="current-output-meta" class="chart-meta">-</span>
           </div>

@@ -13,7 +13,7 @@ authors = [{name = "best-factor"}]
 dependencies = []
 
 [project.optional-dependencies]
-live = ["yfinance>=0.2.0"]
+live = ["yfinance==1.4.1"]
 test = []
 
 [project.scripts]

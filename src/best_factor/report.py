@@ -91,6 +91,7 @@ def write_report(
     for key in [
         "provider",
         "provider_version",
+        "price_adjustment",
         "source",
         "fetched_at",
         "cache_dir",
@@ -110,6 +111,7 @@ def write_report(
         "selected_factor_count",
         "factor_category_counts",
         "factor_library_note",
+        "holdout_validation",
     ]:
         if metadata.get(key) not in (None, ""):
             lines.append(f"- {key}: `{_safe_metadata_value(key, metadata.get(key))}`")
@@ -279,6 +281,7 @@ def _metadata_section(metadata: dict[str, object]) -> str:
     keys = [
         "provider",
         "provider_version",
+        "price_adjustment",
         "source",
         "fetched_at",
         "cache_dir",
@@ -298,6 +301,7 @@ def _metadata_section(metadata: dict[str, object]) -> str:
         "selected_factor_count",
         "factor_category_counts",
         "factor_library_note",
+        "holdout_validation",
     ]
     lines = ['<section class="panel" aria-labelledby="metadata-title">', '<h2 id="metadata-title">Run Metadata</h2>']
     lines.append('<div class="table-wrap"><table aria-label="Run metadata"><caption>Data source and reproducibility metadata.</caption><tbody>')

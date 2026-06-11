@@ -30,7 +30,7 @@ from .factors import (
     validate_factor_names,
 )
 from .io_utils import ensure_dir, write_csv_dicts, write_json
-from .metrics import compute_metrics
+from .metrics import compute_holdout_metrics, compute_metrics
 from .portfolio import latest_holdings_for_best, run_backtests, serialize_holdings, serialize_returns
 from .ranking import rank_factors
 from .report import write_html_report, write_report
@@ -168,9 +168,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     holdings = list(backtest["holdings"])
     skipped_reasons = dict(backtest["skipped_reasons"])
     metrics = compute_metrics(returns, args.rebalance)
+    holdout_metrics = compute_holdout_metrics(returns, args.rebalance, fraction=0.25, min_periods=6)
     skipped_zero_coverage = {str(row["factor"]): "zero_coverage" for row in metrics if float(row.get("coverage", 0.0)) <= 0}
     rankable_metrics = [row for row in metrics if float(row.get("coverage", 0.0)) > 0]
     rankings = rank_factors(rankable_metrics)
+    holdout_rankings = rank_factors([row for row in holdout_metrics if float(row.get("coverage", 0.0)) > 0])
     if not rankings:
         raise ValueError("no factor produced holdings after filters; nothing is rank-eligible")
     best_factor = str(rankings[0]["factor"])
@@ -186,6 +188,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     data_start_date = dates[0].isoformat() if dates else "unknown"
     market_cap_effective = float(args.min_market_cap or 0.0) > 0
     market_cap_attempted = bool(args.market_cap_filter_attempted or market_cap_effective)
+    holdout_rank_by_factor = {str(row["factor"]): int(row["rank"]) for row in holdout_rankings}
+    holdout_metric_by_factor = {str(row["factor"]): row for row in holdout_rankings}
+    best_holdout = holdout_metric_by_factor.get(best_factor, {})
+
     metadata = {
         **provider_metadata,
         "source_hash": _source_hash_for_run(args),
@@ -228,6 +234,19 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "Factor-zoo mode ranks the best factor among the tested candidate definitions in this run; "
             "it is exploratory and not an out-of-sample or multiple-testing-adjusted anomaly discovery claim."
         ),
+        "holdout_validation": {
+            "method": "recent_tail_by_factor",
+            "holdout_fraction": 0.25,
+            "min_periods": 6,
+            "best_factor_holdout_rank": holdout_rank_by_factor.get(best_factor),
+            "best_factor_holdout_cagr": best_holdout.get("cagr"),
+            "best_factor_holdout_sharpe": best_holdout.get("sharpe"),
+            "holdout_ranked_factor_count": len(holdout_rankings),
+            "interpretation": (
+                "Secondary robustness check on each factor's most recent return periods; "
+                "the primary winner remains an in-sample exploratory result, not a true untouched out-of-sample test."
+            ),
+        },
         "timing_convention": TIMING_CONVENTION,
         "caveats": CAVEATS,
         "run_config": {
@@ -257,8 +276,19 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     write_universe_snapshot(output_dir / "universe_snapshot.csv", universe)
     write_csv_dicts(output_dir / "factor_scores.csv", serialize_factor_scores(scores), FACTOR_SCORE_COLUMNS)
     write_csv_dicts(output_dir / "portfolio_returns.csv", serialize_returns(returns), PORTFOLIO_RETURN_COLUMNS)
+    holdout_score_by_factor = {str(row["factor"]): row.get("composite_score", 0.0) for row in holdout_rankings}
+    holdout_order = {str(row["factor"]): idx for idx, row in enumerate(holdout_rankings)}
+    holdout_metrics_with_scores = []
+    for row in holdout_metrics:
+        enriched = dict(row)
+        enriched["composite_score"] = holdout_score_by_factor.get(str(row["factor"]), 0.0)
+        holdout_metrics_with_scores.append({col: enriched.get(col, "") for col in METRIC_COLUMNS})
+    holdout_metrics_with_scores.sort(key=lambda row: (holdout_order.get(str(row["factor"]), 10_000), str(row["factor"])))
+
     write_csv_dicts(output_dir / "factor_metrics.csv", metrics_with_scores, METRIC_COLUMNS)
     write_csv_dicts(output_dir / "factor_rankings.csv", rankings, RANKING_COLUMNS)
+    write_csv_dicts(output_dir / "factor_holdout_metrics.csv", holdout_metrics_with_scores, METRIC_COLUMNS)
+    write_csv_dicts(output_dir / "factor_holdout_rankings.csv", holdout_rankings, RANKING_COLUMNS)
     write_csv_dicts(output_dir / "latest_holdings.csv", serialize_holdings(latest), HOLDING_COLUMNS)
     write_csv_dicts(
         output_dir / "skipped_reasons.csv",

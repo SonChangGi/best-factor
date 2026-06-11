@@ -32,6 +32,7 @@ SAFE_SOURCE_KINDS = {"csv", "yfinance"}
 PUBLIC_METADATA_KEYS = {
     "provider",
     "provider_version",
+    "price_adjustment",
     "fetched_at",
     "universe_as_of_date",
     "tested_factor_count",
@@ -45,6 +46,7 @@ PUBLIC_METADATA_KEYS = {
     "factor_family_summary",
     "skip_resolution_note",
     "factor_library_note",
+    "holdout_validation",
     "timing_convention",
     "source_hash",
     "ranking_formula",
@@ -87,6 +89,8 @@ def build_site_payload(
     metrics = _coerce_rows(read_csv_dicts(root / "factor_metrics.csv"), METRIC_NUMERIC_COLUMNS)
     latest_holdings = _read_optional_rows(root / "latest_holdings.csv", HOLDING_NUMERIC_COLUMNS)
     skipped_reasons = _read_optional_rows(root / "skipped_reasons.csv", SKIPPED_NUMERIC_COLUMNS)
+    holdout_rankings = _read_optional_rows(root / "factor_holdout_rankings.csv", RANKING_NUMERIC_COLUMNS)
+    holdout_metrics = _read_optional_rows(root / "factor_holdout_metrics.csv", METRIC_NUMERIC_COLUMNS)
     metadata = _read_metadata(root / "run_metadata.json")
     caveats = metadata.get("caveats") if isinstance(metadata.get("caveats"), list) else CAVEATS
     public_metadata = _public_metadata(metadata)
@@ -114,17 +118,30 @@ def build_site_payload(
             "source_hash": metadata.get("source_hash") or None,
             "universe_as_of_date": metadata.get("universe_as_of_date") or None,
             "static_data_warning": STATIC_DATA_WARNING,
+            "interpretation_label": "in_sample_exploratory_with_recent_holdout_check",
+            "best_factor_holdout_rank": _holdout_value(metadata, "best_factor_holdout_rank"),
+            "best_factor_holdout_cagr": _holdout_value(metadata, "best_factor_holdout_cagr"),
+            "best_factor_holdout_sharpe": _holdout_value(metadata, "best_factor_holdout_sharpe"),
         },
         "rankings": rankings,
         "metrics": metrics,
         "latest_holdings": latest_holdings,
         "skipped_reasons": skipped_reasons,
+        "holdout_rankings": holdout_rankings,
+        "holdout_metrics": holdout_metrics,
         "factor_catalog": factor_catalog,
         "factor_family_summary": factor_family_summary,
         "metadata": public_metadata,
         "caveats": [str(c) for c in caveats],
     }
     return payload
+
+
+def _holdout_value(metadata: dict[str, object], key: str) -> object | None:
+    validation = metadata.get("holdout_validation")
+    if isinstance(validation, dict):
+        return validation.get(key)
+    return None
 
 
 def write_site_payload(

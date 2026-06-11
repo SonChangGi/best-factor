@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from best_factor.metrics import compute_metrics, max_drawdown
+from best_factor.metrics import compute_holdout_metrics, compute_metrics, max_drawdown
 from best_factor.ranking import rank_factors
 
 
@@ -43,6 +43,19 @@ class MetricsRankingTest(unittest.TestCase):
         result = compute_metrics(rows, "M")[0]
         self.assertAlmostEqual(result["coverage"], 0.5)
         self.assertLess(result["annual_return"], 0.12 * 12)
+
+    def test_holdout_metrics_use_recent_tail_per_factor(self):
+        rows = [
+            {"factor": "a", "period_end": i, "return": r, "turnover": 0.0, "holdings_count": 1}
+            for i, r in enumerate([0.10, 0.10, -0.10, -0.10], start=1)
+        ]
+        rows += [
+            {"factor": "b", "period_end": i, "return": r, "turnover": 0.0, "holdings_count": 1}
+            for i, r in enumerate([-0.10, -0.10, 0.10, 0.10], start=1)
+        ]
+        result = {row["factor"]: row for row in compute_holdout_metrics(rows, "M", fraction=0.5, min_periods=1)}
+        self.assertLess(result["a"]["annual_return"], 0)
+        self.assertGreater(result["b"]["annual_return"], 0)
 
     def test_ranking_handles_nan_inf_equal_and_single_factor(self):
         single = rank_factors([

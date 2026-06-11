@@ -46,6 +46,8 @@ class CliIntegrationTest(unittest.TestCase):
         expected = [
             "factor_metrics.csv",
             "factor_rankings.csv",
+            "factor_holdout_metrics.csv",
+            "factor_holdout_rankings.csv",
             "latest_holdings.csv",
             "portfolio_returns.csv",
             "factor_scores.csv",
@@ -74,6 +76,8 @@ class CliIntegrationTest(unittest.TestCase):
         out = self.run_cli()
         metadata = json.loads((out / "run_metadata.json").read_text())
         self.assertIn("ranking_formula", metadata)
+        self.assertIn("holdout_validation", metadata)
+        self.assertIn("best_factor_holdout_rank", metadata["holdout_validation"])
         self.assertIn("timing_convention", metadata)
         self.assertIn("same-close", metadata["timing_convention"])
         self.assertFalse(metadata["universe_is_point_in_time"])
@@ -149,13 +153,13 @@ class CliIntegrationTest(unittest.TestCase):
         out = self.run_cli(
             "--market-cap-filter-attempted",
             "--filter-fallback-reason",
-            "market_cap_metadata_filter_failed_retried_liquidity_only",
+            "market_cap_metadata_insufficient_preflight",
         )
         metadata = json.loads((out / "run_metadata.json").read_text())
         self.assertTrue(metadata["market_cap_filter_attempted"])
         self.assertFalse(metadata["market_cap_filter_effective"])
         self.assertEqual(metadata["market_cap_filter_basis"], "not_applied")
-        self.assertEqual(metadata["filter_fallback_reason"], "market_cap_metadata_filter_failed_retried_liquidity_only")
+        self.assertEqual(metadata["filter_fallback_reason"], "market_cap_metadata_insufficient_preflight")
 
     def test_site_subcommand_exports_github_pages_json(self):
         out = self.run_cli()

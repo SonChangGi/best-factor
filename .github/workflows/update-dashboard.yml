@@ -48,6 +48,9 @@ jobs:
       - name: Run network-free regression tests
         run: PYTHONPATH=src python -m unittest discover -s tests
 
+      - name: Run syntax/static import checks
+        run: PYTHONPATH=src python -m compileall -q src tests .github/scripts
+
       - name: Build live yfinance universe metadata
         run: python .github/scripts/build_live_universe.py .github/best-factor-dashboard-tickers.txt /tmp/best-factor-universe.csv
 
@@ -55,6 +58,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          TOP_N=20
+          MIN_MARKET_CAP=10000000000
+          MIN_MARKET_CAP_NAMES=20
           TICKERS=($(grep -Ev '^[[:space:]]*(#|$)' .github/best-factor-dashboard-tickers.txt | tr '[:lower:]' '[:upper:]'))
           rm -rf /tmp/best-factor-live-run
           COMMON_ARGS=(
@@ -63,24 +69,58 @@ jobs:
             --period 5y
             --output-dir /tmp/best-factor-live-run
             --rebalance M
-            --top-n 10
+            --top-n "${TOP_N}"
             --weighting score
             --factor-preset zoo
             --min-dollar-volume 50000000
             --transaction-cost-bps 5
             --universe-file /tmp/best-factor-universe.csv
           )
-          if ! python -m best_factor.cli run "${COMMON_ARGS[@]}" --min-market-cap 10000000000; then
-            echo "Market-cap metadata filter was not usable for enough names; retrying with liquidity filter only." >&2
+          export MIN_MARKET_CAP
+          MARKET_CAP_ELIGIBLE_COUNT="$(python - <<'PY'
+          import csv
+          import math
+          import os
+
+          threshold = float(os.environ["MIN_MARKET_CAP"])
+          count = 0
+          with open("/tmp/best-factor-universe.csv", newline="", encoding="utf-8") as fh:
+              for row in csv.DictReader(fh):
+                  try:
+                      market_cap = float(row.get("market_cap") or "nan")
+                  except ValueError:
+                      continue
+                  if math.isfinite(market_cap) and market_cap >= threshold:
+                      count += 1
+          print(count)
+          PY
+          )"
+          echo "market-cap eligible names: ${MARKET_CAP_ELIGIBLE_COUNT}/${#TICKERS[@]}"
+          if (( MARKET_CAP_ELIGIBLE_COUNT >= MIN_MARKET_CAP_NAMES )); then
+            python -m best_factor.cli run "${COMMON_ARGS[@]}" --min-market-cap "${MIN_MARKET_CAP}"
+          else
+            echo "Market-cap metadata preflight found only ${MARKET_CAP_ELIGIBLE_COUNT} eligible names; running liquidity-only fallback." >&2
             rm -rf /tmp/best-factor-live-run
             python -m best_factor.cli run "${COMMON_ARGS[@]}" \
               --market-cap-filter-attempted \
-              --filter-fallback-reason market_cap_metadata_filter_failed_retried_liquidity_only
+              --filter-fallback-reason market_cap_metadata_insufficient_preflight
           fi
           python -m best_factor.cli site \
             --run-dir /tmp/best-factor-live-run \
             --output-file docs/data/latest-results.json \
             --data-scope live_yfinance_curated_us_large_liquid_actions
+
+      - name: Archive generated run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: best-factor-live-run-${{ github.run_id }}
+          if-no-files-found: error
+          path: |
+            /tmp/best-factor-live-run/*.csv
+            /tmp/best-factor-live-run/*.json
+            /tmp/best-factor-live-run/report.md
+            /tmp/best-factor-live-run/report.html
+            docs/data/latest-results.json
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6

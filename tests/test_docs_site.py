@@ -83,6 +83,7 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("fixture_sample", app)
         self.assertIn("market_cap_filter_basis", app)
         self.assertIn("RANKING_DEFAULT_TOP = 20", app)
+        self.assertIn("Holdout 보조 검증", app)
         self.assertIn("rankingRowsForDisplayForTest", app)
         self.assertIn("Number.isFinite(numeric) ? numeric : Number.NEGATIVE_INFINITY", app)
         self.assertNotIn("|| -Infinity", app)
@@ -99,6 +100,7 @@ class DocsSiteTest(unittest.TestCase):
             const code = fs.readFileSync({str(DOCS / 'app.js')!r}, 'utf8');
             const context = {{
               console,
+              __BEST_FACTOR_TEST__: true,
               navigator: {{}},
               Node: function Node(){{}},
               document: {{ addEventListener(){{}}, querySelector(){{ return {{ addEventListener(){{}}, classList: {{ add(){{}}, remove(){{}} }} }}; }} }}
@@ -125,7 +127,7 @@ class DocsSiteTest(unittest.TestCase):
 
     def test_sample_json_matches_schema_and_freshness_contract(self):
         payload = json.loads((DOCS / "data" / "latest-results.json").read_text(encoding="utf-8"))
-        for key in ["schema_version", "generated_at", "data_scope", "summary", "rankings", "metrics", "latest_holdings", "skipped_reasons", "factor_catalog", "factor_family_summary", "metadata", "caveats"]:
+        for key in ["schema_version", "generated_at", "data_scope", "summary", "rankings", "metrics", "latest_holdings", "skipped_reasons", "holdout_rankings", "holdout_metrics", "factor_catalog", "factor_family_summary", "metadata", "caveats"]:
             self.assertIn(key, payload)
         self.assertEqual(payload["schema_version"], 1)
         self.assertRegex(payload["generated_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -145,6 +147,8 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("factor_kind_counts", payload["metadata"])
         self.assertIn("factor_family_summary", payload["metadata"])
         self.assertIn("skip_resolution_note", payload["metadata"])
+        if payload["metadata"].get("holdout_validation"):
+            self.assertIn("best_factor_holdout_rank", payload["metadata"]["holdout_validation"])
         self.assertIn("market_cap_filter_basis", payload["metadata"])
         self.assertIn("market_cap_filter_attempted", payload["metadata"])
         self.assertIn("market_cap_filter_effective", payload["metadata"])
@@ -175,13 +179,17 @@ class DocsSiteTest(unittest.TestCase):
             "actions/configure-pages@v6",
             "actions/upload-pages-artifact@v5",
             "actions/deploy-pages@v5",
+            "actions/upload-artifact@v4",
             "github.repository == 'SonChangGi/best-factor'",
             "github.ref == 'refs/heads/main'",
             "live_yfinance_curated_us_large_liquid_actions",
             "--market-cap-filter-attempted",
-            "market_cap_metadata_filter_failed_retried_liquidity_only",
+            "MARKET_CAP_ELIGIBLE_COUNT",
+            "market_cap_metadata_insufficient_preflight",
+            "--top-n \"${TOP_N}\"",
         ]:
             self.assertIn(marker, workflow)
+        self.assertNotIn("if ! python -m best_factor.cli run", workflow)
         self.assertNotIn("git commit", workflow)
         self.assertNotIn("git push", workflow)
 

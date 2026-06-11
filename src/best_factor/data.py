@@ -6,13 +6,16 @@ import hashlib
 import importlib.metadata
 import math
 import time
-import urllib.request
 from collections import defaultdict
+import urllib.request
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlparse
 
 from .io_utils import read_csv_dicts, write_csv_dicts
 from .schemas import PRICE_COLUMNS, UNIVERSE_COLUMNS
+
+ALLOWED_SYMBOL_DIRECTORY_HOSTS = {"www.nasdaqtrader.com", "nasdaqtrader.com"}
 
 
 def parse_date(value: str | dt.date | dt.datetime) -> dt.date:
@@ -52,12 +55,19 @@ def load_prices_csv(path: str | Path) -> list[dict[str, object]]:
         date = parse_date(str(row.get("date", "")))
         close = parse_float(row.get("close"))
         adj_close = parse_float(row.get("adj_close"), close)
+        open_, high, low, close = adjusted_ohlc_to_adj_close(
+            parse_float(row.get("open"), close),
+            parse_float(row.get("high"), close),
+            parse_float(row.get("low"), close),
+            close,
+            adj_close,
+        )
         normalized = {
             "ticker": ticker,
             "date": date,
-            "open": parse_float(row.get("open"), close),
-            "high": parse_float(row.get("high"), close),
-            "low": parse_float(row.get("low"), close),
+            "open": open_,
+            "high": high,
+            "low": low,
             "close": close,
             "adj_close": adj_close,
             "volume": parse_int(row.get("volume"), 0),
@@ -201,14 +211,21 @@ def fetch_yfinance_prices(tickers: list[str], period: str, cache_dir: str | Path
             adj = float(rec.get("Adj Close", close)) if "Adj Close" in rec else close
             if math.isnan(adj):
                 continue
+            open_, high, low, adjusted_close = adjusted_ohlc_to_adj_close(
+                float(rec.get("Open", close)),
+                float(rec.get("High", close)),
+                float(rec.get("Low", close)),
+                close,
+                adj,
+            )
             rows.append(
                 {
                     "ticker": normalize_ticker(ticker),
                     "date": parse_date(idx.date() if hasattr(idx, "date") else str(idx)[:10]),
-                    "open": float(rec.get("Open", close)),
-                    "high": float(rec.get("High", close)),
-                    "low": float(rec.get("Low", close)),
-                    "close": close,
+                    "open": open_,
+                    "high": high,
+                    "low": low,
+                    "close": adjusted_close,
                     "adj_close": adj,
                     "volume": int(float(rec.get("Volume", 0) or 0)),
                     "source": "yfinance",
@@ -233,17 +250,53 @@ def fetch_yfinance_prices(tickers: list[str], period: str, cache_dir: str | Path
         "requested_tickers": list(tickers),
         "succeeded_tickers": succeeded_tickers,
         "failed_tickers": failed_tickers,
+        "price_adjustment": "open_high_low_close_scaled_to_adj_close",
     }
     return rows, metadata
 
 
 def download_nasdaq_symbol_directory(url: str, output_path: str | Path) -> Path:
     """Download a Nasdaq Trader symbol directory text file for current-universe seeding."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.netloc.lower() not in ALLOWED_SYMBOL_DIRECTORY_HOSTS:
+        raise ValueError("symbol directory URL must be HTTPS on nasdaqtrader.com")
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(url, timeout=30) as response:  # nosec - user-requested public data URL helper
+    with urllib.request.urlopen(url, timeout=30) as response:  # nosec - restricted public Nasdaq Trader host
         output.write_bytes(response.read())
     return output
+
+
+def adjusted_ohlc_to_adj_close(open_: float, high: float, low: float, close: float, adj_close: float) -> tuple[float, float, float, float]:
+    """Return OHLC values on the same adjusted scale as ``adj_close``.
+
+    Yahoo-style data commonly supplies raw OHLC and an adjusted close.  Mixing
+    raw high/low/open values with adjusted-close return factors makes range,
+    breakout, overnight, and intraday signals internally inconsistent around
+    dividends and splits.  The project stores one OHLC set, so normalize it to
+    the total-return adjusted-close scale used by the backtest.
+    """
+    if not math.isfinite(adj_close):
+        return open_, high, low, close
+    if not math.isfinite(close) or close <= 0:
+        close = adj_close
+    ratio = adj_close / close if close > 0 and math.isfinite(close) else 1.0
+    if not math.isfinite(ratio) or ratio <= 0:
+        ratio = 1.0
+
+    def scale(value: float, fallback: float) -> float:
+        base = value if math.isfinite(value) else fallback
+        if not math.isfinite(base):
+            base = close
+        adjusted = base * ratio
+        return adjusted if math.isfinite(adjusted) else adj_close
+
+    adjusted_open = scale(open_, close)
+    adjusted_high = scale(high, max(open_, close) if math.isfinite(open_) else close)
+    adjusted_low = scale(low, min(open_, close) if math.isfinite(open_) else close)
+    if adjusted_high < adjusted_low:
+        adjusted_high, adjusted_low = adjusted_low, adjusted_high
+    return adjusted_open, adjusted_high, adjusted_low, adj_close
 
 
 def source_hash_for_paths(paths: Iterable[str | Path | None]) -> str:

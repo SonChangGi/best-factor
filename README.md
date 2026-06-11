@@ -15,6 +15,7 @@
 - Supports monthly (`M`) and weekly (`W`) rebalancing.
 - Applies optional market-cap and dollar-volume filters.
 - Measures CAGR, annualized return, volatility, Sharpe, Sortino, Calmar, max drawdown, turnover, emitted-period coverage, and a deterministic composite score.
+- Emits recent-tail holdout metrics/rankings as a secondary robustness check so the in-sample winner is not presented without a recency stress check.
 - Emits current/latest holdings and weights for the best factor among the tested candidates.
 - Writes a dependency-free `report.html` dashboard with summary cards, ranking bars, metric tables, holdings weights, diagnostics, metadata, and caveats.
 - Exports the same run artifacts into a GitHub Pages-ready `docs/` dashboard similar to the reference static dashboard pattern.
@@ -81,6 +82,8 @@ Each run writes:
 
 - `factor_metrics.csv`
 - `factor_rankings.csv`
+- `factor_holdout_metrics.csv`
+- `factor_holdout_rankings.csv`
 - `latest_holdings.csv`
 - `portfolio_returns.csv`
 - `factor_scores.csv`
@@ -93,7 +96,7 @@ Each run writes:
 - `report.html`
 - optional GitHub Pages JSON via `best-factor site`: `docs/data/latest-results.json`
 
-The latest best-tested-factor holdings include `rebalance_date`, `factor`, `ticker`, `weight`, `score`, and `price_date_used`. Weights sum to approximately 1.0 for non-empty eligible portfolios. These are research portfolio weights under the close-to-close convention, not executable trade instructions.
+The latest best-tested-factor holdings include `rebalance_date`, `factor`, `ticker`, `weight`, `score`, and `price_date_used`. Weights sum to approximately 1.0 for non-empty eligible portfolios. These are research portfolio weights under the close-to-close convention, not executable trade instructions. Holdout artifacts use each factor's most recent 25% of emitted return periods, with at least 6 periods when available, as a secondary robustness check; this is not a fully untouched out-of-sample experiment.
 
 Open `report.html` in a browser to inspect the analysis visually. It is a static file with inline CSS only; no CDN, JavaScript, or remote chart dependency is required. Visual bars are clamped to `0-100%` and exact numeric metric values remain visible in text.
 
@@ -134,12 +137,12 @@ The `docs/` dashboard includes an update panel. Because GitHub Pages is static, 
 gh workflow run update-dashboard.yml --repo SonChangGi/best-factor --ref main
 ```
 
-The workflow uses GitHub Pages custom workflow deployment (`actions/configure-pages`, `actions/upload-pages-artifact`, and `actions/deploy-pages`) so the generated `docs/` artifact is published by that same run. It intentionally does not rely on a workflow self-commit to trigger a branch-based Pages build.
+The workflow pins the live yfinance dependency, runs network-free tests plus syntax/static import checks before live generation, archives each generated run artifact, and uses GitHub Pages custom workflow deployment (`actions/configure-pages`, `actions/upload-pages-artifact`, and `actions/deploy-pages`) so the generated `docs/` artifact is published by that same run. It intentionally does not rely on a workflow self-commit to trigger a branch-based Pages build.
 For manual and scheduled updates, the deployed Pages artifact is the freshness source of truth; the checked-in `docs/data/latest-results.json` is a seed/sample until the next workflow artifact is deployed.
 
 ### Live dashboard universe
 
-`.github/best-factor-dashboard-tickers.txt` is the committed public dashboard universe. It is a curated list of individual large/liquid US stocks, not a survivorship-free historical universe and not the whole US market. The workflow builds best-effort current universe metadata from yfinance, applies a liquidity filter, attempts a market-cap filter when metadata is available, and retries with liquidity-only filtering if free metadata is insufficient. The final run metadata records whether the market-cap filter was attempted, whether it was effective, and any fallback reason so two dashboard snapshots are not silently compared under different screens.
+`.github/best-factor-dashboard-tickers.txt` is the committed public dashboard universe. It is a curated list of individual large/liquid US stocks, not a survivorship-free historical universe and not the whole US market. The workflow builds best-effort current universe metadata from yfinance, applies a liquidity filter, and runs a market-cap-filtered backtest only after a metadata preflight confirms enough names meet the threshold. If the preflight is insufficient, it runs a liquidity-only fallback and records `market_cap_metadata_insufficient_preflight`; other CLI/provider failures are not swallowed by the fallback. The final run metadata records whether the market-cap filter was attempted, whether it was effective, and any fallback reason so two dashboard snapshots are not silently compared under different screens.
 
 This keeps the public page reproducible and cheap to update, but the results remain research-grade and current-universe biased.
 
@@ -183,10 +186,11 @@ The default approach uses free/current-universe data and should be interpreted a
 
 - Current symbol lists are not survivorship-bias-free historical constituents.
 - Yahoo/yfinance data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms.
+- Live yfinance and CSV price loaders scale `open`, `high`, `low`, and `close` to the `adj_close` basis before OHLC-derived factor scoring, preventing raw/adjusted price-scale mixing around dividends and splits.
 - Current yfinance universe membership and market-cap metadata are current screens, not historical point-in-time constituent or point-in-time market-cap filters.
 - Fundamental files must include `as_of_date` and `available_at`; rows without `available_at` are treated as non-point-in-time and skipped for historical factor scoring.
 - Some factors or rows may be skipped with explicit reason codes such as `missing_fundamentals`, `insufficient_history`, `insufficient_volume`, `market_cap_unavailable`, `market_cap_below_min`, `empty_after_filters`, `provider_error`, `not_enough_assets`, `missing_rebalance_price`, `missing_exit_price`, `invalid_period_missing_price`, `inactive_or_non_stock`, and dynamic `zero_coverage:<factor>` diagnostics.
-- Factor-zoo mode compares many related definitions. The top-ranked factor can be an in-sample winner caused by multiple-testing/data-snooping and should be rechecked with holdout periods, alternate universes, costs, and higher-quality point-in-time data before drawing investment conclusions.
+- Factor-zoo mode compares many related definitions. The top-ranked factor can be an in-sample winner caused by multiple-testing/data-snooping. The reported recent-tail holdout rank is a robustness diagnostic, not proof of a universal anomaly; recheck with true holdout periods, alternate universes, costs, and higher-quality point-in-time data before drawing investment conclusions.
 
 For higher-confidence research, use a survivorship-aware universe and point-in-time fundamentals from a licensed data source through a new provider adapter.
 

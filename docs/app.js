@@ -8,7 +8,7 @@
   const WORKFLOW_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE}`;
   const WORKFLOW_COMMAND = `gh workflow run ${WORKFLOW_FILE} --repo ${REPO_OWNER}/${REPO_NAME} --ref main`;
   const RANKING_DEFAULT_TOP = 20;
-  const state = { payload: null, sortMetric: 'composite_score', topN: 20, filter: '', selectedFactors: new Set() };
+  const state = { payload: null, sortMetric: 'composite_score', topN: RANKING_DEFAULT_TOP, filter: '', selectedFactors: new Set() };
 
   const q = (selector) => document.querySelector(selector);
 
@@ -36,7 +36,7 @@
     }
     if (topInput) {
       topInput.addEventListener('input', (event) => {
-        state.topN = Math.max(1, Math.min(50, Number(event.target.value) || 20));
+        state.topN = Math.max(1, Math.min(50, Number(event.target.value) || RANKING_DEFAULT_TOP));
         renderAll();
       });
     }
@@ -135,14 +135,16 @@
   function renderSummary(payload) {
     const summary = payload.summary || {};
     const cards = [
-      ['Best tested factor', summary.best_factor, '테스트 후보 중 종합 점수 기준 1위 팩터'],
+      ['In-sample best factor', summary.best_factor, '이번 실행 후보 중 종합 점수 기준 1위 · true OOS 아님'],
       ['Composite', fmtNumber(summary.best_composite_score, 4), '성과/위험 지표를 합산한 비교 점수'],
       ['Factor zoo', `${summary.selected_factor_count ?? summary.tested_factor_count ?? '—'} / ${summary.factor_library_size ?? '—'}`, '선택/라이브러리 후보 팩터 수'],
       ['Effective', `${summary.effective_factor_count ?? '—'} / ${summary.tested_factor_count ?? '—'}`, '유효 / 테스트된 팩터 수'],
+      ['Holdout rank', summary.best_factor_holdout_rank ? `#${summary.best_factor_holdout_rank}` : '—', '최근 tail 기간 보조 검증 순위'],
       ['Holdings', summary.holding_count, '최신 최고 팩터 편입 종목 수'],
       ['Data end', summary.data_end_date || payload.data_scope, '가격 데이터 기준일'],
     ];
-    q('#summary-cards').replaceChildren(...cards.map(([label, value, help]) => card(label, value, help)));
+    const nodes = cards.map(([label, value, help], index) => card(label, value, help, index === 0 ? '탐색적 · out-of-sample 아님' : ''));
+    q('#summary-cards').replaceChildren(...nodes);
   }
 
   function renderDiagnostics(payload) {
@@ -165,12 +167,31 @@
         gateItem('테스트 팩터', `${summary.tested_factor_count ?? 'unknown'}개`, 'pass'),
         gateItem('유효 팩터', `${summary.effective_factor_count ?? 'unknown'}개`, Number(summary.effective_factor_count) > 0 ? 'pass' : 'warn'),
         gateItem('랭킹 행', `${summary.ranking_count ?? 0}개`, Number(summary.ranking_count) > 0 ? 'pass' : 'warn'),
+        gateItem(
+          'OHLC 조정',
+          metadata.price_adjustment || '다음 run부터 adjusted-close 기준 조정값 기록',
+          metadata.price_adjustment === 'open_high_low_close_scaled_to_adj_close' ? 'pass' : 'warn',
+        ),
+        gateItem('Holdout 보조 검증', holdoutSummary(summary, metadata), summary.best_factor_holdout_rank ? 'pass' : 'warn'),
       ]),
       diagnosticListCard('스킵/현실 제약', [
         ...(metadata.skip_resolution_note ? [gateItem('해결/보존 정책', metadata.skip_resolution_note, 'pass')] : []),
         ...(skipped.length ? skipped.map((row) => gateItem(row.skip_reason, `${row.count}개`, 'warn')) : [gateItem('스킵 사유', '없음', 'pass')]),
       ])
     );
+  }
+
+  function holdoutSummary(summary, metadata) {
+    const validation = metadata.holdout_validation || {};
+    const rank = summary.best_factor_holdout_rank || validation.best_factor_holdout_rank;
+    const ranked = validation.holdout_ranked_factor_count;
+    const cagr = summary.best_factor_holdout_cagr || validation.best_factor_holdout_cagr;
+    const sharpe = summary.best_factor_holdout_sharpe || validation.best_factor_holdout_sharpe;
+    if (!rank) return 'holdout 산출물 없음';
+    const parts = [`rank #${rank}${ranked ? ` / ${ranked}` : ''}`];
+    if (Number.isFinite(Number(cagr))) parts.push(`CAGR ${fmtPct(cagr)}`);
+    if (Number.isFinite(Number(sharpe))) parts.push(`Sharpe ${fmtNumber(sharpe, 2)}`);
+    return parts.join(' · ');
   }
 
   function renderFactorExplanations(payload) {
@@ -415,6 +436,7 @@
       ['data_scope', payload.data_scope],
       ['provider', summary.provider || metadata.provider],
       ['fetched_at', summary.fetched_at || metadata.fetched_at || 'missing'],
+      ['price_adjustment', metadata.price_adjustment || 'unknown'],
       ['source_hash', summary.source_hash || metadata.source_hash || 'missing'],
       ['source_kind', metadata.source_kind || 'unknown'],
       ['data_end_date', summary.data_end_date || metadata.data_end_date || 'unknown'],
@@ -437,6 +459,7 @@
       ['factor_family_count', factorFamilies(payload).length || 'unknown'],
       ['skip_resolution_note', metadata.skip_resolution_note || 'unknown'],
       ['factor_library_note', metadata.factor_library_note || 'unknown'],
+      ['holdout_validation', metadata.holdout_validation || 'unknown'],
       ['timing_convention', metadata.timing_convention || 'unknown'],
       ['static_data_warning', summary.static_data_warning],
     ];
@@ -564,9 +587,10 @@
     return tr;
   }
 
-  function card(label, value, help) {
+  function card(label, value, help, badgeText) {
     const article = el('article', 'card');
     article.append(span(label), strong(value), small(help));
+    if (badgeText) article.append(span(badgeText, 'badge warn-badge card-badge'));
     return article;
   }
 
@@ -738,7 +762,7 @@
     return node;
   }
 
-  if (typeof globalThis !== 'undefined') {
+  if (typeof globalThis !== 'undefined' && globalThis.__BEST_FACTOR_TEST__) {
     globalThis.__bestFactorDashboard = {
       sortRowsForTest: sortRows,
       rankingRowsForDisplayForTest: rankingsForDisplay,

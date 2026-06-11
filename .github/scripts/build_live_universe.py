@@ -70,7 +70,7 @@ def fetch_rows(tickers: list[str]) -> list[dict[str, object]]:
         try:
             instrument = yf.Ticker(ticker)
             fast = retry(lambda: getattr(instrument, "fast_info", {}) or {}, f"{ticker} fast_info")
-            info = retry(lambda: safe_info(instrument, swallow=False), f"{ticker} info")
+            info = retry(lambda: read_info(instrument), f"{ticker} info")
             market_cap = first_number(
                 get_value(fast, "market_cap"),
                 get_value(fast, "marketCap"),
@@ -87,13 +87,8 @@ def fetch_rows(tickers: list[str]) -> list[dict[str, object]]:
     return rows
 
 
-def safe_info(instrument: Any, swallow: bool = True) -> dict[str, Any]:
-    try:
-        info = getattr(instrument, "info", {}) or {}
-    except Exception:
-        if not swallow:
-            raise
-        return {}
+def read_info(instrument: Any) -> dict[str, Any]:
+    info = getattr(instrument, "info", {}) or {}
     return info if isinstance(info, dict) else {}
 
 

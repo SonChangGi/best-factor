@@ -2,6 +2,7 @@
   "caveats": [
     "Default live runs use free public/current-universe data and are not survivorship-bias free.",
     "Yahoo/yfinance data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms; use for research/education only.",
+    "Live OHLC prices are scaled to the adjusted-close basis before scoring OHLC-derived factors so dividends/splits do not mix raw and adjusted price scales.",
     "Fundamental fields from free sources can be sparse or not point-in-time; unavailable factor rows are skipped with explicit reason codes.",
     "Factor-zoo mode evaluates many related candidates; the selected winner is best among tested candidates in this run, not out-of-sample validated, and may reflect multiple-testing/data-snooping.",
     "Coverage is measured as non-empty portfolio-return periods divided by attempted scheduled periods; dynamic diagnostics may use zero_coverage:<factor> reason codes.",
@@ -4422,6 +4423,8 @@
     }
   ],
   "generated_at": "2026-06-10T23:39:30Z",
+  "holdout_metrics": [],
+  "holdout_rankings": [],
   "latest_holdings": [
     {
       "factor": "ramom_252d_skip_0d_vol_126d",
@@ -4817,9 +4820,20 @@
     "failed_tickers": [],
     "fetched_at": "2026-06-10T23:37:04.995565Z",
     "filter_fallback_reason": "none",
+    "holdout_validation": {
+      "best_factor_holdout_cagr": null,
+      "best_factor_holdout_rank": null,
+      "best_factor_holdout_sharpe": null,
+      "holdout_fraction": 0.25,
+      "holdout_ranked_factor_count": 0,
+      "interpretation": "Run the update workflow to regenerate holdout artifacts with current code.",
+      "method": "not_available_for_seed_snapshot",
+      "min_periods": 6
+    },
     "market_cap_filter_attempted": true,
     "market_cap_filter_basis": "current_yfinance_metadata_screen_not_point_in_time",
     "market_cap_filter_effective": true,
+    "price_adjustment": "seed_snapshot_requires_update_workflow_regeneration",
     "price_ticker_count": 50,
     "provider": "yfinance",
     "provider_version": "1.4.1",
@@ -13472,12 +13486,16 @@
   "summary": {
     "best_composite_score": 0.9245491555,
     "best_factor": "ramom_252d_skip_0d_vol_126d",
+    "best_factor_holdout_cagr": null,
+    "best_factor_holdout_rank": null,
+    "best_factor_holdout_sharpe": null,
     "data_end_date": "2026-06-10",
     "effective_factor_count": 308,
     "factor_library_size": 318,
     "factor_preset": "zoo",
     "fetched_at": "2026-06-10T23:37:04.995565Z",
     "holding_count": 10,
+    "interpretation_label": "in_sample_exploratory_with_recent_holdout_check",
     "provider": "yfinance",
     "ranking_count": 308,
     "selected_factor_count": 318,
