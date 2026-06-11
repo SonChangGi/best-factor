@@ -302,6 +302,586 @@
       "return": 0.002872076039,
       "skip_reason": "",
       "ticker": "^IXIC"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2023-02-28",
+      "period_start": "2023-01-31",
+      "price_date_end": "2023-02-28",
+      "price_date_start": "2023-01-31",
+      "return": 0.02626673311,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2023-03-31",
+      "period_start": "2023-02-28",
+      "price_date_end": "2023-03-31",
+      "price_date_start": "2023-02-28",
+      "return": 0.05045575184,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2023-04-28",
+      "period_start": "2023-03-31",
+      "price_date_end": "2023-04-28",
+      "price_date_start": "2023-03-31",
+      "return": 0.03191530502,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2023-05-31",
+      "period_start": "2023-04-28",
+      "price_date_end": "2023-05-31",
+      "price_date_start": "2023-04-28",
+      "return": 0.009174426531,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2023-06-30",
+      "period_start": "2023-05-31",
+      "price_date_end": "2023-06-30",
+      "price_date_start": "2023-05-31",
+      "return": 0.004801035538,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2023-07-31",
+      "period_start": "2023-06-30",
+      "price_date_end": "2023-07-31",
+      "price_date_start": "2023-06-30",
+      "return": 0.02642999694,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2023-08-31",
+      "period_start": "2023-07-31",
+      "price_date_end": "2023-08-31",
+      "price_date_start": "2023-07-31",
+      "return": 0.04508123641,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2023-09-29",
+      "period_start": "2023-08-31",
+      "price_date_end": "2023-09-29",
+      "price_date_start": "2023-08-31",
+      "return": 0.02706351954,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2023-10-31",
+      "period_start": "2023-09-29",
+      "price_date_end": "2023-10-31",
+      "price_date_start": "2023-09-29",
+      "return": 0.005744179546,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2023-11-30",
+      "period_start": "2023-10-31",
+      "price_date_end": "2023-11-30",
+      "price_date_start": "2023-10-31",
+      "return": 0.005662136428,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2023-12-29",
+      "period_start": "2023-11-30",
+      "price_date_end": "2023-12-29",
+      "price_date_start": "2023-11-30",
+      "return": 0.02597972792,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-01-31",
+      "period_start": "2023-12-29",
+      "price_date_end": "2024-01-31",
+      "price_date_start": "2023-12-29",
+      "return": 0.04047959165,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-02-29",
+      "period_start": "2024-01-31",
+      "price_date_end": "2024-02-29",
+      "price_date_start": "2024-01-31",
+      "return": 0.02228771195,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-03-29",
+      "period_start": "2024-02-29",
+      "price_date_end": "2024-03-29",
+      "price_date_start": "2024-02-29",
+      "return": 0.003945018654,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-04-30",
+      "period_start": "2024-03-29",
+      "price_date_end": "2024-04-30",
+      "price_date_start": "2024-03-29",
+      "return": 0.005901482434,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-05-31",
+      "period_start": "2024-04-30",
+      "price_date_end": "2024-05-31",
+      "price_date_start": "2024-04-30",
+      "return": 0.02786113285,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-06-28",
+      "period_start": "2024-05-31",
+      "price_date_end": "2024-06-28",
+      "price_date_start": "2024-05-31",
+      "return": 0.03200234225,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-07-31",
+      "period_start": "2024-06-28",
+      "price_date_end": "2024-07-31",
+      "price_date_start": "2024-06-28",
+      "return": 0.02108174123,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-08-30",
+      "period_start": "2024-07-31",
+      "price_date_end": "2024-08-30",
+      "price_date_start": "2024-07-31",
+      "return": 0.002722874127,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-09-30",
+      "period_start": "2024-08-30",
+      "price_date_end": "2024-09-30",
+      "price_date_start": "2024-08-30",
+      "return": 0.009440845942,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-10-31",
+      "period_start": "2024-09-30",
+      "price_date_end": "2024-10-31",
+      "price_date_start": "2024-09-30",
+      "return": 0.03925195286,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-11-29",
+      "period_start": "2024-10-31",
+      "price_date_end": "2024-11-29",
+      "price_date_start": "2024-10-31",
+      "return": 0.04024471078,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2024-12-31",
+      "period_start": "2024-11-29",
+      "price_date_end": "2024-12-31",
+      "price_date_start": "2024-11-29",
+      "return": 0.02640685417,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2025-01-31",
+      "period_start": "2024-12-31",
+      "price_date_end": "2025-01-31",
+      "price_date_start": "2024-12-31",
+      "return": 0.0127459365,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2025-02-28",
+      "period_start": "2025-01-31",
+      "price_date_end": "2025-02-28",
+      "price_date_start": "2025-01-31",
+      "return": 0.01662638214,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2025-03-31",
+      "period_start": "2025-02-28",
+      "price_date_end": "2025-03-31",
+      "price_date_start": "2025-02-28",
+      "return": 0.03221237237,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2025-04-30",
+      "period_start": "2025-03-31",
+      "price_date_end": "2025-04-30",
+      "price_date_start": "2025-03-31",
+      "return": 0.03689454047,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2025-05-30",
+      "period_start": "2025-04-30",
+      "price_date_end": "2025-05-30",
+      "price_date_start": "2025-04-30",
+      "return": 0.02244906468,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq Composite ETF proxy",
+      "period_end": "2025-06-06",
+      "period_start": "2025-05-30",
+      "price_date_end": "2025-06-06",
+      "price_date_start": "2025-05-30",
+      "return": 0.002872076039,
+      "skip_reason": "",
+      "ticker": "ONEQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2023-02-28",
+      "period_start": "2023-01-31",
+      "price_date_end": "2023-02-28",
+      "price_date_start": "2023-01-31",
+      "return": 0.02626673311,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2023-03-31",
+      "period_start": "2023-02-28",
+      "price_date_end": "2023-03-31",
+      "price_date_start": "2023-02-28",
+      "return": 0.05045575184,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2023-04-28",
+      "period_start": "2023-03-31",
+      "price_date_end": "2023-04-28",
+      "price_date_start": "2023-03-31",
+      "return": 0.03191530502,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2023-05-31",
+      "period_start": "2023-04-28",
+      "price_date_end": "2023-05-31",
+      "price_date_start": "2023-04-28",
+      "return": 0.009174426531,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2023-06-30",
+      "period_start": "2023-05-31",
+      "price_date_end": "2023-06-30",
+      "price_date_start": "2023-05-31",
+      "return": 0.004801035538,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2023-07-31",
+      "period_start": "2023-06-30",
+      "price_date_end": "2023-07-31",
+      "price_date_start": "2023-06-30",
+      "return": 0.02642999694,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2023-08-31",
+      "period_start": "2023-07-31",
+      "price_date_end": "2023-08-31",
+      "price_date_start": "2023-07-31",
+      "return": 0.04508123641,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2023-09-29",
+      "period_start": "2023-08-31",
+      "price_date_end": "2023-09-29",
+      "price_date_start": "2023-08-31",
+      "return": 0.02706351954,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2023-10-31",
+      "period_start": "2023-09-29",
+      "price_date_end": "2023-10-31",
+      "price_date_start": "2023-09-29",
+      "return": 0.005744179546,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2023-11-30",
+      "period_start": "2023-10-31",
+      "price_date_end": "2023-11-30",
+      "price_date_start": "2023-10-31",
+      "return": 0.005662136428,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2023-12-29",
+      "period_start": "2023-11-30",
+      "price_date_end": "2023-12-29",
+      "price_date_start": "2023-11-30",
+      "return": 0.02597972792,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-01-31",
+      "period_start": "2023-12-29",
+      "price_date_end": "2024-01-31",
+      "price_date_start": "2023-12-29",
+      "return": 0.04047959165,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-02-29",
+      "period_start": "2024-01-31",
+      "price_date_end": "2024-02-29",
+      "price_date_start": "2024-01-31",
+      "return": 0.02228771195,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-03-29",
+      "period_start": "2024-02-29",
+      "price_date_end": "2024-03-29",
+      "price_date_start": "2024-02-29",
+      "return": 0.003945018654,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-04-30",
+      "period_start": "2024-03-29",
+      "price_date_end": "2024-04-30",
+      "price_date_start": "2024-03-29",
+      "return": 0.005901482434,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-05-31",
+      "period_start": "2024-04-30",
+      "price_date_end": "2024-05-31",
+      "price_date_start": "2024-04-30",
+      "return": 0.02786113285,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-06-28",
+      "period_start": "2024-05-31",
+      "price_date_end": "2024-06-28",
+      "price_date_start": "2024-05-31",
+      "return": 0.03200234225,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-07-31",
+      "period_start": "2024-06-28",
+      "price_date_end": "2024-07-31",
+      "price_date_start": "2024-06-28",
+      "return": 0.02108174123,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-08-30",
+      "period_start": "2024-07-31",
+      "price_date_end": "2024-08-30",
+      "price_date_start": "2024-07-31",
+      "return": 0.002722874127,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-09-30",
+      "period_start": "2024-08-30",
+      "price_date_end": "2024-09-30",
+      "price_date_start": "2024-08-30",
+      "return": 0.009440845942,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-10-31",
+      "period_start": "2024-09-30",
+      "price_date_end": "2024-10-31",
+      "price_date_start": "2024-09-30",
+      "return": 0.03925195286,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-11-29",
+      "period_start": "2024-10-31",
+      "price_date_end": "2024-11-29",
+      "price_date_start": "2024-10-31",
+      "return": 0.04024471078,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2024-12-31",
+      "period_start": "2024-11-29",
+      "price_date_end": "2024-12-31",
+      "price_date_start": "2024-11-29",
+      "return": 0.02640685417,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2025-01-31",
+      "period_start": "2024-12-31",
+      "price_date_end": "2025-01-31",
+      "price_date_start": "2024-12-31",
+      "return": 0.0127459365,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2025-02-28",
+      "period_start": "2025-01-31",
+      "price_date_end": "2025-02-28",
+      "price_date_start": "2025-01-31",
+      "return": 0.01662638214,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2025-03-31",
+      "period_start": "2025-02-28",
+      "price_date_end": "2025-03-31",
+      "price_date_start": "2025-02-28",
+      "return": 0.03221237237,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2025-04-30",
+      "period_start": "2025-03-31",
+      "price_date_end": "2025-04-30",
+      "price_date_start": "2025-03-31",
+      "return": 0.03689454047,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2025-05-30",
+      "period_start": "2025-04-30",
+      "price_date_end": "2025-05-30",
+      "price_date_start": "2025-04-30",
+      "return": 0.02244906468,
+      "skip_reason": "",
+      "ticker": "QQQ"
+    },
+    {
+      "benchmark": "Nasdaq-100 ETF proxy",
+      "period_end": "2025-06-06",
+      "period_start": "2025-05-30",
+      "price_date_end": "2025-06-06",
+      "price_date_start": "2025-05-30",
+      "return": 0.002872076039,
+      "skip_reason": "",
+      "ticker": "QQQ"
     }
   ],
   "caveats": [
@@ -87727,7 +88307,7 @@
       "turnover": 0.0
     }
   ],
-  "generated_at": "2026-06-11T06:08:45Z",
+  "generated_at": "2026-06-11T06:32:50Z",
   "holdout_metrics": [
     {
       "annual_return": 0.1743962736,
@@ -96151,13 +96731,17 @@
   "metadata": {
     "benchmark_failed_tickers": [],
     "benchmark_label": "Nasdaq Composite",
-    "benchmark_note": "Nasdaq benchmark is a non-investable index comparator used only for relative context; it is not included in stock selection, holdings, or factor ranking.",
-    "benchmark_return_count": 29,
+    "benchmark_note": "Nasdaq benchmark data is used only for relative context; ^IXIC is preferred and ONEQ/QQQ are explicit free-data proxy fallbacks if index history is unavailable. Benchmark tickers are never included in stock selection, holdings, or factor ranking.",
+    "benchmark_return_count": 87,
     "benchmark_succeeded_tickers": [
-      "^IXIC"
+      "^IXIC",
+      "ONEQ",
+      "QQQ"
     ],
     "benchmark_tickers": [
-      "^IXIC"
+      "^IXIC",
+      "ONEQ",
+      "QQQ"
     ],
     "coverage_denominator": "emitted_portfolio_return_periods_per_factor_including_zero_holding_attempts",
     "current_screen_note": "Universe membership and market-cap filters use the supplied/current metadata snapshot; they are not historical point-in-time constituent or market-cap screens.",
@@ -96468,7 +97052,7 @@
     "factor_library_note": "Factor-zoo mode ranks the best factor among the tested candidate definitions in this run; it is exploratory and not an out-of-sample or multiple-testing-adjusted anomaly discovery claim.",
     "factor_library_size": 318,
     "factor_preset": "zoo",
-    "fetched_at": "2026-06-11T06:08:41.955711Z",
+    "fetched_at": "2026-06-11T06:32:46.791539Z",
     "filter_fallback_reason": "none",
     "holdout_validation": {
       "best_factor_holdout_cagr": 0.17806433163153534,
@@ -96483,7 +97067,7 @@
     "market_cap_filter_attempted": false,
     "market_cap_filter_basis": "not_applied",
     "market_cap_filter_effective": false,
-    "price_ticker_count": 9,
+    "price_ticker_count": 11,
     "provider": "csv",
     "provider_version": "stdlib",
     "ranking_formula": {
@@ -96510,7 +97094,7 @@
     "requested_factor_preset": "zoo",
     "selected_factor_count": 318,
     "skip_resolution_note": "Actionable skips are recorded by reason. Missing point-in-time fundamentals, current-universe bias, same-close timing, and free-provider availability remain explicit research constraints; OHLCV-only families avoid those fundamental skips when fundamentals are unavailable.",
-    "source_hash": "94036224fdfd31a9",
+    "source_hash": "25f609482e5a7faf",
     "source_kind": "csv",
     "tested_factor_count": 318,
     "timing_convention": "Research convention: signals at date t use closing data available through t; reported returns are close-to-close from t to the next rebalance close. This is not an intraday trade-execution model and same-close portfolio formation can be optimistic versus executable next-session trading.",
@@ -104921,15 +105505,15 @@
       "skip_reason": "empty_after_filters"
     },
     {
-      "count": 6786,
+      "count": 20358,
       "skip_reason": "inactive_or_non_stock"
     },
     {
-      "count": 19836,
+      "count": 24244,
       "skip_reason": "insufficient_history"
     },
     {
-      "count": 1682,
+      "count": 2146,
       "skip_reason": "missing_fundamentals"
     },
     {
@@ -104999,13 +105583,13 @@
     "effective_factor_count": 304,
     "factor_library_size": 318,
     "factor_preset": "zoo",
-    "fetched_at": "2026-06-11T06:08:41.955711Z",
+    "fetched_at": "2026-06-11T06:32:46.791539Z",
     "holding_count": 3,
     "interpretation_label": "in_sample_exploratory_with_recent_holdout_check",
     "provider": "csv",
     "ranking_count": 304,
     "selected_factor_count": 318,
-    "source_hash": "94036224fdfd31a9",
+    "source_hash": "25f609482e5a7faf",
     "static_data_warning": "Static snapshot generated from a prior run; not live market data or investment advice.",
     "tested_factor_count": 318,
     "universe_as_of_date": "2026-06-10"

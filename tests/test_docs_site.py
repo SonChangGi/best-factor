@@ -180,6 +180,13 @@ class DocsSiteTest(unittest.TestCase):
             ], {{ key: 'all', label: '전체', periods: Infinity }}, 12);
             if (Math.abs(reboundMetrics.maxDrawdown) > 0.000001) throw new Error(`bad rebased MDD ${{reboundMetrics.maxDrawdown}}`);
             if (context.__bestFactorDashboard.benchmarkLabelForTest(comparisonPayload) !== 'Nasdaq Composite (^IXIC)') throw new Error('bad benchmark label');
+            const proxyPayload = {{
+              metadata: {{ benchmark_label: 'Nasdaq Composite', benchmark_tickers: ['^IXIC', 'ONEQ'], rebalance_frequency: 'M' }},
+              benchmark_returns: [
+                {{ benchmark: 'Nasdaq Composite ETF proxy', ticker: 'ONEQ', period_start: '2025-01-31', period_end: '2025-02-28', return: 0.03 }},
+              ],
+            }};
+            if (context.__bestFactorDashboard.benchmarkLabelForTest(proxyPayload) !== 'Nasdaq Composite ETF proxy (ONEQ)') throw new Error('bad proxy benchmark label');
             """
         )
         completed = subprocess.run(["node", "-e", script], cwd=ROOT, text=True, capture_output=True)
@@ -266,7 +273,7 @@ class DocsSiteTest(unittest.TestCase):
             "MARKET_CAP_ELIGIBLE_COUNT",
             "market_cap_metadata_insufficient_preflight",
             "--top-n \"${TOP_N}\"",
-            "--benchmark-tickers '^IXIC'",
+            "--benchmark-tickers '^IXIC' ONEQ QQQ",
         ]:
             self.assertIn(marker, workflow)
         self.assertNotIn("30 22 * * 1-5", workflow)

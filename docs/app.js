@@ -452,8 +452,8 @@
   function benchmarkLabel(payload) {
     const metadata = payload.metadata || {};
     const rows = benchmarkReturnRows(payload);
-    const label = metadata.benchmark_label || (rows[0] || {}).benchmark || 'Nasdaq Composite';
-    const ticker = Array.isArray(metadata.benchmark_tickers) ? metadata.benchmark_tickers[0] : (rows[0] || {}).ticker;
+    const label = (rows[0] || {}).benchmark || metadata.benchmark_label || 'Nasdaq Composite';
+    const ticker = (rows[0] || {}).ticker || (Array.isArray(metadata.benchmark_tickers) ? metadata.benchmark_tickers[0] : '');
     return ticker ? `${label} (${ticker})` : label;
   }
 

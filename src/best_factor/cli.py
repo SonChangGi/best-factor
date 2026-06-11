@@ -259,8 +259,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "benchmark_failed_tickers": benchmark_provider_metadata.get("failed_tickers", [] if benchmark_returns else benchmark_tickers),
         "benchmark_error": benchmark_provider_metadata.get("error"),
         "benchmark_note": (
-            "Nasdaq benchmark is a non-investable index comparator used only for relative context; "
-            "it is not included in stock selection, holdings, or factor ranking."
+            "Nasdaq benchmark data is used only for relative context; ^IXIC is preferred and ONEQ/QQQ "
+            "are explicit free-data proxy fallbacks if index history is unavailable. Benchmark tickers "
+            "are never included in stock selection, holdings, or factor ranking."
         ),
         "tested_factor_count": tested_factor_count,
         "effective_factor_count": effective_factor_count,
@@ -386,6 +387,7 @@ def _benchmark_prices_from_csv(prices: list[dict[str, object]], symbols: list[st
 def _benchmark_label(ticker: str) -> str:
     labels = {
         "^IXIC": "Nasdaq Composite",
+        "ONEQ": "Nasdaq Composite ETF proxy",
         "^NDX": "Nasdaq-100",
         "QQQ": "Nasdaq-100 ETF proxy",
     }

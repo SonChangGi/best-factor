@@ -240,7 +240,7 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(benchmark_returns[0]["ticker"], "^IXIC")
         self.assertEqual(metadata["benchmark_tickers"], ["^IXIC"])
         self.assertEqual(metadata["benchmark_return_count"], len(benchmark_returns))
-        self.assertIn("not included in stock selection", metadata["benchmark_note"])
+        self.assertIn("never included in stock selection", metadata["benchmark_note"])
 
     def test_yfinance_benchmark_failure_records_error_without_aborting_stock_run(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -306,6 +306,84 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(metadata["benchmark_succeeded_tickers"], [])
         self.assertEqual(metadata["benchmark_failed_tickers"], ["^IXIC"])
         self.assertIn("RuntimeError: benchmark provider unavailable", metadata["benchmark_error"])
+
+    def test_yfinance_benchmark_proxy_records_actual_available_ticker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            output_dir = tmp_path / "out"
+            cache_dir = tmp_path / "cache"
+            stock_prices = load_prices_csv(FIXTURES / "prices.csv")
+            benchmark_prices = []
+            for row in stock_prices:
+                if row["ticker"] != "AAA":
+                    continue
+                cloned = dict(row)
+                cloned["ticker"] = "ONEQ"
+                cloned["source"] = "fixture_benchmark_proxy"
+                benchmark_prices.append(cloned)
+
+            def fake_fetch(tickers, period, cache_dir_arg):
+                if list(tickers) == ["^IXIC", "ONEQ"]:
+                    return benchmark_prices, {
+                        "provider": "yfinance",
+                        "provider_version": "test",
+                        "fetched_at": "2026-06-11T00:00:00Z",
+                        "source": "yfinance:test",
+                        "cache_dir": str(cache_dir_arg),
+                        "succeeded_tickers": ["ONEQ"],
+                        "failed_tickers": ["^IXIC"],
+                    }
+                return stock_prices, {
+                    "provider": "yfinance",
+                    "provider_version": "test",
+                    "fetched_at": "2026-06-11T00:00:00Z",
+                    "source": "yfinance:test",
+                    "cache_dir": str(cache_dir_arg),
+                    "succeeded_tickers": list(tickers),
+                    "failed_tickers": [],
+                }
+
+            args = cli_module.build_parser().parse_args([
+                "run",
+                "--provider",
+                "yfinance",
+                "--tickers",
+                "AAA",
+                "BBB",
+                "CCC",
+                "--period",
+                "5y",
+                "--cache-dir",
+                str(cache_dir),
+                "--universe-file",
+                str(FIXTURES / "universe.csv"),
+                "--fundamentals-file",
+                str(FIXTURES / "fundamentals.csv"),
+                "--output-dir",
+                str(output_dir),
+                "--rebalance",
+                "M",
+                "--top-n",
+                "3",
+                "--factor-preset",
+                "core",
+                "--benchmark-tickers",
+                "^IXIC",
+                "ONEQ",
+            ])
+
+            with mock.patch("best_factor.cli.fetch_yfinance_prices", side_effect=fake_fetch):
+                cli_module.run(args)
+
+            metadata = json.loads((output_dir / "run_metadata.json").read_text())
+            benchmark_returns = _read_csv(output_dir / "benchmark_returns.csv")
+
+        self.assertTrue(benchmark_returns)
+        self.assertEqual(benchmark_returns[0]["benchmark"], "Nasdaq Composite ETF proxy")
+        self.assertEqual(benchmark_returns[0]["ticker"], "ONEQ")
+        self.assertEqual(metadata["benchmark_tickers"], ["^IXIC", "ONEQ"])
+        self.assertEqual(metadata["benchmark_succeeded_tickers"], ["ONEQ"])
+        self.assertEqual(metadata["benchmark_failed_tickers"], ["^IXIC"])
 
     def test_skipped_reasons_are_stable(self):
         out = self.run_cli("--top-n", "99")

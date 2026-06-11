@@ -94,7 +94,7 @@ jobs:
             --top-n "${TOP_N}"
             --weighting score
             --factor-preset zoo
-            --benchmark-tickers '^IXIC'
+            --benchmark-tickers '^IXIC' ONEQ QQQ
             --min-dollar-volume 50000000
             --transaction-cost-bps 5
             --universe-file /tmp/best-factor-universe.csv

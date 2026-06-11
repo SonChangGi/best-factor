@@ -117,7 +117,7 @@ class SiteExportTest(unittest.TestCase):
                         "benchmark_return_count": 1,
                         "benchmark_succeeded_tickers": ["^IXIC"],
                         "benchmark_failed_tickers": [],
-                        "benchmark_note": "Nasdaq benchmark is a non-investable index comparator.",
+                        "benchmark_note": "Nasdaq benchmark is a non-investable index comparator; proxy fallbacks are explicit.",
                         "tested_factor_count": 2,
                         "effective_factor_count": 1,
                         "factor_preset": "zoo",
@@ -209,7 +209,7 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["metadata"]["rebalance_frequency"], "M")
         self.assertEqual(payload["metadata"]["benchmark_tickers"], ["^IXIC"])
         self.assertEqual(payload["metadata"]["benchmark_return_count"], 1)
-        self.assertIn("non-investable", payload["metadata"]["benchmark_note"])
+        self.assertIn("proxy fallbacks", payload["metadata"]["benchmark_note"])
         self.assertEqual(payload["metadata"]["factor_category_counts"], {"momentum": 90, "risk": 25})
         self.assertEqual(payload["metadata"]["factor_kind_counts"], {"momentum": 80, "price_volume_corr": 5})
         self.assertEqual(payload["factor_family_summary"][0]["category"], "accumulation")
