@@ -138,7 +138,16 @@ gh workflow run update-dashboard.yml --repo SonChangGi/best-factor --ref main
 ```
 
 The workflow pins the live yfinance dependency, runs network-free tests plus syntax/static import checks before live generation, archives each generated run artifact, and uses GitHub Pages custom workflow deployment (`actions/configure-pages`, `actions/upload-pages-artifact`, and `actions/deploy-pages`) so the generated `docs/` artifact is published by that same run. It intentionally does not rely on a workflow self-commit to trigger a branch-based Pages build.
-For manual and scheduled updates, the deployed Pages artifact is the freshness source of truth; the checked-in `docs/data/latest-results.json` is a seed/sample until the next workflow artifact is deployed.
+
+### KST daily update automation
+
+The only automated deployment target is `SonChangGi/best-factor`. The workflow schedules are written in UTC but map to Korea Standard Time:
+
+- `0 0 * * *` → **09:00 KST** primary daily refresh. It always regenerates the live yfinance run.
+- `0 1 * * *` → **10:00 KST** fallback freshness check. It reruns only if the deployed `latest-results.json` is missing, broken, not generated today in KST, or has `data_end_date` older than the latest expected US regular trading session.
+- `0 3 * * *` → **12:00 KST** second fallback check for provider/API delays. It uses the same stale/missing-data gate and skips if the 09:00/10:00 result is already current.
+
+For manual and scheduled updates, the deployed Pages artifact is the freshness source of truth; the checked-in `docs/data/latest-results.json` is a seed/sample until the next workflow artifact is deployed. The freshness gate is implemented in `.github/scripts/check_dashboard_freshness.py` with a small NYSE holiday/weekend calendar so Korean-morning checks do not demand impossible weekend/holiday data.
 
 ### Live dashboard universe
 

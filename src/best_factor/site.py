@@ -12,6 +12,14 @@ from .schemas import CAVEATS, HOLDING_COLUMNS, METRIC_COLUMNS, RANKING_COLUMNS
 
 SCHEMA_VERSION = 1
 STATIC_DATA_WARNING = "Static snapshot generated from a prior run; not live market data or investment advice."
+UPDATE_AUTOMATION = {
+    "timezone": "Asia/Seoul",
+    "primary_refresh_kst": "09:00",
+    "fallback_refresh_kst": ["10:00", "12:00"],
+    "fallback_policy": "10:00/12:00 KST scheduled checks rerun only when the deployed JSON is missing, not generated today in KST, or data_end_date is older than the latest expected US regular session.",
+    "manual_update_method": "GitHub Actions workflow_dispatch",
+    "manual_update_note": "Static GitHub Pages cannot run Python in the browser; the button opens the authorized GitHub Actions workflow run page.",
+}
 
 RANKING_NUMERIC_COLUMNS = set(RANKING_COLUMNS) - {"factor"}
 METRIC_NUMERIC_COLUMNS = set(METRIC_COLUMNS) - {"factor"}
@@ -132,6 +140,7 @@ def build_site_payload(
         "factor_catalog": factor_catalog,
         "factor_family_summary": factor_family_summary,
         "metadata": public_metadata,
+        "automation": UPDATE_AUTOMATION,
         "caveats": [str(c) for c in caveats],
     }
     return payload

@@ -41,3 +41,15 @@ python -m http.server --directory docs 8000
 Open `http://127.0.0.1:8000/`. Opening `index.html` directly with `file://` may block JSON loading in some browsers, so serve the directory over HTTP or GitHub Pages.
 
 Interpretation note: the displayed winner is the best factor among tested candidates in that run, not an out-of-sample-validated anomaly or investment recommendation.
+
+## Update automation
+
+The deployed `best-factor` page is refreshed by the `SonChangGi/best-factor` GitHub Actions workflow only. Cron is UTC, so the active schedules are:
+
+- `0 0 * * *` = 09:00 KST primary refresh.
+- `0 1 * * *` = 10:00 KST freshness fallback.
+- `0 3 * * *` = 12:00 KST second fallback.
+
+Fallback runs first inspect the deployed `docs/data/latest-results.json`; they skip deployment when the JSON was generated today in KST and already covers the latest expected US regular session. The dashboard's manual update button opens the same workflow dispatch page because a static GitHub Pages site cannot safely run Python or store a GitHub token in the browser.
+
+The economic read-through panel is an explanatory layer over the generated metrics. It does not turn the exploratory factor-zoo winner into investment advice; it highlights economic rationale, risk-adjusted metrics, holdout robustness, concentration, and execution caveats.

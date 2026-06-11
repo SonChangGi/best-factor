@@ -7,6 +7,13 @@
   const WORKFLOW_FILE = 'update-dashboard.yml';
   const WORKFLOW_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE}`;
   const WORKFLOW_COMMAND = `gh workflow run ${WORKFLOW_FILE} --repo ${REPO_OWNER}/${REPO_NAME} --ref main`;
+  const UPDATE_AUTOMATION_DEFAULT = {
+    timezone: 'Asia/Seoul',
+    primary_refresh_kst: '09:00',
+    fallback_refresh_kst: ['10:00', '12:00'],
+    fallback_policy: '10:00/12:00 KST scheduled checks rerun only when the deployed JSON is missing, not generated today in KST, or data_end_date is older than the latest expected US regular session.',
+    manual_update_method: 'GitHub Actions workflow_dispatch'
+  };
   const RANKING_DEFAULT_TOP = 20;
   const state = { payload: null, sortMetric: 'composite_score', topN: RANKING_DEFAULT_TOP, filter: '', selectedFactors: new Set() };
 
@@ -25,6 +32,7 @@
     const addCompare = q('#add-factor-compare');
     const clearCompare = q('#clear-factor-compare');
     const workflowLink = q('#workflow-link');
+    const manualUpdateLink = q('#manual-update-link');
     const workflowCommand = q('#workflow-command');
     const copyButton = q('#copy-command');
 
@@ -59,6 +67,7 @@
       });
     }
     if (workflowLink) workflowLink.href = WORKFLOW_URL;
+    if (manualUpdateLink) manualUpdateLink.href = WORKFLOW_URL;
     if (workflowCommand) workflowCommand.textContent = WORKFLOW_COMMAND;
     if (copyButton) copyButton.addEventListener('click', copyWorkflowCommand);
   }
@@ -101,6 +110,8 @@
     if (!payload) return;
     renderStatus(payload);
     renderSummary(payload);
+    renderUpdatePanel(payload);
+    renderEconomicAnalysis(payload);
     renderFactorExplanations(payload);
     renderDiagnostics(payload);
     renderFactorReturnChart(payload);
@@ -121,6 +132,7 @@
       statusLine('상태', '정적 JSON 로드 완료'),
       statusLine('생성', payload.generated_at),
       statusLine('데이터 기준', summary.data_end_date || payload.data_scope),
+      statusLine('자동 갱신', updateScheduleText(payload)),
       statusLine('최고 팩터', summary.best_factor),
       statusLine('주의', summary.static_data_warning)
     ];
@@ -145,6 +157,58 @@
     ];
     const nodes = cards.map(([label, value, help], index) => card(label, value, help, index === 0 ? '탐색적 · out-of-sample 아님' : ''));
     q('#summary-cards').replaceChildren(...nodes);
+  }
+
+  function renderUpdatePanel(payload) {
+    const automation = automationConfig(payload);
+    const scheduleList = q('#update-schedule-list');
+    if (scheduleList) {
+      scheduleList.replaceChildren(
+        scheduleItem(`${automation.primary_refresh_kst} KST`, '기본 자동 업데이트: 새 데이터를 받아 백테스트·랭킹·Pages 배포를 실행합니다.'),
+        ...automation.fallback_refresh_kst.map((time) => scheduleItem(`${time} KST`, 'fallback 최신성 확인: 공개 JSON이 없거나 stale이면 다시 실행하고, 이미 최신이면 비용 절약을 위해 스킵합니다.'))
+      );
+    }
+    setText('#update-status', `${updateScheduleText(payload)} · 수동 업데이트는 GitHub Actions workflow_dispatch 권한이 필요합니다.`);
+    const detail = `마지막 생성 ${fmtKst(payload.generated_at)} · 데이터 기준 ${fmtText((payload.summary || {}).data_end_date || (payload.metadata || {}).data_end_date)} · 판정 정책: ${automation.fallback_policy || UPDATE_AUTOMATION_DEFAULT.fallback_policy}`;
+    setText('#freshness-detail', detail);
+  }
+
+  function renderEconomicAnalysis(payload) {
+    const root = q('#economic-analysis-grid');
+    if (!root) return;
+    const summary = payload.summary || {};
+    const rankings = payload.rankings || [];
+    const best = rankings[0] || {};
+    const metrics = metricForFactor(payload, summary.best_factor || best.factor) || best;
+    const meta = factorMeta(payload, summary.best_factor || best.factor) || {};
+    const holdings = payload.latest_holdings || [];
+    const topWeight = Math.max(...holdings.map((row) => Number(row.weight) || 0), 0);
+    const totalWeight = sumWeights(holdings);
+    const holdout = holdoutSummary(summary, payload.metadata || {});
+    const category = meta.category || 'unknown';
+
+    root.replaceChildren(
+      analysisCard('경제적 가설', economicNarrative(category), [
+        ['팩터군', familyTitle(category)],
+        ['팩터 설명', meta.description || '카탈로그 설명 없음'],
+        ['신호 종류', meta.kind || 'unknown'],
+      ]),
+      analysisCard('성과와 위험의 균형', '단순 수익률보다 Sharpe·Sortino·Calmar·MDD를 함께 본 종합 점수 기준입니다. 높은 CAGR이라도 MDD나 변동성이 크면 랭킹에서 불리합니다.', [
+        ['CAGR', fmtPct(metrics.cagr)],
+        ['Sharpe / Sortino', `${fmtNumber(metrics.sharpe, 2)} / ${fmtNumber(metrics.sortino, 2)}`],
+        ['Calmar / MDD', `${fmtNumber(metrics.calmar, 2)} / ${fmtPct(metrics.max_drawdown)}`],
+      ]),
+      analysisCard('견고성 체크', '최근 tail holdout은 완전한 untouched OOS가 아니라 후보 팩터의 최근 구간 재검산입니다. 그래도 전체 기간 1위가 최근 구간에서도 완전히 붕괴했는지 확인하는 보조 안전장치입니다.', [
+        ['Holdout', holdout],
+        ['Coverage', fmtPct(metrics.coverage)],
+        ['Turnover', fmtPct(metrics.turnover)],
+      ]),
+      analysisCard('실행 전 점검', '표시 비중은 연구용 close-to-close 모델 포트폴리오입니다. 실제 운용 전 다음 세션 체결, 슬리피지, 세금, 집중도, 섹터 편중, 유동성 한도를 별도로 검증해야 합니다.', [
+        ['보유 종목 수', holdings.length],
+        ['최대 단일 비중', fmtPct(topWeight)],
+        ['비중 합계', fmtPct(totalWeight)],
+      ])
+    );
   }
 
   function renderDiagnostics(payload) {
@@ -546,6 +610,77 @@
     return labels[category] || fmtText(category);
   }
 
+  function automationConfig(payload) {
+    const automation = payload && payload.automation && typeof payload.automation === 'object' ? payload.automation : {};
+    return {
+      ...UPDATE_AUTOMATION_DEFAULT,
+      ...automation,
+      fallback_refresh_kst: Array.isArray(automation.fallback_refresh_kst) && automation.fallback_refresh_kst.length ? automation.fallback_refresh_kst : UPDATE_AUTOMATION_DEFAULT.fallback_refresh_kst,
+    };
+  }
+
+  function updateScheduleText(payload) {
+    const automation = automationConfig(payload || {});
+    return `${automation.primary_refresh_kst} KST 자동 · ${automation.fallback_refresh_kst.join('/')} KST 실패 방지`;
+  }
+
+  function scheduleItem(time, description) {
+    const li = document.createElement('li');
+    li.append(strong(time), span(description));
+    return li;
+  }
+
+  function fmtKst(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return fmtText(value);
+    return date.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false });
+  }
+
+  function metricForFactor(payload, factorName) {
+    const name = String(factorName || '');
+    return (payload.metrics || []).find((row) => String(row.factor || '') === name);
+  }
+
+  function economicNarrative(category) {
+    const narratives = {
+      accumulation: '가격 상승이 거래대금·거래량 확인과 함께 나타나는지를 보며, 단순 가격 추세보다 수급 확인이 붙은 추세를 선호합니다.',
+      composite: '여러 독립 신호를 결합해 특정 한 신호의 과최적화 위험을 낮추려는 접근입니다.',
+      distribution: '수익률 분포의 비대칭성·안정성을 이용해 불리한 꼬리 또는 불안정한 수익 패턴을 피하려는 접근입니다.',
+      intraday: '장중과 오버나잇 수익률 패턴 차이를 활용하지만, 실제 체결 가능성과 비용 민감도가 특히 큽니다.',
+      liquidity: '거래대금·회전율이 충분하고 가격 충격 위험이 낮은 종목을 선호해 실행 가능성을 높이려는 접근입니다.',
+      momentum: '투자자 과소반응, 추세 추종 수급, 리스크 프리미엄으로 설명되는 가격 지속성을 포착하려는 접근입니다.',
+      reversal: '짧은 기간 과잉반응 이후 평균회귀를 기대하는 신호입니다. 시장 국면 전환에는 빠르지만 비용과 잡음에 민감합니다.',
+      risk: '낮은 변동성·낮은 손실 꼬리를 선호해 위험조정 성과를 개선하려는 접근입니다.',
+      risk_adjusted_momentum: '강한 추세를 선호하되 변동성이 큰 불안정한 상승을 벌점 처리해 momentum crash 위험을 줄이려는 접근입니다.',
+      tail: '극단 손실과 하방 꼬리 위험을 줄여 장기 복리 훼손을 방지하려는 접근입니다.',
+      trend: '여러 이동평균·추세 품질 조건으로 가격 방향성이 지속되는 종목을 선호합니다.',
+      trend_quality: '수익률 경로가 매끄럽고 일관된 추세인지 평가해 급등락성 모멘텀을 구분합니다.',
+      value: '가격 대비 펀더멘털 매력이 높은 종목을 선호하지만 무료 데이터의 PIT 한계 때문에 해석에 주의가 필요합니다.',
+      quality: '수익성·재무 품질이 높은 기업을 선호하지만 무료 fundamental coverage와 시점 정합성 한계를 확인해야 합니다.',
+      growth: '성장성이 높은 종목을 선호하지만 valuation risk와 데이터 공백에 민감합니다.',
+    };
+    return narratives[category] || '현재 1위 팩터의 경제적 의미는 카탈로그 메타데이터와 성과·위험 지표를 함께 확인해 해석해야 합니다.';
+  }
+
+  function analysisCard(title, body, facts) {
+    const article = el('article', 'analysis-card');
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    const paragraph = document.createElement('p');
+    paragraph.textContent = body;
+    const dl = el('dl', 'kv-list');
+    facts.forEach(([key, value]) => {
+      const dt = document.createElement('dt');
+      const dd = document.createElement('dd');
+      dt.textContent = fmtText(key);
+      dd.textContent = fmtText(value);
+      dl.append(dt, dd);
+    });
+    article.append(heading, paragraph, dl);
+    return article;
+  }
+
   function option(value, label) {
     const node = document.createElement('option');
     node.value = value;
@@ -769,7 +904,9 @@
       metricSortValueForTest: metricSortValue,
       clampPctForTest: clampPct,
       workflowUrlForTest: WORKFLOW_URL,
-      workflowCommandForTest: WORKFLOW_COMMAND
+      workflowCommandForTest: WORKFLOW_COMMAND,
+      updateScheduleTextForTest: updateScheduleText,
+      economicNarrativeForTest: economicNarrative
     };
   }
 })();

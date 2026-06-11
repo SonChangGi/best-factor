@@ -82,15 +82,24 @@
     <section class="panel update-panel" aria-labelledby="update-title">
       <div class="panel-heading">
         <div>
-          <p class="eyebrow">Update</p>
-          <h2 id="update-title">최신 데이터 갱신</h2>
+          <p class="eyebrow">Update automation</p>
+          <h2 id="update-title">자동·수동 최신 데이터 갱신</h2>
         </div>
-        <p>정적 페이지 자체는 계산을 실행할 수 없습니다. 저장소 권한이 있는 사용자가 새 Best Factor 저장소의 GitHub Actions 워크플로를 열어 실행하면, 워크플로가 yfinance 무료 데이터를 다시 받아 Pages artifact로 배포합니다.</p>
+        <p>Best Factor 전용 GitHub Actions가 한국 시간 기준 매일 09:00에 yfinance 무료 데이터를 새로 받고, 10:00와 12:00에는 공개 JSON이 없거나 stale이면 다시 실행합니다.</p>
       </div>
       <div class="update-grid">
         <div>
-          <a id="workflow-link" class="button" href="https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml" target="_blank" rel="noopener noreferrer">GitHub Actions 업데이트 워크플로 열기</a>
+          <div class="update-actions">
+            <a id="manual-update-link" class="button" href="https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml" target="_blank" rel="noopener noreferrer" role="button">수동 업데이트 실행 화면 열기</a>
+            <a id="workflow-link" class="button secondary" href="https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml" target="_blank" rel="noopener noreferrer">워크플로 상태 보기</a>
+          </div>
+          <ul id="update-schedule-list" class="schedule-list">
+            <li><strong>09:00 KST</strong> 기본 자동 업데이트</li>
+            <li><strong>10:00 KST</strong> stale/missing 데이터 감지 시 재실행</li>
+            <li><strong>12:00 KST</strong> 공급자 지연·일시 실패 대비 2차 확인</li>
+          </ul>
           <p id="update-status" class="helper" role="status" aria-live="polite">저장소 권한 필요 · 실행 완료 후 이 페이지의 생성 시각과 데이터 기준일을 확인하세요.</p>
+          <p id="freshness-detail" class="helper">공개 JSON의 generated_at과 data_end_date를 기준으로 최신성 게이트를 판단합니다.</p>
         </div>
         <div class="command-card" aria-label="CLI workflow dispatch command">
           <span>CLI 실행 예시</span>
@@ -98,6 +107,17 @@
           <button id="copy-command" type="button">명령 복사</button>
         </div>
       </div>
+    </section>
+
+    <section class="panel economic-panel" aria-labelledby="economic-analysis-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Economic read-through</p>
+          <h2 id="economic-analysis-title">경제적 해석과 전략 완성도 점검</h2>
+        </div>
+        <p>현재 1위 팩터가 왜 작동했을 수 있는지, 위험조정 성과가 얼마나 견고한지, 실제 운용 전 무엇을 추가로 확인해야 하는지 데이터 기반으로 요약합니다.</p>
+      </div>
+      <div id="economic-analysis-grid" class="analysis-grid" aria-live="polite"></div>
     </section>
 
     <section class="panel diagnostics-panel" aria-labelledby="diagnostics-title">

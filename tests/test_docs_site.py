@@ -37,7 +37,14 @@ class DocsSiteTest(unittest.TestCase):
             "metadata-title",
             "caveats-title",
             "update-title",
-            "GitHub Actions 업데이트 워크플로 열기",
+            "수동 업데이트 실행 화면 열기",
+            "워크플로 상태 보기",
+            "update-schedule-list",
+            "09:00 KST",
+            "10:00 KST",
+            "12:00 KST",
+            "economic-analysis-title",
+            "economic-analysis-grid",
             "저장소 권한 필요",
         ]:
             self.assertIn(marker, html)
@@ -49,7 +56,8 @@ class DocsSiteTest(unittest.TestCase):
         self.assertNotIn("@import", combined)
         self.assertNotRegex(combined, r"url\(\s*['\"]?https?://")
         hrefs = re.findall(r"href=[\"'](http[^\"']+)[\"']", combined)
-        self.assertEqual(hrefs, ["https://github.com/sonchanggi/best-factor/actions/workflows/update-dashboard.yml"])
+        self.assertTrue(hrefs)
+        self.assertEqual(set(hrefs), {"https://github.com/sonchanggi/best-factor/actions/workflows/update-dashboard.yml"})
 
     def test_docs_and_workflow_are_isolated_from_old_project(self):
         targets = [ROOT / "README.md", ROOT / "pyproject.toml", ROOT / "src", ROOT / "tests", ROOT / "docs", ROOT / ".github"]
@@ -84,6 +92,10 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("market_cap_filter_basis", app)
         self.assertIn("RANKING_DEFAULT_TOP = 20", app)
         self.assertIn("Holdout 보조 검증", app)
+        self.assertIn("UPDATE_AUTOMATION_DEFAULT", app)
+        self.assertIn("manual-update-link", app)
+        self.assertIn("renderEconomicAnalysis", app)
+        self.assertIn("economicNarrative", app)
         self.assertIn("rankingRowsForDisplayForTest", app)
         self.assertIn("Number.isFinite(numeric) ? numeric : Number.NEGATIVE_INFINITY", app)
         self.assertNotIn("|| -Infinity", app)
@@ -120,6 +132,9 @@ class DocsSiteTest(unittest.TestCase):
             if (displayed.length !== 21) throw new Error(`bad length ${{displayed.length}}`);
             if (displayed[19] !== 'factor_20' || displayed[20] !== 'factor_25') throw new Error(displayed.join(','));
             if (context.__bestFactorDashboard.workflowUrlForTest !== 'https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml') throw new Error('bad workflow URL');
+            const scheduleText = context.__bestFactorDashboard.updateScheduleTextForTest({{ automation: {{ primary_refresh_kst: '09:00', fallback_refresh_kst: ['10:00', '12:00'] }} }});
+            if (!scheduleText.includes('09:00 KST') || !scheduleText.includes('10:00/12:00 KST')) throw new Error(scheduleText);
+            if (!context.__bestFactorDashboard.economicNarrativeForTest('momentum').includes('가격 지속성')) throw new Error('bad economic narrative');
             """
         )
         completed = subprocess.run(["node", "-e", script], cwd=ROOT, text=True, capture_output=True)
@@ -127,7 +142,7 @@ class DocsSiteTest(unittest.TestCase):
 
     def test_sample_json_matches_schema_and_freshness_contract(self):
         payload = json.loads((DOCS / "data" / "latest-results.json").read_text(encoding="utf-8"))
-        for key in ["schema_version", "generated_at", "data_scope", "summary", "rankings", "metrics", "latest_holdings", "skipped_reasons", "holdout_rankings", "holdout_metrics", "factor_catalog", "factor_family_summary", "metadata", "caveats"]:
+        for key in ["schema_version", "generated_at", "data_scope", "summary", "rankings", "metrics", "latest_holdings", "skipped_reasons", "holdout_rankings", "holdout_metrics", "factor_catalog", "factor_family_summary", "metadata", "automation", "caveats"]:
             self.assertIn(key, payload)
         self.assertEqual(payload["schema_version"], 1)
         self.assertRegex(payload["generated_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -159,6 +174,10 @@ class DocsSiteTest(unittest.TestCase):
         self.assertFalse(payload["metadata"].get("universe_is_point_in_time"))
         self.assertIn("same-close", payload["metadata"].get("timing_convention", ""))
         self.assertIn("multiple-testing", " ".join(payload["caveats"]))
+        self.assertEqual(payload["automation"].get("timezone"), "Asia/Seoul")
+        self.assertEqual(payload["automation"].get("primary_refresh_kst"), "09:00")
+        self.assertIn("10:00", payload["automation"].get("fallback_refresh_kst", []))
+        self.assertIn("12:00", payload["automation"].get("fallback_refresh_kst", []))
 
     def test_hostile_json_would_not_be_injected_into_static_shell(self):
         html = (DOCS / "index.html").read_text(encoding="utf-8")
@@ -173,6 +192,12 @@ class DocsSiteTest(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "update-dashboard.yml").read_text(encoding="utf-8")
         for marker in [
             "workflow_dispatch",
+            "cron: \"0 0 * * *\"",
+            "cron: \"0 1 * * *\"",
+            "cron: \"0 3 * * *\"",
+            "Check KST dashboard freshness gate",
+            "check_dashboard_freshness.py",
+            "steps.freshness.outputs.should_update == 'true'",
             "contents: read",
             "pages: write",
             "id-token: write",
@@ -190,6 +215,7 @@ class DocsSiteTest(unittest.TestCase):
             "--top-n \"${TOP_N}\"",
         ]:
             self.assertIn(marker, workflow)
+        self.assertNotIn("30 22 * * 1-5", workflow)
         self.assertNotIn("if ! python -m best_factor.cli run", workflow)
         self.assertNotIn("git commit", workflow)
         self.assertNotIn("git push", workflow)

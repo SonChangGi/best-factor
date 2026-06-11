@@ -3,7 +3,12 @@ name: Update Best Factor Dashboard
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 22 * * 1-5"
+    # 09:00 KST primary refresh. GitHub cron is UTC.
+    - cron: "0 0 * * *"
+    # 10:00 KST stale/missing-data fallback check.
+    - cron: "0 1 * * *"
+    # 12:00 KST second fallback check for provider/API delays.
+    - cron: "0 3 * * *"
   push:
     branches: [main]
     paths:
@@ -14,6 +19,7 @@ on:
       - ".github/workflows/update-dashboard.yml"
       - ".github/best-factor-dashboard-tickers.txt"
       - ".github/scripts/build_live_universe.py"
+      - ".github/scripts/check_dashboard_freshness.py"
 
 permissions:
   contents: read
@@ -42,19 +48,31 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
+      - name: Check KST dashboard freshness gate
+        id: freshness
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+        run: python .github/scripts/check_dashboard_freshness.py --event-name "$EVENT_NAME" --event-schedule "$EVENT_SCHEDULE"
+
       - name: Install package with live-data extra
+        if: steps.freshness.outputs.should_update == 'true'
         run: python -m pip install -e '.[live]'
 
       - name: Run network-free regression tests
+        if: steps.freshness.outputs.should_update == 'true'
         run: PYTHONPATH=src python -m unittest discover -s tests
 
       - name: Run syntax/static import checks
+        if: steps.freshness.outputs.should_update == 'true'
         run: PYTHONPATH=src python -m compileall -q src tests .github/scripts
 
       - name: Build live yfinance universe metadata
+        if: steps.freshness.outputs.should_update == 'true'
         run: python .github/scripts/build_live_universe.py .github/best-factor-dashboard-tickers.txt /tmp/best-factor-universe.csv
 
       - name: Generate latest dashboard JSON
+        if: steps.freshness.outputs.should_update == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -111,6 +129,7 @@ jobs:
             --data-scope live_yfinance_curated_us_large_liquid_actions
 
       - name: Archive generated run artifacts
+        if: steps.freshness.outputs.should_update == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: best-factor-live-run-${{ github.run_id }}
@@ -123,14 +142,17 @@ jobs:
             docs/data/latest-results.json
 
       - name: Configure GitHub Pages
+        if: steps.freshness.outputs.should_update == 'true'
         uses: actions/configure-pages@v6
 
       - name: Upload static dashboard artifact
+        if: steps.freshness.outputs.should_update == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: docs
 
       - name: Deploy to GitHub Pages
+        if: steps.freshness.outputs.should_update == 'true'
         id: deployment
         env:
           NODE_OPTIONS: --no-deprecation
