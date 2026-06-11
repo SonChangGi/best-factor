@@ -111,7 +111,7 @@ jobs:
             --data-scope live_yfinance_curated_us_large_liquid_actions
 
       - name: Archive generated run artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: best-factor-live-run-${{ github.run_id }}
           if-no-files-found: error

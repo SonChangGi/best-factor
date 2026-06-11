@@ -179,7 +179,7 @@ class DocsSiteTest(unittest.TestCase):
             "actions/configure-pages@v6",
             "actions/upload-pages-artifact@v5",
             "actions/deploy-pages@v5",
-            "actions/upload-artifact@v4",
+            "actions/upload-artifact@v7",
             "github.repository == 'SonChangGi/best-factor'",
             "github.ref == 'refs/heads/main'",
             "live_yfinance_curated_us_large_liquid_actions",
