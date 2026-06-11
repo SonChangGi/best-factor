@@ -35,6 +35,9 @@ body {
 .hero-copy { max-width: 820px; line-height: 1.7; }
 .hero h1 { margin: .25rem 0 1rem; font-size: clamp(2rem, 5vw, 4rem); line-height: 1.05; letter-spacing: -.04em; }
 .hero p { opacity: .94; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.25rem; }
+.hero-link { border-color: rgba(255,255,255,.88); background: #fff; color: var(--accent); }
+.hero-link:hover { filter: brightness(1); transform: translateY(-1px); }
 .eyebrow { margin: 0 0 .35rem; color: var(--accent); font-weight: 800; letter-spacing: .035em; font-size: .78rem; line-height: 1.45; text-transform: uppercase; }
 .hero .eyebrow { color: #c7dcff; }
 .status-card {

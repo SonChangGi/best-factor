@@ -19,6 +19,8 @@ class DocsSiteTest(unittest.TestCase):
         for marker in [
             "미국 주식 팩터 랭킹 대시보드",
             "run-status",
+            "통합 대시보드로 돌아가기",
+            "https://sonchanggi.github.io/quant-dashboard/",
             "summary-cards",
             "visual-dashboard",
             "factor-return-chart",
@@ -59,7 +61,13 @@ class DocsSiteTest(unittest.TestCase):
         self.assertNotRegex(combined, r"url\(\s*['\"]?https?://")
         hrefs = re.findall(r"href=[\"'](http[^\"']+)[\"']", combined)
         self.assertTrue(hrefs)
-        self.assertEqual(set(hrefs), {"https://github.com/sonchanggi/best-factor/actions/workflows/update-dashboard.yml"})
+        self.assertEqual(
+            set(hrefs),
+            {
+                "https://github.com/sonchanggi/best-factor/actions/workflows/update-dashboard.yml",
+                "https://sonchanggi.github.io/quant-dashboard/",
+            },
+        )
 
     def test_docs_and_workflow_are_isolated_from_old_project(self):
         targets = [ROOT / "README.md", ROOT / "pyproject.toml", ROOT / "src", ROOT / "tests", ROOT / "docs", ROOT / ".github"]
@@ -77,7 +85,7 @@ class DocsSiteTest(unittest.TestCase):
         short_repo_paths = re.findall(r"SonChangGi/([A-Za-z0-9_.-]+)", haystack)
         self.assertTrue(page_paths)
         self.assertTrue(repo_paths)
-        self.assertTrue(all(path == "best-factor" for path in page_paths))
+        self.assertTrue(all(path in {"best-factor", "quant-dashboard"} for path in page_paths))
         self.assertTrue(all(path == "best-factor" for path in repo_paths))
         self.assertTrue(all(path == "best-factor" for path in short_repo_paths))
 
