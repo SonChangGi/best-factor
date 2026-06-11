@@ -15,6 +15,22 @@
     manual_update_method: 'GitHub Actions workflow_dispatch'
   };
   const RANKING_DEFAULT_TOP = 20;
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const COMPARISON_PERIODS = [
+    { key: 'all', label: '전체', periods: Infinity },
+    { key: '1y', label: '최근 1년', periods: 12 },
+    { key: '3y', label: '최근 3년', periods: 36 },
+    { key: 'ytd', label: 'YTD', ytd: true },
+  ];
+  const COMPARISON_METRICS = [
+    { key: 'cumulativeReturn', label: '누적 수익률', formatter: fmtPct },
+    { key: 'cagr', label: 'CAGR', formatter: fmtPct },
+    { key: 'sharpe', label: '샤프', formatter: (value) => fmtNumber(value, 2) },
+    { key: 'sortino', label: '소르티노', formatter: (value) => fmtNumber(value, 2) },
+    { key: 'calmar', label: '칼마', formatter: (value) => fmtNumber(value, 2) },
+    { key: 'maxDrawdown', label: 'MDD', formatter: fmtPct },
+    { key: 'volatility', label: '변동성', formatter: fmtPct },
+  ];
   const state = { payload: null, sortMetric: 'composite_score', topN: RANKING_DEFAULT_TOP, filter: '', selectedFactors: new Set() };
 
   const q = (selector) => document.querySelector(selector);
@@ -118,6 +134,7 @@
     renderRiskChart(payload);
     renderWeightChart(payload);
     renderCurrentOutput(payload);
+    renderComparisonPanel(payload);
     renderCompareControls(payload);
     renderRankings(payload);
     renderHoldings(payload);
@@ -370,6 +387,378 @@
     ])));
   }
 
+
+  function renderComparisonPanel(payload) {
+    const chartRoot = q('#comparison-line-chart');
+    const tableRoot = q('#comparison-period-table');
+    if (!chartRoot || !tableRoot) return;
+
+    const summary = payload.summary || {};
+    const bestFactor = String(summary.best_factor || ((payload.rankings || [])[0] || {}).factor || '');
+    const selectedFactor = selectedComparisonFactor(payload, bestFactor);
+    const bestSeries = equitySeriesFromReturns(
+      factorReturnRows(payload, bestFactor),
+      `최고 팩터 ${bestFactor || '—'}`,
+      'best',
+      bestFactor
+    );
+    const selectedSeries = selectedFactor && selectedFactor !== bestFactor
+      ? equitySeriesFromReturns(factorReturnRows(payload, selectedFactor), `선택 팩터 ${selectedFactor}`, 'selected', selectedFactor)
+      : null;
+    const benchmarkSeries = equitySeriesFromReturns(
+      benchmarkReturnRows(payload),
+      benchmarkLabel(payload),
+      'benchmark',
+      (payload.metadata || {}).benchmark_tickers?.[0] || ''
+    );
+    const seriesList = [bestSeries, selectedSeries, benchmarkSeries].filter((series) => series && series.points.length >= 2);
+    setText(
+      '#comparison-chart-meta',
+      `최고 ${bestFactor || '—'} · 선택 ${selectedFactor || '—'} · 벤치마크 ${benchmarkSeries.label}`
+    );
+    if (!seriesList.length) {
+      chartRoot.replaceChildren(empty('누적 성과를 계산할 portfolio_returns 또는 benchmark_returns 데이터가 없습니다. 다음 best-factor 업데이트 run 이후 표시됩니다.'));
+      tableRoot.replaceChildren(empty('기간별 성과 지표를 계산할 수 없습니다.'));
+      return;
+    }
+    renderComparisonLineChart(chartRoot, seriesList);
+    renderComparisonMetrics(payload, tableRoot, seriesList);
+  }
+
+  function selectedComparisonFactor(payload, bestFactor) {
+    const selected = Array.from(state.selectedFactors).find((name) => name !== bestFactor && factorReturnRows(payload, name).length);
+    if (selected) return selected;
+    const ranked = payload.rankings || [];
+    const nextRankedFactor = ranked.map((row) => String(row.factor || '')).find((name) => name && name !== bestFactor && factorReturnRows(payload, name).length);
+    return nextRankedFactor || bestFactor || '';
+  }
+
+  function factorReturnRows(payload, factorName) {
+    const name = String(factorName || '');
+    return (payload.factor_period_returns || [])
+      .filter((row) => String(row.factor || '') === name && Number.isFinite(Number(row.return)) && row.period_end)
+      .sort((a, b) => String(a.period_end).localeCompare(String(b.period_end)));
+  }
+
+  function benchmarkReturnRows(payload) {
+    const rows = (payload.benchmark_returns || [])
+      .filter((row) => Number.isFinite(Number(row.return)) && row.period_end)
+      .sort((a, b) => String(a.period_end).localeCompare(String(b.period_end)));
+    if (!rows.length) return [];
+    const firstTicker = String(rows[0].ticker || '');
+    return rows.filter((row) => String(row.ticker || '') === firstTicker);
+  }
+
+  function benchmarkLabel(payload) {
+    const metadata = payload.metadata || {};
+    const rows = benchmarkReturnRows(payload);
+    const label = metadata.benchmark_label || (rows[0] || {}).benchmark || 'Nasdaq Composite';
+    const ticker = Array.isArray(metadata.benchmark_tickers) ? metadata.benchmark_tickers[0] : (rows[0] || {}).ticker;
+    return ticker ? `${label} (${ticker})` : label;
+  }
+
+  function equitySeriesFromReturns(rows, label, key, sourceName) {
+    if (!rows.length) return { key, label, sourceName, points: [] };
+    const points = [];
+    let equity = 1.0;
+    let peak = 1.0;
+    if (rows[0].period_start) points.push({ date: String(rows[0].period_start), equity, drawdown: 0 });
+    rows.forEach((row) => {
+      const periodReturn = Number(row.return);
+      if (!Number.isFinite(periodReturn)) return;
+      equity *= 1 + periodReturn;
+      peak = Math.max(peak, equity);
+      points.push({
+        date: String(row.period_end),
+        equity,
+        drawdown: peak > 0 ? equity / peak - 1 : 0,
+      });
+    });
+    return { key, label, sourceName, points: collapseDuplicateDatePoints(points) };
+  }
+
+  function collapseDuplicateDatePoints(points) {
+    const byDate = new Map();
+    points.forEach((point) => {
+      if (point.date && Number.isFinite(Number(point.equity))) byDate.set(point.date, point);
+    });
+    return Array.from(byDate.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  }
+
+  function renderComparisonLineChart(root, seriesList) {
+    root.replaceChildren();
+    const allDates = Array.from(new Set(seriesList.flatMap((series) => series.points.map((point) => point.date)))).sort();
+    const dateToIndex = new Map(allDates.map((date, index) => [date, index]));
+    const returns = seriesList.flatMap((series) => series.points.map((point) => Number(point.equity) - 1)).filter(Number.isFinite);
+    const ticks = niceReturnTicks(Math.min(...returns, 0), Math.max(...returns, 0));
+    const minValue = Math.min(...ticks) + 1;
+    const maxValue = Math.max(...ticks) + 1;
+    const width = 820;
+    const height = 300;
+    const plot = { left: 72, right: 24, top: 22, bottom: 58 };
+    const plotWidth = width - plot.left - plot.right;
+    const plotHeight = height - plot.top - plot.bottom;
+    const xFor = (date) => plot.left + (allDates.length <= 1 ? 0 : (dateToIndex.get(date) || 0) / (allDates.length - 1) * plotWidth);
+    const yFor = (equity) => height - plot.bottom - ((equity - minValue) / Math.max(0.000001, maxValue - minValue)) * plotHeight;
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', '최고 팩터, 선택 팩터, 나스닥 지수의 누적 성과 비교');
+
+    ticks.forEach((tick) => {
+      const y = yFor(tick + 1);
+      const line = document.createElementNS(SVG_NS, 'line');
+      line.setAttribute('x1', String(plot.left));
+      line.setAttribute('x2', String(width - plot.right));
+      line.setAttribute('y1', String(y));
+      line.setAttribute('y2', String(y));
+      line.setAttribute('class', 'line-grid');
+      svg.appendChild(line);
+      appendSvgText(svg, fmtPct(tick), plot.left - 10, y + 4, 'axis-label', 'end');
+    });
+
+    appendAxisLine(svg, plot.left, plot.top, plot.left, height - plot.bottom);
+    appendAxisLine(svg, plot.left, height - plot.bottom, width - plot.right, height - plot.bottom);
+    chartDateTicks(allDates).forEach((tick) => {
+      const x = xFor(tick.date);
+      appendAxisLine(svg, x, height - plot.bottom, x, height - plot.bottom + 5);
+      appendSvgText(svg, tick.label, x, height - plot.bottom + 21, 'axis-label');
+    });
+    appendSvgText(svg, '기간', plot.left + plotWidth / 2, height - 8, 'axis-title');
+    const yTitle = appendSvgText(svg, '누적 성과', 14, plot.top + plotHeight / 2, 'axis-title');
+    yTitle.setAttribute('transform', `rotate(-90 14 ${plot.top + plotHeight / 2})`);
+
+    seriesList.forEach((series) => {
+      const points = series.points.map((point) => `${xFor(point.date).toFixed(1)},${yFor(point.equity).toFixed(1)}`).join(' ');
+      if (!points) return;
+      const polyline = document.createElementNS(SVG_NS, 'polyline');
+      polyline.setAttribute('points', points);
+      polyline.setAttribute('class', `comparison-line ${series.key}`);
+      svg.appendChild(polyline);
+    });
+    root.appendChild(svg);
+
+    const legend = el('div', 'line-legend');
+    seriesList.forEach((series) => {
+      const item = document.createElement('span');
+      const dot = el('span', `legend-dot ${series.key}`);
+      const last = series.points[series.points.length - 1] || {};
+      item.append(dot, `${series.label}: ${fmtPct((Number(last.equity) || 1) - 1)} · MDD ${fmtPct(maxDrawdownFromPoints(series.points))}`);
+      legend.appendChild(item);
+    });
+    root.appendChild(legend);
+  }
+
+  function renderComparisonMetrics(payload, root, seriesList) {
+    root.replaceChildren();
+    const heading = el('div', 'performance-metrics-heading');
+    const titleBox = document.createElement('div');
+    const title = document.createElement('h4');
+    title.textContent = '기간별 성과 지표 비교';
+    const note = document.createElement('p');
+    note.textContent = '각 기간별로 최고 팩터·선택 팩터·나스닥 지수의 누적 수익률, 위험조정 지표, MDD를 같은 표에서 비교합니다. 월간/주간 리밸런싱 산출물 기준이며 나스닥 지수는 편입·랭킹에 사용되지 않는 비교 기준입니다.';
+    titleBox.append(title, note);
+    heading.appendChild(titleBox);
+    root.appendChild(heading);
+
+    const grid = el('div', 'performance-period-grid');
+    const ppy = periodsPerYear(payload);
+    COMPARISON_PERIODS.forEach((period) => {
+      const card = el('section', 'performance-period-card');
+      const h5 = document.createElement('h5');
+      h5.textContent = period.label;
+      const wrap = el('div', 'performance-table-wrap');
+      const tbl = document.createElement('table');
+      tbl.className = 'performance-table';
+      tbl.setAttribute('aria-label', `${period.label} 최고 팩터, 선택 팩터, 나스닥 지수 성과 지표 비교`);
+      const thead = document.createElement('thead');
+      const header = document.createElement('tr');
+      appendHeaderCell(header, '지표');
+      seriesList.forEach((series) => appendHeaderCell(header, shortSeriesLabel(series)));
+      thead.append(header);
+      const tbody = document.createElement('tbody');
+      const metricsBySeries = new Map(seriesList.map((series) => [series.key, comparisonMetrics(series.points, period, ppy)]));
+      COMPARISON_METRICS.forEach((metric) => {
+        const tr = document.createElement('tr');
+        appendMetricCell(tr, metric.label, 'metric-name');
+        seriesList.forEach((series) => {
+          const value = metricsBySeries.get(series.key)?.[metric.key];
+          const className = ['cumulativeReturn', 'cagr', 'maxDrawdown', 'volatility'].includes(metric.key) ? signedClass(value, metric.key) : '';
+          appendMetricCell(tr, metric.formatter(value), className);
+        });
+        tbody.append(tr);
+      });
+      tbl.append(thead, tbody);
+      wrap.append(tbl);
+      card.append(h5, wrap);
+      grid.append(card);
+    });
+    root.appendChild(grid);
+  }
+
+  function comparisonMetrics(points, period, periodsPerYearValue) {
+    const slice = periodPoints(points, period);
+    const returns = returnsFromPoints(slice);
+    if (slice.length < 2 || !returns.length) return {};
+    const first = Number(slice[0].equity);
+    const last = Number(slice[slice.length - 1].equity);
+    const cumulativeReturn = first > 0 ? last / first - 1 : null;
+    const years = Math.max(returns.length / periodsPerYearValue, 1 / periodsPerYearValue);
+    const cagr = cumulativeReturn !== null && cumulativeReturn > -1 ? ((1 + cumulativeReturn) ** (1 / years)) - 1 : -1;
+    const annualReturn = mean(returns) * periodsPerYearValue;
+    const vol = stdPopulation(returns) * Math.sqrt(periodsPerYearValue);
+    const downsideDev = Math.sqrt(mean(returns.map((value) => Math.min(0, value) ** 2))) * Math.sqrt(periodsPerYearValue);
+    const maxDrawdown = maxDrawdownFromPoints(slice);
+    return {
+      cumulativeReturn,
+      cagr,
+      volatility: vol,
+      sharpe: vol > 0 ? annualReturn / vol : null,
+      sortino: downsideDev > 0 ? annualReturn / downsideDev : (annualReturn > 0 ? 999 : null),
+      calmar: maxDrawdown < 0 ? cagr / Math.abs(maxDrawdown) : (cagr > 0 ? 999 : null),
+      maxDrawdown,
+    };
+  }
+
+  function periodPoints(points, period) {
+    if (!points.length) return [];
+    if (period.ytd) {
+      const year = String(points[points.length - 1].date || '').slice(0, 4);
+      const yearStart = `${year}-01-01`;
+      const firstInYearIndex = points.findIndex((point) => String(point.date || '') >= yearStart);
+      if (firstInYearIndex >= 0) {
+        const startIndex = Math.max(0, firstInYearIndex - 1);
+        const ytd = points.slice(startIndex);
+        if (ytd.length >= 2) return ytd;
+      }
+      return points.slice(-Math.min(points.length, 2));
+    }
+    if (period.periods === Infinity) return points;
+    return points.slice(-Math.min(points.length, Number(period.periods) + 1));
+  }
+
+  function returnsFromPoints(points) {
+    const returns = [];
+    for (let index = 1; index < points.length; index += 1) {
+      const prev = Number(points[index - 1].equity);
+      const curr = Number(points[index].equity);
+      if (Number.isFinite(prev) && Number.isFinite(curr) && prev > 0) returns.push(curr / prev - 1);
+    }
+    return returns;
+  }
+
+  function maxDrawdownFromPoints(points) {
+    let peak = null;
+    let worst = 0.0;
+    points.forEach((point) => {
+      const equity = Number(point.equity);
+      if (!Number.isFinite(equity)) return;
+      peak = peak === null ? equity : Math.max(peak, equity);
+      if (peak > 0) worst = Math.min(worst, equity / peak - 1);
+    });
+    return worst;
+  }
+
+  function periodsPerYear(payload) {
+    return (payload.metadata || {}).rebalance_frequency === 'W' ? 52 : 12;
+  }
+
+  function shortSeriesLabel(series) {
+    if (series.key === 'best') return '최고 팩터';
+    if (series.key === 'selected') return '선택 팩터';
+    if (series.key === 'benchmark') return '나스닥';
+    return series.label;
+  }
+
+  function appendHeaderCell(row, text) {
+    const th = document.createElement('th');
+    th.textContent = fmtText(text);
+    row.append(th);
+  }
+
+  function appendMetricCell(row, text, className) {
+    const td = document.createElement('td');
+    if (className) td.className = className;
+    td.textContent = fmtText(text);
+    row.append(td);
+  }
+
+  function appendSvgText(svg, text, x, y, className, anchor = 'middle') {
+    const label = document.createElementNS(SVG_NS, 'text');
+    label.textContent = fmtText(text);
+    label.setAttribute('x', String(x));
+    label.setAttribute('y', String(y));
+    label.setAttribute('class', className);
+    label.setAttribute('text-anchor', anchor);
+    svg.appendChild(label);
+    return label;
+  }
+
+  function appendAxisLine(svg, x1, y1, x2, y2) {
+    const line = document.createElementNS(SVG_NS, 'line');
+    line.setAttribute('x1', String(x1));
+    line.setAttribute('y1', String(y1));
+    line.setAttribute('x2', String(x2));
+    line.setAttribute('y2', String(y2));
+    line.setAttribute('class', 'axis-line');
+    svg.appendChild(line);
+  }
+
+  function chartDateTicks(dates) {
+    if (dates.length <= 6) return dates.map((date) => ({ date, label: shortDate(date) }));
+    const stride = Math.ceil((dates.length - 2) / 4);
+    return dates
+      .map((date, index) => ({ date, index, label: shortDate(date) }))
+      .filter((tick) => tick.index === 0 || tick.index === dates.length - 1 || tick.index % stride === 0)
+      .slice(0, 7);
+  }
+
+  function shortDate(date) {
+    const parts = String(date || '').split('-');
+    if (parts.length >= 3) return `${parts[0].slice(2)}.${parts[1]}`;
+    return fmtText(date);
+  }
+
+  function niceReturnTicks(minReturn, maxReturn) {
+    let lower = Math.min(Number(minReturn) || 0, 0);
+    let upper = Math.max(Number(maxReturn) || 0, 0);
+    if (Math.abs(upper - lower) < 0.02) {
+      lower -= 0.02;
+      upper += 0.02;
+    }
+    const candidates = [0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5];
+    let step = candidates[candidates.length - 1];
+    for (const candidate of candidates) {
+      const count = Math.ceil(upper / candidate) - Math.floor(lower / candidate) + 1;
+      if (count >= 4 && count <= 7) {
+        step = candidate;
+        break;
+      }
+    }
+    const start = Math.floor(lower / step) * step;
+    const end = Math.ceil(upper / step) * step;
+    const ticks = [];
+    for (let value = start; value <= end + step / 2; value += step) ticks.push(Number(value.toFixed(6)));
+    return ticks;
+  }
+
+  function mean(values) {
+    return values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0;
+  }
+
+  function stdPopulation(values) {
+    if (values.length < 2) return 0;
+    const avg = mean(values);
+    return Math.sqrt(mean(values.map((value) => (value - avg) ** 2)));
+  }
+
+  function signedClass(value, metricKey) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '';
+    if (metricKey === 'maxDrawdown' || metricKey === 'volatility') return numeric < 0 ? 'negative' : '';
+    return numeric >= 0 ? 'positive' : 'negative';
+  }
+
   function renderRankings(payload) {
     const rankings = rankingsForDisplay(payload);
     const root = q('#ranking-list');
@@ -514,6 +903,10 @@
       ['filter_fallback_reason', metadata.filter_fallback_reason || 'none'],
       ['current_screen_note', metadata.current_screen_note || 'unknown'],
       ['coverage_denominator', metadata.coverage_denominator || 'unknown'],
+      ['rebalance_frequency', metadata.rebalance_frequency || 'unknown'],
+      ['benchmark_tickers', metadata.benchmark_tickers || 'none'],
+      ['benchmark_return_count', metadata.benchmark_return_count ?? (payload.benchmark_returns || []).length],
+      ['benchmark_note', metadata.benchmark_note || 'none'],
       ['factor_preset', summary.factor_preset || metadata.factor_preset || 'unknown'],
       ['requested_factor_preset', metadata.requested_factor_preset || 'unknown'],
       ['factor_library_size', summary.factor_library_size || metadata.factor_library_size || 'unknown'],
@@ -906,7 +1299,11 @@
       workflowUrlForTest: WORKFLOW_URL,
       workflowCommandForTest: WORKFLOW_COMMAND,
       updateScheduleTextForTest: updateScheduleText,
-      economicNarrativeForTest: economicNarrative
+      economicNarrativeForTest: economicNarrative,
+      selectedComparisonFactorForTest: selectedComparisonFactor,
+      equitySeriesFromReturnsForTest: equitySeriesFromReturns,
+      comparisonMetricsForTest: comparisonMetrics,
+      benchmarkLabelForTest: benchmarkLabel
     };
   }
 })();

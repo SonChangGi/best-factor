@@ -54,6 +54,17 @@ PORTFOLIO_RETURN_COLUMNS = [
     "skip_reason",
 ]
 
+BENCHMARK_RETURN_COLUMNS = [
+    "benchmark",
+    "ticker",
+    "period_start",
+    "period_end",
+    "return",
+    "price_date_start",
+    "price_date_end",
+    "skip_reason",
+]
+
 METRIC_COLUMNS = [
     "factor",
     "cagr",

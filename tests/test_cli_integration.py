@@ -5,7 +5,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from best_factor import cli as cli_module
+from best_factor.data import load_prices_csv
 from best_factor.schemas import CAVEATS, HOLDING_COLUMNS, METRIC_COLUMNS, RANKING_COLUMNS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +53,7 @@ class CliIntegrationTest(unittest.TestCase):
             "factor_holdout_rankings.csv",
             "latest_holdings.csv",
             "portfolio_returns.csv",
+            "benchmark_returns.csv",
             "factor_scores.csv",
             "skipped_reasons.csv",
             "run_config.json",
@@ -87,6 +91,9 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(metadata["filter_fallback_reason"], "none")
         self.assertIn("universe_scope_note", metadata)
         self.assertIn("coverage_denominator", metadata)
+        self.assertIn("rebalance_frequency", metadata)
+        self.assertIn("benchmark_tickers", metadata)
+        self.assertIn("benchmark_note", metadata)
         self.assertIn("current_screen_note", metadata)
         self.assertTrue(metadata["caveats"])
         report = (out / "report.md").read_text()
@@ -184,6 +191,121 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertTrue(payload["rankings"])
         self.assertTrue(payload["latest_holdings"])
         self.assertIn("static_data_warning", payload["summary"])
+        self.assertIn("factor_period_returns", payload)
+        self.assertIn("benchmark_returns", payload)
+
+    def test_benchmark_ticker_writes_nasdaq_comparison_returns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            prices = _read_csv(FIXTURES / "prices.csv")
+            benchmark_rows = []
+            for row in prices:
+                if row["ticker"] != "AAA":
+                    continue
+                cloned = dict(row)
+                cloned["ticker"] = "^IXIC"
+                cloned["source"] = "fixture_benchmark"
+                benchmark_rows.append(cloned)
+            benchmark_prices = tmp_path / "prices_with_benchmark.csv"
+            _write_csv(benchmark_prices, [*prices, *benchmark_rows])
+            out = tmp_path / "out"
+            cmd = [
+                sys.executable,
+                "-m",
+                "best_factor.cli",
+                "run",
+                "--prices-file",
+                str(benchmark_prices),
+                "--universe-file",
+                str(FIXTURES / "universe.csv"),
+                "--fundamentals-file",
+                str(FIXTURES / "fundamentals.csv"),
+                "--output-dir",
+                str(out),
+                "--rebalance",
+                "M",
+                "--top-n",
+                "3",
+                "--factor-preset",
+                "core",
+                "--benchmark-tickers",
+                "^IXIC",
+            ]
+            completed = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            benchmark_returns = _read_csv(out / "benchmark_returns.csv")
+            metadata = json.loads((out / "run_metadata.json").read_text())
+        self.assertTrue(benchmark_returns)
+        self.assertEqual(benchmark_returns[0]["benchmark"], "Nasdaq Composite")
+        self.assertEqual(benchmark_returns[0]["ticker"], "^IXIC")
+        self.assertEqual(metadata["benchmark_tickers"], ["^IXIC"])
+        self.assertEqual(metadata["benchmark_return_count"], len(benchmark_returns))
+        self.assertIn("not included in stock selection", metadata["benchmark_note"])
+
+    def test_yfinance_benchmark_failure_records_error_without_aborting_stock_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            output_dir = tmp_path / "out"
+            cache_dir = tmp_path / "cache"
+            stock_prices = load_prices_csv(FIXTURES / "prices.csv")
+            calls = []
+
+            def fake_fetch(tickers, period, cache_dir_arg):
+                calls.append(list(tickers))
+                if list(tickers) == ["^IXIC"]:
+                    raise RuntimeError("benchmark provider unavailable")
+                return stock_prices, {
+                    "provider": "yfinance",
+                    "provider_version": "test",
+                    "fetched_at": "2026-06-11T00:00:00Z",
+                    "source": "yfinance:test",
+                    "cache_dir": str(cache_dir_arg),
+                    "succeeded_tickers": list(tickers),
+                    "failed_tickers": [],
+                }
+
+            args = cli_module.build_parser().parse_args([
+                "run",
+                "--provider",
+                "yfinance",
+                "--tickers",
+                "AAA",
+                "BBB",
+                "CCC",
+                "--period",
+                "5y",
+                "--cache-dir",
+                str(cache_dir),
+                "--universe-file",
+                str(FIXTURES / "universe.csv"),
+                "--fundamentals-file",
+                str(FIXTURES / "fundamentals.csv"),
+                "--output-dir",
+                str(output_dir),
+                "--rebalance",
+                "M",
+                "--top-n",
+                "3",
+                "--factor-preset",
+                "core",
+                "--benchmark-tickers",
+                "^IXIC",
+            ])
+
+            with mock.patch("best_factor.cli.fetch_yfinance_prices", side_effect=fake_fetch):
+                result = cli_module.run(args)
+
+            metadata = json.loads((output_dir / "run_metadata.json").read_text())
+            benchmark_returns = _read_csv(output_dir / "benchmark_returns.csv")
+
+        self.assertEqual(result["output_dir"], str(output_dir))
+        self.assertEqual(calls, [["AAA", "BBB", "CCC"], ["^IXIC"]])
+        self.assertEqual(benchmark_returns, [])
+        self.assertEqual(metadata["benchmark_tickers"], ["^IXIC"])
+        self.assertEqual(metadata["benchmark_return_count"], 0)
+        self.assertEqual(metadata["benchmark_succeeded_tickers"], [])
+        self.assertEqual(metadata["benchmark_failed_tickers"], ["^IXIC"])
+        self.assertIn("RuntimeError: benchmark provider unavailable", metadata["benchmark_error"])
 
     def test_skipped_reasons_are_stable(self):
         out = self.run_cli("--top-n", "99")
@@ -230,6 +352,13 @@ class CliIntegrationTest(unittest.TestCase):
 def _read_csv(path):
     with path.open(newline="") as f:
         return list(csv.DictReader(f))
+
+
+def _write_csv(path, rows):
+    with Path(path).open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 if __name__ == "__main__":

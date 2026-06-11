@@ -8,7 +8,14 @@ from pathlib import Path
 from typing import Iterable
 
 from .io_utils import read_csv_dicts, write_json
-from .schemas import CAVEATS, HOLDING_COLUMNS, METRIC_COLUMNS, RANKING_COLUMNS
+from .schemas import (
+    BENCHMARK_RETURN_COLUMNS,
+    CAVEATS,
+    HOLDING_COLUMNS,
+    METRIC_COLUMNS,
+    PORTFOLIO_RETURN_COLUMNS,
+    RANKING_COLUMNS,
+)
 
 SCHEMA_VERSION = 1
 STATIC_DATA_WARNING = "Static snapshot generated from a prior run; not live market data or investment advice."
@@ -25,9 +32,20 @@ RANKING_NUMERIC_COLUMNS = set(RANKING_COLUMNS) - {"factor"}
 METRIC_NUMERIC_COLUMNS = set(METRIC_COLUMNS) - {"factor"}
 HOLDING_NUMERIC_COLUMNS = {"weight", "score"}
 SKIPPED_NUMERIC_COLUMNS = {"count"}
+PORTFOLIO_RETURN_NUMERIC_COLUMNS = set(PORTFOLIO_RETURN_COLUMNS) - {"factor", "period_start", "period_end", "skip_reason"}
+BENCHMARK_RETURN_NUMERIC_COLUMNS = set(BENCHMARK_RETURN_COLUMNS) - {
+    "benchmark",
+    "ticker",
+    "period_start",
+    "period_end",
+    "price_date_start",
+    "price_date_end",
+    "skip_reason",
+}
 INTEGER_COLUMNS = {
     "rank",
     "count",
+    "holdings_count",
     "tested_factor_count",
     "effective_factor_count",
     "ranking_count",
@@ -71,6 +89,14 @@ PUBLIC_METADATA_KEYS = {
     "filter_fallback_reason",
     "current_screen_note",
     "coverage_denominator",
+    "rebalance_frequency",
+    "benchmark_tickers",
+    "benchmark_label",
+    "benchmark_return_count",
+    "benchmark_succeeded_tickers",
+    "benchmark_failed_tickers",
+    "benchmark_error",
+    "benchmark_note",
     "requested_tickers",
     "succeeded_tickers",
     "failed_tickers",
@@ -96,6 +122,8 @@ def build_site_payload(
     rankings = _coerce_rows(read_csv_dicts(root / "factor_rankings.csv"), RANKING_NUMERIC_COLUMNS)
     metrics = _coerce_rows(read_csv_dicts(root / "factor_metrics.csv"), METRIC_NUMERIC_COLUMNS)
     latest_holdings = _read_optional_rows(root / "latest_holdings.csv", HOLDING_NUMERIC_COLUMNS)
+    factor_period_returns = _read_optional_rows(root / "portfolio_returns.csv", PORTFOLIO_RETURN_NUMERIC_COLUMNS)
+    benchmark_returns = _read_optional_rows(root / "benchmark_returns.csv", BENCHMARK_RETURN_NUMERIC_COLUMNS)
     skipped_reasons = _read_optional_rows(root / "skipped_reasons.csv", SKIPPED_NUMERIC_COLUMNS)
     holdout_rankings = _read_optional_rows(root / "factor_holdout_rankings.csv", RANKING_NUMERIC_COLUMNS)
     holdout_metrics = _read_optional_rows(root / "factor_holdout_metrics.csv", METRIC_NUMERIC_COLUMNS)
@@ -134,6 +162,8 @@ def build_site_payload(
         "rankings": rankings,
         "metrics": metrics,
         "latest_holdings": latest_holdings,
+        "factor_period_returns": factor_period_returns,
+        "benchmark_returns": benchmark_returns,
         "skipped_reasons": skipped_reasons,
         "holdout_rankings": holdout_rankings,
         "holdout_metrics": holdout_metrics,

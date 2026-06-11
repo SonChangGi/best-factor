@@ -24,6 +24,9 @@ class DocsSiteTest(unittest.TestCase):
             "summary-cards",
             "visual-dashboard",
             "factor-return-chart",
+            "comparison-line-chart",
+            "comparison-period-table",
+            "최고 팩터 · 선택 팩터 · 나스닥 지수 누적 성과 비교",
             "risk-chart",
             "weight-chart",
             "current-output-table",
@@ -106,6 +109,10 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("manual-update-link", app)
         self.assertIn("renderEconomicAnalysis", app)
         self.assertIn("economicNarrative", app)
+        self.assertIn("renderComparisonPanel", app)
+        self.assertIn("comparisonMetrics", app)
+        self.assertIn("createElementNS", app)
+        self.assertIn("기간별 성과 지표 비교", app)
         self.assertIn("rankingRowsForDisplayForTest", app)
         self.assertIn("Number.isFinite(numeric) ? numeric : Number.NEGATIVE_INFINITY", app)
         self.assertNotIn("|| -Infinity", app)
@@ -145,6 +152,34 @@ class DocsSiteTest(unittest.TestCase):
             const scheduleText = context.__bestFactorDashboard.updateScheduleTextForTest({{ automation: {{ primary_refresh_kst: '09:00' }} }});
             if (!scheduleText.includes('09:00 KST') || !scheduleText.includes('10:00/12:00/15:00/18:00 KST')) throw new Error(scheduleText);
             if (!context.__bestFactorDashboard.economicNarrativeForTest('momentum').includes('가격 지속성')) throw new Error('bad economic narrative');
+            const comparisonPayload = {{
+              metadata: {{ benchmark_label: 'Nasdaq Composite', benchmark_tickers: ['^IXIC'], rebalance_frequency: 'M' }},
+              rankings: [{{ factor: 'best' }}, {{ factor: 'selected' }}],
+              factor_period_returns: [
+                {{ factor: 'best', period_start: '2025-01-31', period_end: '2025-02-28', return: 0.10 }},
+                {{ factor: 'selected', period_start: '2025-01-31', period_end: '2025-02-28', return: 0.02 }},
+              ],
+              benchmark_returns: [
+                {{ benchmark: 'Nasdaq Composite', ticker: '^IXIC', period_start: '2025-01-31', period_end: '2025-02-28', return: 0.03 }},
+              ],
+            }};
+            if (context.__bestFactorDashboard.selectedComparisonFactorForTest(comparisonPayload, 'best') !== 'selected') throw new Error('bad selected comparison factor');
+            const equity = context.__bestFactorDashboard.equitySeriesFromReturnsForTest(comparisonPayload.factor_period_returns.filter((row) => row.factor === 'best'), 'Best', 'best', 'best');
+            if (equity.points.length !== 2 || Math.abs(equity.points[1].equity - 1.10) > 0.000001) throw new Error('bad equity series');
+            const metrics = context.__bestFactorDashboard.comparisonMetricsForTest(equity.points, {{ key: 'all', label: '전체', periods: Infinity }}, 12);
+            if (Math.abs(metrics.cumulativeReturn - 0.10) > 0.000001) throw new Error('bad comparison metrics');
+            const ytdMetrics = context.__bestFactorDashboard.comparisonMetricsForTest([
+              {{ date: '2024-12-31', equity: 1.00 }},
+              {{ date: '2025-01-31', equity: 1.02 }},
+              {{ date: '2025-02-28', equity: 1.05 }}
+            ], {{ key: 'ytd', label: 'YTD', ytd: true }}, 12);
+            if (Math.abs(ytdMetrics.cumulativeReturn - 0.05) > 0.000001) throw new Error(`bad YTD baseline ${{ytdMetrics.cumulativeReturn}}`);
+            const reboundMetrics = context.__bestFactorDashboard.comparisonMetricsForTest([
+              {{ date: '2024-12-31', equity: 0.80 }},
+              {{ date: '2025-01-31', equity: 0.90 }}
+            ], {{ key: 'all', label: '전체', periods: Infinity }}, 12);
+            if (Math.abs(reboundMetrics.maxDrawdown) > 0.000001) throw new Error(`bad rebased MDD ${{reboundMetrics.maxDrawdown}}`);
+            if (context.__bestFactorDashboard.benchmarkLabelForTest(comparisonPayload) !== 'Nasdaq Composite (^IXIC)') throw new Error('bad benchmark label');
             """
         )
         completed = subprocess.run(["node", "-e", script], cwd=ROOT, text=True, capture_output=True)
@@ -152,7 +187,7 @@ class DocsSiteTest(unittest.TestCase):
 
     def test_sample_json_matches_schema_and_freshness_contract(self):
         payload = json.loads((DOCS / "data" / "latest-results.json").read_text(encoding="utf-8"))
-        for key in ["schema_version", "generated_at", "data_scope", "summary", "rankings", "metrics", "latest_holdings", "skipped_reasons", "holdout_rankings", "holdout_metrics", "factor_catalog", "factor_family_summary", "metadata", "automation", "caveats"]:
+        for key in ["schema_version", "generated_at", "data_scope", "summary", "rankings", "metrics", "latest_holdings", "factor_period_returns", "benchmark_returns", "skipped_reasons", "holdout_rankings", "holdout_metrics", "factor_catalog", "factor_family_summary", "metadata", "automation", "caveats"]:
             self.assertIn(key, payload)
         self.assertEqual(payload["schema_version"], 1)
         self.assertRegex(payload["generated_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -180,6 +215,10 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("filter_fallback_reason", payload["metadata"])
         self.assertIn("universe_scope_note", payload["metadata"])
         self.assertIn("coverage_denominator", payload["metadata"])
+        self.assertIn("rebalance_frequency", payload["metadata"])
+        self.assertIn("benchmark_tickers", payload["metadata"])
+        self.assertIn("benchmark_return_count", payload["metadata"])
+        self.assertIn("benchmark_note", payload["metadata"])
         self.assertIn("current_screen_note", payload["metadata"])
         self.assertFalse(payload["metadata"].get("universe_is_point_in_time"))
         self.assertIn("same-close", payload["metadata"].get("timing_convention", ""))
@@ -227,6 +266,7 @@ class DocsSiteTest(unittest.TestCase):
             "MARKET_CAP_ELIGIBLE_COUNT",
             "market_cap_metadata_insufficient_preflight",
             "--top-n \"${TOP_N}\"",
+            "--benchmark-tickers '^IXIC'",
         ]:
             self.assertIn(marker, workflow)
         self.assertNotIn("30 22 * * 1-5", workflow)

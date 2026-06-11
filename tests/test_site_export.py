@@ -66,6 +66,35 @@ class SiteExportTest(unittest.TestCase):
                 ],
             )
             _write_csv(run_dir / "skipped_reasons.csv", [{"skip_reason": "missing", "count": "2"}])
+            _write_csv(
+                run_dir / "portfolio_returns.csv",
+                [
+                    {
+                        "factor": '<script>alert("factor")</script>',
+                        "period_start": "2026-04-30",
+                        "period_end": "2026-05-29",
+                        "return": "0.04",
+                        "turnover": "0.30",
+                        "holdings_count": "3",
+                        "skip_reason": "",
+                    }
+                ],
+            )
+            _write_csv(
+                run_dir / "benchmark_returns.csv",
+                [
+                    {
+                        "benchmark": "Nasdaq Composite",
+                        "ticker": "^IXIC",
+                        "period_start": "2026-04-30",
+                        "period_end": "2026-05-29",
+                        "return": "0.03",
+                        "price_date_start": "2026-04-30",
+                        "price_date_end": "2026-05-29",
+                        "skip_reason": "",
+                    }
+                ],
+            )
             (run_dir / "run_metadata.json").write_text(
                 json.dumps(
                     {
@@ -82,6 +111,13 @@ class SiteExportTest(unittest.TestCase):
                         "filter_fallback_reason": "market_cap_metadata_insufficient_preflight",
                         "current_screen_note": "Current screen, not PIT.",
                         "coverage_denominator": "emitted_portfolio_return_periods_per_factor_including_zero_holding_attempts",
+                        "rebalance_frequency": "M",
+                        "benchmark_tickers": ["^IXIC"],
+                        "benchmark_label": "Nasdaq Composite",
+                        "benchmark_return_count": 1,
+                        "benchmark_succeeded_tickers": ["^IXIC"],
+                        "benchmark_failed_tickers": [],
+                        "benchmark_note": "Nasdaq benchmark is a non-investable index comparator.",
                         "tested_factor_count": 2,
                         "effective_factor_count": 1,
                         "factor_preset": "zoo",
@@ -157,6 +193,10 @@ class SiteExportTest(unittest.TestCase):
         self.assertIsNone(payload["metrics"][0]["sortino"])
         self.assertEqual(payload["skipped_reasons"][0]["count"], 2)
         self.assertEqual(payload["latest_holdings"][0]["weight"], 0.5)
+        self.assertEqual(payload["factor_period_returns"][0]["return"], 0.04)
+        self.assertEqual(payload["factor_period_returns"][0]["holdings_count"], 3)
+        self.assertEqual(payload["benchmark_returns"][0]["return"], 0.03)
+        self.assertEqual(payload["benchmark_returns"][0]["benchmark"], "Nasdaq Composite")
         self.assertEqual(payload["metadata"]["source_kind"], "csv")
         self.assertFalse(payload["metadata"]["universe_is_point_in_time"])
         self.assertEqual(payload["metadata"]["universe_scope_note"], "Curated current ticker set, not the whole market.")
@@ -166,6 +206,10 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["metadata"]["filter_fallback_reason"], "market_cap_metadata_insufficient_preflight")
         self.assertEqual(payload["metadata"]["current_screen_note"], "Current screen, not PIT.")
         self.assertIn("zero_holding", payload["metadata"]["coverage_denominator"])
+        self.assertEqual(payload["metadata"]["rebalance_frequency"], "M")
+        self.assertEqual(payload["metadata"]["benchmark_tickers"], ["^IXIC"])
+        self.assertEqual(payload["metadata"]["benchmark_return_count"], 1)
+        self.assertIn("non-investable", payload["metadata"]["benchmark_note"])
         self.assertEqual(payload["metadata"]["factor_category_counts"], {"momentum": 90, "risk": 25})
         self.assertEqual(payload["metadata"]["factor_kind_counts"], {"momentum": 80, "price_volume_corr": 5})
         self.assertEqual(payload["factor_family_summary"][0]["category"], "accumulation")
@@ -213,6 +257,8 @@ class SiteExportTest(unittest.TestCase):
             _minimal_core(run_dir)
             payload = build_site_payload(run_dir, generated_at="2026-06-10T01:02:03Z")
         self.assertEqual(payload["latest_holdings"], [])
+        self.assertEqual(payload["factor_period_returns"], [])
+        self.assertEqual(payload["benchmark_returns"], [])
         self.assertEqual(payload["skipped_reasons"], [])
         self.assertIsNone(payload["summary"]["source_hash"])
         self.assertIsNone(payload["summary"]["fetched_at"])

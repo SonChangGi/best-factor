@@ -8,7 +8,7 @@ from typing import Iterable
 
 from .data import group_prices
 from .factors import build_score_index, rows_for_factor_date
-from .schemas import HOLDING_COLUMNS, PORTFOLIO_RETURN_COLUMNS
+from .schemas import BENCHMARK_RETURN_COLUMNS, HOLDING_COLUMNS, PORTFOLIO_RETURN_COLUMNS
 
 
 def run_backtests(
@@ -163,6 +163,67 @@ def serialize_returns(rows: Iterable[dict[str, object]]) -> list[dict[str, objec
     return out
 
 
+def benchmark_returns_for_schedule(
+    prices: list[dict[str, object]],
+    benchmark_ticker: str,
+    benchmark_label: str,
+    rebalance_dates: list[dt.date],
+) -> list[dict[str, object]]:
+    """Build no-lookahead benchmark returns over the factor rebalance schedule.
+
+    Benchmark prices are not part of the stock universe or factor selection.
+    They are sampled on the latest available benchmark close on or before each
+    rebalance date, then compared close-to-close over the same holding windows.
+    """
+    grouped = group_prices(prices)
+    rows = grouped.get(str(benchmark_ticker).upper(), [])
+    if len(rebalance_dates) < 2 or not rows:
+        return []
+    out: list[dict[str, object]] = []
+    for start, end in zip(rebalance_dates, rebalance_dates[1:]):
+        start_row = _price_on_or_before(rows, start)
+        end_row = _price_on_or_before(rows, end)
+        skip_reason = ""
+        period_return: float | None = None
+        if not start_row or not end_row:
+            skip_reason = "missing_benchmark_price"
+        else:
+            start_price = float(start_row.get("adj_close", math.nan))
+            end_price = float(end_row.get("adj_close", math.nan))
+            if not math.isfinite(start_price) or start_price <= 0 or not math.isfinite(end_price):
+                skip_reason = "invalid_benchmark_price"
+            elif end_row["date"] <= start_row["date"]:
+                skip_reason = "invalid_benchmark_period"
+            else:
+                period_return = end_price / start_price - 1.0
+        if period_return is None:
+            continue
+        out.append(
+            {
+                "benchmark": benchmark_label,
+                "ticker": str(benchmark_ticker).upper(),
+                "period_start": start,
+                "period_end": end,
+                "return": period_return,
+                "price_date_start": start_row["date"] if start_row else "",
+                "price_date_end": end_row["date"] if end_row else "",
+                "skip_reason": skip_reason,
+            }
+        )
+    return out
+
+
+def serialize_benchmark_returns(rows: Iterable[dict[str, object]]) -> list[dict[str, object]]:
+    out = []
+    for row in rows:
+        d = {col: row.get(col, "") for col in BENCHMARK_RETURN_COLUMNS}
+        for key in ("period_start", "period_end", "price_date_start", "price_date_end"):
+            if hasattr(d[key], "isoformat"):
+                d[key] = d[key].isoformat()
+        out.append(d)
+    return out
+
+
 def _select_holdings(
     score_rows: list[dict[str, object]],
     grouped_prices: dict[str, list[dict[str, object]]],
@@ -244,6 +305,11 @@ def _forward_return(rows: list[dict[str, object]], start: dt.date, end: dt.date)
     if start not in by_date or end not in by_date or by_date[start] <= 0:
         return None
     return by_date[end] / by_date[start] - 1.0
+
+
+def _price_on_or_before(rows: list[dict[str, object]], target: dt.date) -> dict[str, object] | None:
+    eligible = [row for row in rows if isinstance(row.get("date"), dt.date) and row["date"] <= target]
+    return eligible[-1] if eligible else None
 
 
 def _average_dollar_volume(rows: list[dict[str, object]], signal_date: dt.date, window: int) -> float:

@@ -13,6 +13,7 @@ from .data import (
     load_fundamentals_csv,
     load_prices_csv,
     load_universe_csv,
+    normalize_ticker,
     price_dates,
     source_hash_for_paths,
     write_universe_snapshot,
@@ -31,7 +32,14 @@ from .factors import (
 )
 from .io_utils import ensure_dir, write_csv_dicts, write_json
 from .metrics import compute_holdout_metrics, compute_metrics
-from .portfolio import latest_holdings_for_best, run_backtests, serialize_holdings, serialize_returns
+from .portfolio import (
+    benchmark_returns_for_schedule,
+    latest_holdings_for_best,
+    run_backtests,
+    serialize_benchmark_returns,
+    serialize_holdings,
+    serialize_returns,
+)
 from .ranking import rank_factors
 from .report import write_html_report, write_report
 from .site import write_site_payload
@@ -40,6 +48,7 @@ from .schemas import (
     FACTOR_SCORE_COLUMNS,
     HOLDING_COLUMNS,
     METRIC_COLUMNS,
+    BENCHMARK_RETURN_COLUMNS,
     PORTFOLIO_RETURN_COLUMNS,
     PRICE_COLUMNS,
     RANKING_COLUMNS,
@@ -93,6 +102,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--period", default="5y")
     run.add_argument("--cache-dir", default=".cache/best-factor")
     run.add_argument(
+        "--benchmark-tickers",
+        nargs="*",
+        default=[],
+        help="optional benchmark symbols for dashboard comparison charts, e.g. ^IXIC for Nasdaq Composite",
+    )
+    run.add_argument(
         "--factor-preset",
         choices=sorted(FACTOR_PRESETS),
         default="zoo",
@@ -130,6 +145,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         if not price_path.exists():
             raise FileNotFoundError(f"prices file not found: {price_path}")
         prices = load_prices_csv(price_path)
+        benchmark_prices = _benchmark_prices_from_csv(prices, args.benchmark_tickers)
+        benchmark_provider_metadata: dict[str, object] = {}
         provider_metadata = {
             "provider": "csv",
             "provider_version": "stdlib",
@@ -142,6 +159,19 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         if not tickers:
             raise ValueError("--tickers are required when --provider yfinance")
         prices, provider_metadata = fetch_yfinance_prices(tickers, args.period, cache_dir)
+        benchmark_tickers = _normalize_symbols(args.benchmark_tickers)
+        if benchmark_tickers:
+            try:
+                benchmark_prices, benchmark_provider_metadata = fetch_yfinance_prices(benchmark_tickers, args.period, cache_dir)
+            except Exception as exc:
+                benchmark_prices = []
+                benchmark_provider_metadata = {
+                    "succeeded_tickers": [],
+                    "failed_tickers": benchmark_tickers,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+        else:
+            benchmark_prices, benchmark_provider_metadata = [], {}
     if not prices:
         raise ValueError("no prices loaded")
     tickers = sorted({str(row["ticker"]) for row in prices})
@@ -151,6 +181,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     schedule = build_rebalance_dates(dates, args.rebalance)
     if len(schedule) < 2:
         raise ValueError("not enough price history to form at least two rebalance dates")
+    benchmark_tickers = _normalize_symbols(args.benchmark_tickers)
 
     scores = compute_factor_scores(prices, schedule[:-1], fundamentals, requested_factors, requested_factors)
     backtest = run_backtests(
@@ -191,6 +222,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     holdout_rank_by_factor = {str(row["factor"]): int(row["rank"]) for row in holdout_rankings}
     holdout_metric_by_factor = {str(row["factor"]): row for row in holdout_rankings}
     best_holdout = holdout_metric_by_factor.get(best_factor, {})
+    benchmark_returns = [
+        row
+        for ticker in benchmark_tickers
+        for row in benchmark_returns_for_schedule(benchmark_prices, ticker, _benchmark_label(ticker), schedule)
+    ]
 
     metadata = {
         **provider_metadata,
@@ -215,6 +251,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "they are not historical point-in-time constituent or market-cap screens."
         ),
         "coverage_denominator": "emitted_portfolio_return_periods_per_factor_including_zero_holding_attempts",
+        "rebalance_frequency": args.rebalance,
+        "benchmark_tickers": benchmark_tickers,
+        "benchmark_label": _benchmark_label(benchmark_tickers[0]) if benchmark_tickers else None,
+        "benchmark_return_count": len(benchmark_returns),
+        "benchmark_succeeded_tickers": benchmark_provider_metadata.get("succeeded_tickers", benchmark_tickers if benchmark_returns else []),
+        "benchmark_failed_tickers": benchmark_provider_metadata.get("failed_tickers", [] if benchmark_returns else benchmark_tickers),
+        "benchmark_error": benchmark_provider_metadata.get("error"),
+        "benchmark_note": (
+            "Nasdaq benchmark is a non-investable index comparator used only for relative context; "
+            "it is not included in stock selection, holdings, or factor ranking."
+        ),
         "tested_factor_count": tested_factor_count,
         "effective_factor_count": effective_factor_count,
         "factor_preset": factor_preset,
@@ -276,6 +323,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     write_universe_snapshot(output_dir / "universe_snapshot.csv", universe)
     write_csv_dicts(output_dir / "factor_scores.csv", serialize_factor_scores(scores), FACTOR_SCORE_COLUMNS)
     write_csv_dicts(output_dir / "portfolio_returns.csv", serialize_returns(returns), PORTFOLIO_RETURN_COLUMNS)
+    write_csv_dicts(output_dir / "benchmark_returns.csv", serialize_benchmark_returns(benchmark_returns), BENCHMARK_RETURN_COLUMNS)
     holdout_score_by_factor = {str(row["factor"]): row.get("composite_score", 0.0) for row in holdout_rankings}
     holdout_order = {str(row["factor"]): idx for idx, row in enumerate(holdout_rankings)}
     holdout_metrics_with_scores = []
@@ -315,6 +363,33 @@ def _source_hash_for_run(args: argparse.Namespace) -> str | None:
     if not source_paths:
         return None
     return source_hash_for_paths(source_paths)
+
+
+def _normalize_symbols(symbols: list[str] | tuple[str, ...] | None) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in symbols or []:
+        symbol = normalize_ticker(raw)
+        if symbol and symbol not in seen:
+            seen.add(symbol)
+            out.append(symbol)
+    return out
+
+
+def _benchmark_prices_from_csv(prices: list[dict[str, object]], symbols: list[str] | tuple[str, ...] | None) -> list[dict[str, object]]:
+    wanted = set(_normalize_symbols(symbols))
+    if not wanted:
+        return []
+    return [row for row in prices if str(row.get("ticker", "")).upper() in wanted]
+
+
+def _benchmark_label(ticker: str) -> str:
+    labels = {
+        "^IXIC": "Nasdaq Composite",
+        "^NDX": "Nasdaq-100",
+        "QQQ": "Nasdaq-100 ETF proxy",
+    }
+    return labels.get(str(ticker).upper(), str(ticker).upper())
 
 
 def _serialize_prices(prices: list[dict[str, object]]) -> list[dict[str, object]]:
