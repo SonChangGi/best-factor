@@ -132,4 +132,6 @@ jobs:
 
       - name: Deploy to GitHub Pages
         id: deployment
+        env:
+          NODE_OPTIONS: --no-deprecation
         uses: actions/deploy-pages@v5
