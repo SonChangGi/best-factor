@@ -92,6 +92,12 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertIn("universe_scope_note", metadata)
         self.assertIn("coverage_denominator", metadata)
         self.assertIn("rankable_stock_universe_count", metadata)
+        self.assertIn("active_priced_stock_count", metadata)
+        self.assertIn("latest_factor_eligible_ticker_count", metadata)
+        self.assertIn("factor_eligibility_note", metadata)
+        self.assertEqual(metadata["transaction_cost_model"], "one_way_notional")
+        self.assertIn("one-way traded notional", metadata["transaction_cost_note"])
+        self.assertIn("market_cap_filter_status", metadata)
         self.assertIn("rebalance_frequency", metadata)
         self.assertIn("benchmark_tickers", metadata)
         self.assertIn("benchmark_note", metadata)
@@ -168,6 +174,124 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertFalse(metadata["market_cap_filter_effective"])
         self.assertEqual(metadata["market_cap_filter_basis"], "not_applied")
         self.assertEqual(metadata["filter_fallback_reason"], "market_cap_metadata_insufficient_preflight")
+        self.assertIn("not_applied_metadata_insufficient", metadata["market_cap_filter_status"])
+
+    def test_min_factor_eligible_tickers_gate_fails_before_claiming_large_universe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "out"
+            cache_dir = Path(tmp) / "cache"
+            args = cli_module.build_parser().parse_args([
+                "run",
+                "--provider",
+                "yfinance",
+                "--tickers",
+                "AAA",
+                "BBB",
+                "CCC",
+                "--period",
+                "5y",
+                "--cache-dir",
+                str(cache_dir),
+                "--universe-file",
+                str(FIXTURES / "universe.csv"),
+                "--fundamentals-file",
+                str(FIXTURES / "fundamentals.csv"),
+                "--output-dir",
+                str(output_dir),
+                "--rebalance",
+                "M",
+                "--top-n",
+                "3",
+                "--factor-preset",
+                "core",
+                "--min-factor-eligible-tickers",
+                "9",
+            ])
+
+            def fake_fetch(tickers, period, cache_dir_arg, **kwargs):
+                return load_prices_csv(FIXTURES / "prices.csv"), {
+                    "provider": "yfinance",
+                    "provider_version": "test",
+                    "fetched_at": "2026-06-11T00:00:00Z",
+                    "source": "yfinance:test",
+                    "cache_dir": str(cache_dir_arg),
+                    "requested_ticker_count": len(tickers),
+                    "succeeded_tickers": list(tickers),
+                    "failed_tickers": [],
+                }
+
+            with mock.patch("best_factor.cli.fetch_yfinance_prices", side_effect=fake_fetch):
+                with self.assertRaisesRegex(ValueError, "below --min-factor-eligible-tickers"):
+                    cli_module.run(args)
+
+    def test_yfinance_rejects_benchmark_overlap_before_fetch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            args = cli_module.build_parser().parse_args([
+                "run",
+                "--provider",
+                "yfinance",
+                "--tickers",
+                "AAA",
+                "QQQ",
+                "--benchmark-tickers",
+                "QQQ",
+                "--output-dir",
+                str(Path(tmp) / "out"),
+            ])
+            with self.assertRaisesRegex(ValueError, r"benchmark ticker\(s\) must not also"):
+                cli_module.run(args)
+
+    def test_yfinance_stock_tickers_are_deduped_before_fetch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "out"
+            cache_dir = Path(tmp) / "cache"
+            calls = []
+
+            def fake_fetch(tickers, period, cache_dir_arg, **kwargs):
+                calls.append(list(tickers))
+                return load_prices_csv(FIXTURES / "prices.csv"), {
+                    "provider": "yfinance",
+                    "provider_version": "test",
+                    "fetched_at": "2026-06-11T00:00:00Z",
+                    "source": "yfinance:test",
+                    "cache_dir": str(cache_dir_arg),
+                    "requested_ticker_count": len(tickers),
+                    "succeeded_tickers": list(tickers),
+                    "failed_tickers": [],
+                }
+
+            args = cli_module.build_parser().parse_args([
+                "run",
+                "--provider",
+                "yfinance",
+                "--tickers",
+                "AAA",
+                "AAA",
+                "BBB",
+                "aaa",
+                "CCC",
+                "--period",
+                "5y",
+                "--cache-dir",
+                str(cache_dir),
+                "--universe-file",
+                str(FIXTURES / "universe.csv"),
+                "--fundamentals-file",
+                str(FIXTURES / "fundamentals.csv"),
+                "--output-dir",
+                str(output_dir),
+                "--rebalance",
+                "M",
+                "--top-n",
+                "3",
+                "--factor-preset",
+                "core",
+            ])
+
+            with mock.patch("best_factor.cli.fetch_yfinance_prices", side_effect=fake_fetch):
+                cli_module.run(args)
+
+        self.assertEqual(calls, [["AAA", "BBB", "CCC"]])
 
     def test_site_subcommand_exports_github_pages_json(self):
         out = self.run_cli()

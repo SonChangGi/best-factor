@@ -108,11 +108,30 @@ class SiteExportTest(unittest.TestCase):
                         "market_cap_filter_basis": "current_yfinance_metadata_screen_not_point_in_time",
                         "market_cap_filter_attempted": True,
                         "market_cap_filter_effective": False,
+                        "market_cap_filter_status": "not_applied_metadata_insufficient; dashboard scope is current common-stock plus liquidity, not a large-cap screen",
                         "filter_fallback_reason": "market_cap_metadata_insufficient_preflight",
                         "current_screen_note": "Current screen, not PIT.",
                         "coverage_denominator": "emitted_portfolio_return_periods_per_factor_including_zero_holding_attempts",
+                        "transaction_cost_bps": 5.0,
+                        "transaction_cost_model": "one_way_notional",
+                        "transaction_cost_note": "Transaction-cost bps are charged on one-way traded notional.",
                         "requested_ticker_count": 750,
                         "price_ticker_count": 720,
+                        "active_priced_stock_count": 720,
+                        "history_qualified_ticker_count": 710,
+                        "liquidity_qualified_ticker_count": 705,
+                        "latest_factor_eligible_ticker_count": 700,
+                        "min_factor_eligible_tickers": 500,
+                        "min_history_observations": 252,
+                        "eligibility_adv_window": 63,
+                        "eligibility_min_dollar_volume": 50000000.0,
+                        "factor_eligibility_signal_date": "2026-05-29",
+                        "rebalance_eligible_min_count": 640,
+                        "rebalance_eligible_median_count": 690.5,
+                        "rebalance_eligible_latest_count": 700,
+                        "rebalance_history_qualified_latest_count": 710,
+                        "rebalance_liquidity_qualified_latest_count": 705,
+                        "factor_eligibility_note": "Latest active priced stocks that meet the configured trailing-history observation floor and liquidity floor.",
                         "min_price_tickers": 500,
                         "min_price_coverage_ratio": 0.9,
                         "min_latest_data_coverage_ratio": 0.9,
@@ -218,11 +237,26 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["metadata"]["market_cap_filter_basis"], "current_yfinance_metadata_screen_not_point_in_time")
         self.assertTrue(payload["metadata"]["market_cap_filter_attempted"])
         self.assertFalse(payload["metadata"]["market_cap_filter_effective"])
+        self.assertIn("current common-stock plus liquidity", payload["metadata"]["market_cap_filter_status"])
         self.assertEqual(payload["metadata"]["filter_fallback_reason"], "market_cap_metadata_insufficient_preflight")
         self.assertEqual(payload["metadata"]["current_screen_note"], "Current screen, not PIT.")
         self.assertIn("zero_holding", payload["metadata"]["coverage_denominator"])
+        self.assertEqual(payload["metadata"]["transaction_cost_bps"], 5.0)
+        self.assertEqual(payload["metadata"]["transaction_cost_model"], "one_way_notional")
+        self.assertIn("one-way traded notional", payload["metadata"]["transaction_cost_note"])
         self.assertEqual(payload["metadata"]["requested_ticker_count"], 750)
         self.assertEqual(payload["metadata"]["price_ticker_count"], 720)
+        self.assertEqual(payload["metadata"]["active_priced_stock_count"], 720)
+        self.assertEqual(payload["metadata"]["history_qualified_ticker_count"], 710)
+        self.assertEqual(payload["metadata"]["liquidity_qualified_ticker_count"], 705)
+        self.assertEqual(payload["metadata"]["latest_factor_eligible_ticker_count"], 700)
+        self.assertEqual(payload["metadata"]["min_factor_eligible_tickers"], 500)
+        self.assertEqual(payload["metadata"]["min_history_observations"], 252)
+        self.assertEqual(payload["metadata"]["eligibility_adv_window"], 63)
+        self.assertEqual(payload["metadata"]["eligibility_min_dollar_volume"], 50000000.0)
+        self.assertEqual(payload["metadata"]["rebalance_eligible_min_count"], 640)
+        self.assertEqual(payload["metadata"]["rebalance_eligible_median_count"], 690.5)
+        self.assertEqual(payload["metadata"]["rebalance_eligible_latest_count"], 700)
         self.assertEqual(payload["metadata"]["min_price_tickers"], 500)
         self.assertAlmostEqual(payload["metadata"]["min_price_coverage_ratio"], 0.9)
         self.assertAlmostEqual(payload["metadata"]["min_latest_data_coverage_ratio"], 0.9)

@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import math
+import statistics
 import sys
 from collections import Counter
 from pathlib import Path
@@ -93,6 +95,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--min-dollar-volume", type=float, default=0.0)
     run.add_argument("--transaction-cost-bps", type=float, default=0.0)
     run.add_argument(
+        "--transaction-cost-model",
+        choices=["one_way_notional", "portfolio_turnover"],
+        default="one_way_notional",
+        help=(
+            "one_way_notional charges bps on buys plus sells; portfolio_turnover preserves the older "
+            "0.5*sum(abs(delta weight)) convention"
+        ),
+    )
+    run.add_argument(
         "--market-cap-filter-attempted",
         action="store_true",
         help="record that a market-cap-filtered run was attempted before this final run",
@@ -116,6 +127,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--skip-factor-scores-csv", action="store_true", help="skip raw factor_scores.csv archive for large live runs")
     run.add_argument("--universe-metadata-file", help="optional JSON emitted by build_live_universe.py")
+    run.add_argument(
+        "--min-history-observations",
+        type=int,
+        default=0,
+        help="diagnostic/gate: minimum trailing price rows a stock must have at the latest signal date",
+    )
+    run.add_argument(
+        "--eligibility-adv-window",
+        type=int,
+        default=63,
+        help="diagnostic/gate: trailing sessions used for the latest liquidity-qualified stock count",
+    )
+    run.add_argument(
+        "--min-factor-eligible-tickers",
+        type=int,
+        default=0,
+        help="fail if latest history+liquidity-qualified active stocks are below this count",
+    )
     run.add_argument(
         "--benchmark-tickers",
         nargs="*",
@@ -172,11 +201,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "cache_dir": str(cache_dir),
         }
     else:
-        tickers = [t.upper() for t in args.tickers]
+        benchmark_tickers = _normalize_symbols(args.benchmark_tickers)
+        tickers = _normalize_symbols(args.tickers)
+        _reject_benchmark_overlap(tickers, benchmark_tickers)
         if not tickers:
             raise ValueError("--tickers are required when --provider yfinance")
         prices, provider_metadata = fetch_yfinance_prices(tickers, args.period, cache_dir, chunk_size=args.price_chunk_size)
-        benchmark_tickers = _normalize_symbols(args.benchmark_tickers)
         if benchmark_tickers:
             try:
                 benchmark_prices, benchmark_provider_metadata = fetch_yfinance_prices(benchmark_tickers, args.period, cache_dir, chunk_size=args.price_chunk_size)
@@ -221,6 +251,20 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     schedule = build_rebalance_dates(dates, args.rebalance)
     if len(schedule) < 2:
         raise ValueError("not enough price history to form at least two rebalance dates")
+    eligibility_diagnostics = _stock_eligibility_diagnostics(
+        prices,
+        universe,
+        schedule,
+        min_dollar_volume=float(args.min_dollar_volume or 0.0),
+        min_history_observations=int(args.min_history_observations or 0),
+        adv_window=int(args.eligibility_adv_window or 63),
+    )
+    latest_factor_eligible = int(eligibility_diagnostics.get("latest_factor_eligible_ticker_count") or 0)
+    if int(args.min_factor_eligible_tickers or 0) > 0 and latest_factor_eligible < int(args.min_factor_eligible_tickers):
+        raise ValueError(
+            f"latest_factor_eligible_ticker_count {latest_factor_eligible} is below "
+            f"--min-factor-eligible-tickers {int(args.min_factor_eligible_tickers)}"
+        )
     benchmark_tickers = _normalize_symbols(args.benchmark_tickers)
 
     if args.skip_factor_scores_csv:
@@ -236,6 +280,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             args.min_market_cap,
             args.min_dollar_volume,
             args.transaction_cost_bps,
+            args.transaction_cost_model,
+            int(args.eligibility_adv_window or 63),
         )
     else:
         scores = compute_factor_scores(prices, schedule[:-1], fundamentals, requested_factors, requested_factors)
@@ -249,6 +295,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             args.min_market_cap,
             args.min_dollar_volume,
             args.transaction_cost_bps,
+            args.transaction_cost_model,
+            int(args.eligibility_adv_window or 63),
         )
     returns = list(backtest["returns"])
     holdings = list(backtest["holdings"])
@@ -297,6 +345,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "price_coverage_ratio": price_coverage_ratio,
         **latest_price_coverage,
         "rankable_stock_universe_count": _rankable_stock_universe_count(universe, tickers),
+        **eligibility_diagnostics,
+        "min_factor_eligible_tickers": int(args.min_factor_eligible_tickers or 0),
         **_universe_build_public_metadata(universe_build_metadata),
         "factor_scores_archive": "skipped_for_large_live_run" if args.skip_factor_scores_csv else "written",
         "universe_scope_note": (
@@ -309,12 +359,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "market_cap_filter_basis": _market_cap_filter_basis(args, universe),
         "market_cap_filter_attempted": market_cap_attempted,
         "market_cap_filter_effective": market_cap_effective,
+        "market_cap_filter_status": _market_cap_filter_status(args, universe),
         "filter_fallback_reason": str(args.filter_fallback_reason or "none"),
         "current_screen_note": (
             "Universe membership and market-cap filters use the supplied/current metadata snapshot; "
             "they are not historical point-in-time constituent or market-cap screens."
         ),
         "coverage_denominator": "emitted_portfolio_return_periods_per_factor_including_zero_holding_attempts",
+        "transaction_cost_bps": float(args.transaction_cost_bps or 0.0),
+        "transaction_cost_model": args.transaction_cost_model,
+        "transaction_cost_note": _transaction_cost_note(args.transaction_cost_model),
         "rebalance_frequency": args.rebalance,
         "benchmark_tickers": benchmark_tickers,
         "benchmark_label": _benchmark_label(benchmark_tickers[0]) if benchmark_tickers else None,
@@ -442,6 +496,91 @@ def _latest_price_coverage(prices: list[dict[str, object]]) -> dict[str, object]
     return {"latest_data_ticker_count": count, "latest_data_coverage_ratio": _safe_ratio(count, len(grouped))}
 
 
+def _stock_eligibility_diagnostics(
+    prices: list[dict[str, object]],
+    universe: list[dict[str, object]],
+    schedule: list[dt.date],
+    *,
+    min_dollar_volume: float,
+    min_history_observations: int,
+    adv_window: int,
+) -> dict[str, object]:
+    """Summarize whether the priced universe is also usable by factor/liquidity gates.
+
+    Price coverage alone can overstate the economically analyzable universe.  This
+    diagnostic counts active priced stocks that have enough trailing observations
+    and pass the same trailing ADV liquidity floor used in portfolio selection at
+    each signal date.  The live workflow gates on the latest signal date while
+    still exposing the rebalance-window distribution for interpretation.
+    """
+    grouped = group_prices(prices)
+    active_tickers = {
+        str(row.get("ticker") or "").upper()
+        for row in universe
+        if _is_active_stock_row(row) and str(row.get("ticker") or "").upper() in grouped
+    }
+    signal_dates = list(schedule[:-1])
+    min_history_observations = max(0, int(min_history_observations or 0))
+    adv_window = max(1, int(adv_window or 63))
+    counts: list[int] = []
+    history_counts: list[int] = []
+    liquidity_counts: list[int] = []
+    latest_breakdown = {
+        "history_qualified_ticker_count": 0,
+        "liquidity_qualified_ticker_count": 0,
+        "latest_factor_eligible_ticker_count": 0,
+        "factor_eligibility_signal_date": "",
+    }
+    for signal_date in signal_dates:
+        history_ok: set[str] = set()
+        liquidity_ok: set[str] = set()
+        for ticker in active_tickers:
+            rows = grouped.get(ticker, [])
+            trailing = [row for row in rows if row["date"] <= signal_date]
+            if len(trailing) >= min_history_observations:
+                history_ok.add(ticker)
+            if min_dollar_volume <= 0 or _average_dollar_volume(trailing, adv_window) >= min_dollar_volume:
+                liquidity_ok.add(ticker)
+        eligible = history_ok & liquidity_ok
+        history_counts.append(len(history_ok))
+        liquidity_counts.append(len(liquidity_ok))
+        counts.append(len(eligible))
+        latest_breakdown = {
+            "history_qualified_ticker_count": len(history_ok),
+            "liquidity_qualified_ticker_count": len(liquidity_ok),
+            "latest_factor_eligible_ticker_count": len(eligible),
+            "factor_eligibility_signal_date": signal_date.isoformat(),
+        }
+    return {
+        "min_history_observations": min_history_observations,
+        "eligibility_adv_window": adv_window,
+        "eligibility_min_dollar_volume": float(min_dollar_volume or 0.0),
+        "active_priced_stock_count": len(active_tickers),
+        **latest_breakdown,
+        "rebalance_eligible_min_count": min(counts) if counts else 0,
+        "rebalance_eligible_median_count": statistics.median(counts) if counts else 0,
+        "rebalance_eligible_latest_count": counts[-1] if counts else 0,
+        "rebalance_history_qualified_latest_count": history_counts[-1] if history_counts else 0,
+        "rebalance_liquidity_qualified_latest_count": liquidity_counts[-1] if liquidity_counts else 0,
+        "factor_eligibility_note": (
+            "Latest active priced stocks that meet the configured trailing-history observation floor and "
+            "the same trailing average-dollar-volume liquidity floor used for portfolio selection."
+        ),
+    }
+
+
+def _average_dollar_volume(rows: list[dict[str, object]], window: int) -> float:
+    if len(rows) < window:
+        return 0.0
+    values = []
+    for row in rows[-window:]:
+        try:
+            values.append(float(row.get("volume", 0) or 0) * float(row.get("adj_close", 0) or 0))
+        except (TypeError, ValueError):
+            values.append(0.0)
+    return sum(values) / len(values) if values else 0.0
+
+
 def _safe_ratio(numerator: int, denominator: int) -> float:
     return float(numerator) / float(denominator) if denominator > 0 else 0.0
 
@@ -503,6 +642,16 @@ def _normalize_symbols(symbols: list[str] | tuple[str, ...] | None) -> list[str]
     return out
 
 
+def _reject_benchmark_overlap(stock_tickers: list[str], benchmark_tickers: list[str]) -> None:
+    overlap = sorted(set(stock_tickers) & set(benchmark_tickers))
+    if overlap:
+        raise ValueError(
+            "benchmark ticker(s) must not also be stock-universe tickers: "
+            + ", ".join(overlap)
+            + ". Pass benchmarks only through --benchmark-tickers."
+        )
+
+
 def _benchmark_prices_from_csv(prices: list[dict[str, object]], symbols: list[str] | tuple[str, ...] | None) -> list[dict[str, object]]:
     wanted = set(_normalize_symbols(symbols))
     if not wanted:
@@ -548,6 +697,37 @@ def _market_cap_filter_basis(args: argparse.Namespace, universe: list[dict[str, 
     if any("yfinance" in source for source in sources):
         return "current_yfinance_metadata_screen_not_point_in_time"
     return "supplied_universe_metadata_screen_not_verified_point_in_time"
+
+
+def _market_cap_filter_status(args: argparse.Namespace, universe: list[dict[str, object]]) -> str:
+    if float(getattr(args, "min_market_cap", 0.0) or 0.0) > 0:
+        return "applied_current_metadata_not_point_in_time"
+    if getattr(args, "market_cap_filter_attempted", False):
+        return (
+            "not_applied_metadata_insufficient; dashboard scope is current common-stock plus liquidity, "
+            "not a large-cap screen"
+        )
+    finite = 0
+    for row in universe:
+        try:
+            if math.isfinite(float(row.get("market_cap", math.nan))):
+                finite += 1
+        except (TypeError, ValueError):
+            continue
+    return f"not_requested; finite_market_cap_rows={finite}"
+
+
+def _transaction_cost_note(model: str) -> str:
+    if model == "one_way_notional":
+        return (
+            "Transaction-cost bps are charged on one-way traded notional: "
+            "sum(abs(delta weights)). A full cash-to-portfolio buy costs 1x notional; "
+            "a full disjoint replacement costs 2x notional."
+        )
+    return (
+        "Transaction-cost bps are charged on portfolio turnover: "
+        "0.5 * sum(abs(delta weights)); retained for backward-compatible research comparisons."
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

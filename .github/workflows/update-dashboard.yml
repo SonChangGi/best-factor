@@ -32,7 +32,7 @@ permissions:
 
 concurrency:
   group: best-factor-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   update-and-deploy:
@@ -44,10 +44,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout isolated best-factor repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.11"
           cache: "pip"
@@ -86,6 +86,9 @@ jobs:
           MIN_PRICE_TICKERS=500
           MIN_PRICE_COVERAGE_RATIO=0.90
           MIN_LATEST_DATA_COVERAGE_RATIO=0.90
+          MIN_FACTOR_ELIGIBLE_TICKERS=500
+          MIN_HISTORY_OBSERVATIONS=252
+          ELIGIBILITY_ADV_WINDOW=63
           PRICE_CHUNK_SIZE=100
           TICKERS=($(python - <<'PY'
           import csv
@@ -102,6 +105,9 @@ jobs:
             --min-price-tickers "${MIN_PRICE_TICKERS}"
             --min-price-coverage-ratio "${MIN_PRICE_COVERAGE_RATIO}"
             --min-latest-data-coverage-ratio "${MIN_LATEST_DATA_COVERAGE_RATIO}"
+            --min-factor-eligible-tickers "${MIN_FACTOR_ELIGIBLE_TICKERS}"
+            --min-history-observations "${MIN_HISTORY_OBSERVATIONS}"
+            --eligibility-adv-window "${ELIGIBILITY_ADV_WINDOW}"
             --skip-factor-scores-csv
             --universe-metadata-file /tmp/best-factor-universe-metadata.json
             --output-dir /tmp/best-factor-live-run
@@ -112,6 +118,7 @@ jobs:
             --benchmark-tickers '^IXIC' ONEQ QQQ
             --min-dollar-volume 50000000
             --transaction-cost-bps 5
+            --transaction-cost-model one_way_notional
             --universe-file /tmp/best-factor-universe.csv
           )
           export MIN_MARKET_CAP
@@ -135,8 +142,10 @@ jobs:
           )"
           echo "market-cap eligible names: ${MARKET_CAP_ELIGIBLE_COUNT}/${#TICKERS[@]}"
           if (( MARKET_CAP_ELIGIBLE_COUNT >= MIN_MARKET_CAP_NAMES )); then
+            DATA_SCOPE=live_yfinance_current_market_cap_and_liquidity_screen_actions
             python -m best_factor.cli run "${COMMON_ARGS[@]}" --min-market-cap "${MIN_MARKET_CAP}"
           else
+            DATA_SCOPE=live_yfinance_current_common_stock_liquidity_screen_actions
             echo "Market-cap metadata preflight found only ${MARKET_CAP_ELIGIBLE_COUNT} eligible names; running liquidity-only fallback." >&2
             rm -rf /tmp/best-factor-live-run
             python -m best_factor.cli run "${COMMON_ARGS[@]}" \
@@ -146,11 +155,11 @@ jobs:
           python -m best_factor.cli site \
             --run-dir /tmp/best-factor-live-run \
             --output-file docs/data/latest-results.json \
-            --data-scope live_yfinance_curated_us_large_liquid_actions
+            --data-scope "${DATA_SCOPE}"
 
       - name: Archive generated run artifacts
         if: steps.freshness.outputs.should_update == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: best-factor-live-run-${{ github.run_id }}
           if-no-files-found: error
@@ -164,11 +173,11 @@ jobs:
 
       - name: Configure GitHub Pages
         if: steps.freshness.outputs.should_update == 'true'
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
       - name: Upload static dashboard artifact
         if: steps.freshness.outputs.should_update == 'true'
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: docs
 
@@ -177,4 +186,4 @@ jobs:
         id: deployment
         env:
           NODE_OPTIONS: --no-deprecation
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

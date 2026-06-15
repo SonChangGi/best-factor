@@ -217,7 +217,7 @@ def fetch_yfinance_prices(
     except Exception as exc:  # pragma: no cover - optional dependency path
         raise RuntimeError("Install optional live dependency with `pip install -e .[live]` to use provider yfinance") from exc
 
-    requested = [normalize_ticker(ticker) for ticker in tickers if normalize_ticker(ticker)]
+    requested = _dedupe_preserve_order(normalize_ticker(ticker) for ticker in tickers)
     chunk_size = max(1, int(chunk_size or 100))
     fetched_at = dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z")
     rows: list[dict[str, object]] = []
@@ -454,6 +454,16 @@ def _package_version(package: str) -> str:
         return importlib.metadata.version(package)
     except importlib.metadata.PackageNotFoundError:
         return "unknown"
+
+
+def _dedupe_preserve_order(values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
 
 
 def _retry_yfinance_call(call, operation: str, attempts: int = 3, initial_delay: float = 1.0):

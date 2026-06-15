@@ -86,6 +86,7 @@ Each run writes:
 - `factor_holdout_rankings.csv`
 - `latest_holdings.csv`
 - `portfolio_returns.csv`
+- `benchmark_returns.csv`
 - `factor_scores.csv`
 - `skipped_reasons.csv`
 - `prices_snapshot.csv`
@@ -162,13 +163,16 @@ Each live workflow run first rebuilds a validated universe CSV from the public N
 - at least **700** validated current common-stock universe rows before price fetching;
 - at least **500** unique stock tickers with successful price data;
 - at least **90%** requested-price coverage;
-- at least **90%** latest-date price coverage.
+- at least **90%** latest-date price coverage;
+- at least **500** latest signal-date factor-eligible stocks after the configured trailing-history and liquidity diagnostics.
 
-For large live runs, the workflow skips the raw `factor_scores.csv` archive and uses streaming factor-score/backtest construction to avoid turning the factor zoo into a massive CI artifact. The final run metadata records requested, priced, rankable, failed, coverage, source-hash, and exclusion-count fields so the dashboard can show whether the 500+ stock requirement was actually met.
+For large live runs, the workflow skips the raw `factor_scores.csv` archive and uses streaming factor-score/backtest construction to avoid turning the factor zoo into a massive CI artifact. The final run metadata records requested, priced, rankable, failed, coverage, source-hash, exclusion-count, and **factor-eligible** stock-count fields so the dashboard can show whether the 500+ stock requirement was met by names that also have enough trailing history and liquidity.
 
-The workflow applies a liquidity filter and runs a market-cap-filtered backtest only after a metadata preflight confirms enough names meet the threshold. If the preflight is insufficient, it runs a liquidity-only fallback and records `market_cap_metadata_insufficient_preflight`; other CLI/provider failures are not swallowed by the fallback. The final run metadata records whether the market-cap filter was attempted, whether it was effective, and any fallback reason so two dashboard snapshots are not silently compared under different screens.
+The workflow applies a 63-session trailing average-dollar-volume liquidity filter and charges **5 bps one-way traded notional** transaction costs by default. This means an initial full portfolio buy costs 1x notional and a full disjoint replacement costs 2x notional; the older `portfolio_turnover` convention remains available only for backward-compatible research comparisons.
 
-This keeps the public page reproducible and cheap to update, but the results remain research-grade and current-universe biased.
+A market-cap-filtered backtest is run only after a metadata preflight confirms enough names meet the threshold. If the preflight is insufficient, the workflow falls back to the truthful scope `live_yfinance_current_common_stock_liquidity_screen_actions` and records `market_cap_metadata_insufficient_preflight`; other CLI/provider failures are not swallowed by the fallback. The final run metadata records whether the market-cap filter was attempted, whether it was effective, its status string, and any fallback reason so dashboard snapshots are not silently compared under different screens.
+
+The live workflow keeps overlapping benchmark symbols out of the stock universe, avoids canceling a primary refresh in favor of later fallback checks, pins third-party GitHub Actions by SHA, and uses Dependabot for weekly action/Python dependency review. This keeps the public page reproducible and cheap to update, but the results remain research-grade and current-universe biased.
 
 ## Data schemas
 
@@ -211,10 +215,11 @@ The default approach uses free/current-universe data and should be interpreted a
 - Current symbol lists are not survivorship-bias-free historical constituents.
 - Yahoo/yfinance data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms.
 - Live yfinance and CSV price loaders scale `open`, `high`, `low`, and `close` to the `adj_close` basis before OHLC-derived factor scoring, preventing raw/adjusted price-scale mixing around dividends and splits.
-- Current yfinance universe membership and market-cap metadata are current screens, not historical point-in-time constituent or point-in-time market-cap filters.
+- Current yfinance universe membership and market-cap metadata are current screens, not historical point-in-time constituent or point-in-time market-cap filters; when market-cap metadata is insufficient the dashboard labels the run as common-stock/liquidity-screened rather than large-cap-screened.
 - Fundamental files must include `as_of_date` and `available_at`; rows without `available_at` are treated as non-point-in-time and skipped for historical factor scoring.
 - Some factors or rows may be skipped with explicit reason codes such as `missing_fundamentals`, `insufficient_history`, `insufficient_volume`, `market_cap_unavailable`, `market_cap_below_min`, `empty_after_filters`, `provider_error`, `not_enough_assets`, `missing_rebalance_price`, `missing_exit_price`, `invalid_period_missing_price`, `inactive_or_non_stock`, and dynamic `zero_coverage:<factor>` diagnostics.
 - Factor-zoo mode compares many related definitions. The top-ranked factor can be an in-sample winner caused by multiple-testing/data-snooping. The reported recent-tail holdout rank is a robustness diagnostic, not proof of a universal anomaly; recheck with true holdout periods, alternate universes, costs, and higher-quality point-in-time data before drawing investment conclusions.
+- Default live results include a simple transaction-cost haircut, but they still do not model bid/ask spread variation, market impact, taxes, borrow constraints, execution latency, or capacity.
 
 For higher-confidence research, use a survivorship-aware universe and point-in-time fundamentals from a licensed data source through a new provider adapter.
 

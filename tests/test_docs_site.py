@@ -105,6 +105,10 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("market_cap_filter_basis", app)
         self.assertIn("분석 주식 수", app)
         self.assertIn("price_coverage_ratio", app)
+        self.assertIn("실질 후보 수", app)
+        self.assertIn("latest_factor_eligible_ticker_count", app)
+        self.assertIn("transaction_cost_model", app)
+        self.assertIn("market_cap_filter_status", app)
         self.assertIn("RANKING_DEFAULT_TOP = 20", app)
         self.assertIn("Holdout 보조 검증", app)
         self.assertIn("UPDATE_AUTOMATION_DEFAULT", app)
@@ -200,7 +204,7 @@ class DocsSiteTest(unittest.TestCase):
             self.assertIn(key, payload)
         self.assertEqual(payload["schema_version"], 1)
         self.assertRegex(payload["generated_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
-        self.assertIn(payload["data_scope"], {"fixture_sample", "live_yfinance_curated_us_large_liquid_actions"})
+        self.assertIn(payload["data_scope"], {"fixture_sample", "live_yfinance_current_common_stock_liquidity_screen_actions", "live_yfinance_current_market_cap_and_liquidity_screen_actions"})
         self.assertIn("static_data_warning", payload["summary"])
         self.assertNotIn("run_config", payload["metadata"])
         self.assertNotIn("cache_dir", payload["metadata"])
@@ -231,6 +235,10 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("price_coverage_ratio", payload["metadata"])
         self.assertIn("latest_data_coverage_ratio", payload["metadata"])
         self.assertIn("rankable_stock_universe_count", payload["metadata"])
+        self.assertIn("latest_factor_eligible_ticker_count", payload["metadata"])
+        self.assertIn("factor_eligibility_note", payload["metadata"])
+        self.assertIn("transaction_cost_model", payload["metadata"])
+        self.assertIn("market_cap_filter_status", payload["metadata"])
         self.assertIn("benchmark_note", payload["metadata"])
         self.assertIn("current_screen_note", payload["metadata"])
         self.assertFalse(payload["metadata"].get("universe_is_point_in_time"))
@@ -267,14 +275,16 @@ class DocsSiteTest(unittest.TestCase):
             "contents: read",
             "pages: write",
             "id-token: write",
-            "actions/configure-pages@v6",
-            "actions/upload-pages-artifact@v5",
-            "actions/deploy-pages@v5",
-            "actions/upload-artifact@v7",
+            "actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6",
+            "actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5",
+            "actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5",
+            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",
+            "cancel-in-progress: false",
             "NODE_OPTIONS: --no-deprecation",
             "github.repository == 'SonChangGi/best-factor'",
             "github.ref == 'refs/heads/main'",
-            "live_yfinance_curated_us_large_liquid_actions",
+            "live_yfinance_current_common_stock_liquidity_screen_actions",
+            "live_yfinance_current_market_cap_and_liquidity_screen_actions",
             "--market-cap-filter-attempted",
             "MARKET_CAP_ELIGIBLE_COUNT",
             "market_cap_metadata_insufficient_preflight",
@@ -287,6 +297,13 @@ class DocsSiteTest(unittest.TestCase):
             "MIN_PRICE_COVERAGE_RATIO=0.90",
             "--min-latest-data-coverage-ratio",
             "MIN_LATEST_DATA_COVERAGE_RATIO=0.90",
+            "--min-factor-eligible-tickers",
+            "MIN_FACTOR_ELIGIBLE_TICKERS=500",
+            "--min-history-observations",
+            "MIN_HISTORY_OBSERVATIONS=252",
+            "--eligibility-adv-window",
+            "ELIGIBILITY_ADV_WINDOW=63",
+            "--transaction-cost-model one_way_notional",
             "--skip-factor-scores-csv",
             "--universe-metadata-file /tmp/best-factor-universe-metadata.json",
         ]:
@@ -295,6 +312,13 @@ class DocsSiteTest(unittest.TestCase):
         self.assertNotIn("if ! python -m best_factor.cli run", workflow)
         self.assertNotIn("git commit", workflow)
         self.assertNotIn("git push", workflow)
+
+
+    def test_dependabot_tracks_actions_and_python_dependencies(self):
+        dependabot = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+        self.assertIn('package-ecosystem: "github-actions"', dependabot)
+        self.assertIn('package-ecosystem: "pip"', dependabot)
+        self.assertIn('interval: "weekly"', dependabot)
 
     def test_dashboard_universe_is_committed_individual_stock_list(self):
         ticker_file = ROOT / ".github" / "best-factor-dashboard-tickers.txt"

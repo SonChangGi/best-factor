@@ -10,6 +10,73 @@ from pathlib import Path, PureWindowsPath
 from .schemas import CAVEATS, TIMING_CONVENTION
 
 
+REPORT_METADATA_KEYS = [
+    "provider",
+    "provider_version",
+    "price_adjustment",
+    "source",
+    "fetched_at",
+    "cache_dir",
+    "universe_as_of_date",
+    "source_hash",
+    "requested_ticker_count",
+    "price_ticker_count",
+    "min_price_tickers",
+    "min_price_coverage_ratio",
+    "min_latest_data_coverage_ratio",
+    "price_coverage_ratio",
+    "latest_data_ticker_count",
+    "latest_data_coverage_ratio",
+    "failed_price_ticker_count",
+    "price_download_chunk_size",
+    "price_download_chunk_count",
+    "price_download_success_rate",
+    "rankable_stock_universe_count",
+    "active_priced_stock_count",
+    "history_qualified_ticker_count",
+    "liquidity_qualified_ticker_count",
+    "latest_factor_eligible_ticker_count",
+    "min_factor_eligible_tickers",
+    "min_history_observations",
+    "eligibility_adv_window",
+    "eligibility_min_dollar_volume",
+    "factor_eligibility_signal_date",
+    "rebalance_eligible_min_count",
+    "rebalance_eligible_median_count",
+    "rebalance_eligible_latest_count",
+    "rebalance_history_qualified_latest_count",
+    "rebalance_liquidity_qualified_latest_count",
+    "factor_eligibility_note",
+    "factor_scores_archive",
+    "universe_build_universe_source_urls",
+    "universe_build_symbol_directory_source_hash",
+    "universe_build_common_stock_candidate_count",
+    "universe_build_selected_universe_ticker_count",
+    "universe_build_invalid_ticker_count",
+    "universe_build_excluded_symbol_counts",
+    "universe_build_universe_construction_note",
+    "universe_scope_note",
+    "universe_is_point_in_time",
+    "market_cap_filter_basis",
+    "market_cap_filter_attempted",
+    "market_cap_filter_effective",
+    "market_cap_filter_status",
+    "filter_fallback_reason",
+    "current_screen_note",
+    "coverage_denominator",
+    "transaction_cost_bps",
+    "transaction_cost_model",
+    "transaction_cost_note",
+    "factor_preset",
+    "requested_factor_preset",
+    "factor_library_size",
+    "selected_factor_count",
+    "factor_category_counts",
+    "factor_library_note",
+    "holdout_validation",
+]
+
+
 def write_report(
     path: str | Path,
     rankings: list[dict[str, object]],
@@ -25,7 +92,7 @@ def write_report(
     lines.append("")
     lines.append("## Summary")
     if best:
-        lines.append(f"- **Best factor among tested candidates**: `{best['factor']}`")
+        lines.append(f"- **Best factor among tested candidates**: {_md_inline_code(best['factor'])}")
         lines.append(f"- **Composite score**: {_fmt(best.get('composite_score'))}")
         lines.append(f"- **CAGR**: {_pct(best.get('cagr'))}")
         lines.append(f"- **Sharpe**: {_fmt(best.get('sharpe'))}")
@@ -45,7 +112,7 @@ def write_report(
         lines.append(
             "| {rank} | {factor} | {score} | {cagr} | {sharpe} | {sortino} | {calmar} | {mdd} | {vol} | {coverage} |".format(
                 rank=row.get("rank", ""),
-                factor=row.get("factor", ""),
+                factor=_md(row.get("factor", "")),
                 score=_fmt(row.get("composite_score")),
                 cagr=_pct(row.get("cagr")),
                 sharpe=_fmt(row.get("sharpe")),
@@ -63,7 +130,7 @@ def write_report(
         lines.append("|---|---|---:|---:|---|")
         for row in latest_holdings:
             lines.append(
-                f"| {_date(row.get('rebalance_date'))} | {row.get('ticker')} | {_pct(row.get('weight'))} | {_fmt(row.get('score'))} | {_date(row.get('price_date_used'))} |"
+                f"| {_date(row.get('rebalance_date'))} | {_md(row.get('ticker'))} | {_pct(row.get('weight'))} | {_fmt(row.get('score'))} | {_date(row.get('price_date_used'))} |"
             )
     else:
         lines.append("No latest holdings were available for the selected best factor.")
@@ -74,7 +141,7 @@ def write_report(
     library_size = int(metadata.get("factor_library_size", tested) or tested)
     selected_count = int(metadata.get("selected_factor_count", tested) or tested)
     skipped_count = max(0, tested - effective)
-    lines.append(f"- Factor preset: `{metadata.get('factor_preset', 'unknown')}`")
+    lines.append(f"- Factor preset: {_md_inline_code(metadata.get('factor_preset', 'unknown'))}")
     lines.append(f"- Candidate library size: {library_size}")
     lines.append(f"- Selected/tested candidates: {selected_count}")
     lines.append(f"- Tested factors: {tested}")
@@ -85,62 +152,17 @@ def write_report(
         lines.append("| Reason | Count |")
         lines.append("|---|---:|")
         for reason, count in Counter(skipped_reasons).most_common():
-            lines.append(f"| `{reason}` | {count} |")
+            lines.append(f"| {_md_inline_code(reason)} | {count} |")
     lines.append("")
     lines.append("## Data sources and run metadata")
-    for key in [
-        "provider",
-        "provider_version",
-        "price_adjustment",
-        "source",
-        "fetched_at",
-        "cache_dir",
-        "universe_as_of_date",
-        "source_hash",
-        "requested_ticker_count",
-        "price_ticker_count",
-        "min_price_tickers",
-        "min_price_coverage_ratio",
-        "min_latest_data_coverage_ratio",
-        "price_coverage_ratio",
-        "latest_data_ticker_count",
-        "latest_data_coverage_ratio",
-        "failed_price_ticker_count",
-        "price_download_chunk_size",
-        "price_download_chunk_count",
-        "price_download_success_rate",
-        "rankable_stock_universe_count",
-        "factor_scores_archive",
-        "universe_build_universe_source_urls",
-        "universe_build_symbol_directory_source_hash",
-        "universe_build_common_stock_candidate_count",
-        "universe_build_selected_universe_ticker_count",
-        "universe_build_invalid_ticker_count",
-        "universe_build_excluded_symbol_counts",
-        "universe_build_universe_construction_note",
-        "universe_scope_note",
-        "universe_is_point_in_time",
-        "market_cap_filter_basis",
-        "market_cap_filter_attempted",
-        "market_cap_filter_effective",
-        "filter_fallback_reason",
-        "current_screen_note",
-        "coverage_denominator",
-        "factor_preset",
-        "requested_factor_preset",
-        "factor_library_size",
-        "selected_factor_count",
-        "factor_category_counts",
-        "factor_library_note",
-        "holdout_validation",
-    ]:
+    for key in REPORT_METADATA_KEYS:
         if metadata.get(key) not in (None, ""):
-            lines.append(f"- {key}: `{_safe_metadata_value(key, metadata.get(key))}`")
+            lines.append(f"- {_md(key)}: {_md_inline_code(_safe_metadata_value(key, metadata.get(key)))}")
     lines.append("")
     lines.append("## Free-data limitations and warnings")
     caveats = metadata.get("caveats") or CAVEATS
     for caveat in caveats:
-        lines.append(f"- {caveat}")
+        lines.append(f"- {_md(caveat)}")
     lines.append("")
     lines.append("## Interpretation")
     lines.append("The top-ranked factor is the best result among the tested candidate definitions under this run's universe, timing, filters, ranking formula, and free-data limitations. Because many related factors are compared, treat the winner as exploratory and re-run with different universes, windows, costs, holdout periods, and data sources before relying on any conclusion.")
@@ -299,55 +321,9 @@ def _diagnostics_section(skipped_reasons: dict[str, int], metadata: dict[str, ob
 
 
 def _metadata_section(metadata: dict[str, object]) -> str:
-    keys = [
-        "provider",
-        "provider_version",
-        "price_adjustment",
-        "source",
-        "fetched_at",
-        "cache_dir",
-        "universe_as_of_date",
-        "source_hash",
-        "requested_ticker_count",
-        "price_ticker_count",
-        "min_price_tickers",
-        "min_price_coverage_ratio",
-        "min_latest_data_coverage_ratio",
-        "price_coverage_ratio",
-        "latest_data_ticker_count",
-        "latest_data_coverage_ratio",
-        "failed_price_ticker_count",
-        "price_download_chunk_size",
-        "price_download_chunk_count",
-        "price_download_success_rate",
-        "rankable_stock_universe_count",
-        "factor_scores_archive",
-        "universe_build_universe_source_urls",
-        "universe_build_symbol_directory_source_hash",
-        "universe_build_common_stock_candidate_count",
-        "universe_build_selected_universe_ticker_count",
-        "universe_build_invalid_ticker_count",
-        "universe_build_excluded_symbol_counts",
-        "universe_build_universe_construction_note",
-        "universe_scope_note",
-        "universe_is_point_in_time",
-        "market_cap_filter_basis",
-        "market_cap_filter_attempted",
-        "market_cap_filter_effective",
-        "filter_fallback_reason",
-        "current_screen_note",
-        "coverage_denominator",
-        "factor_preset",
-        "requested_factor_preset",
-        "factor_library_size",
-        "selected_factor_count",
-        "factor_category_counts",
-        "factor_library_note",
-        "holdout_validation",
-    ]
     lines = ['<section class="panel" aria-labelledby="metadata-title">', '<h2 id="metadata-title">Run Metadata</h2>']
     lines.append('<div class="table-wrap"><table aria-label="Run metadata"><caption>Data source and reproducibility metadata.</caption><tbody>')
-    for key in keys:
+    for key in REPORT_METADATA_KEYS:
         value = metadata.get(key)
         if value not in (None, ""):
             lines.append(f"<tr><th>{_e(key)}</th><td>{_e(_safe_metadata_value(key, value))}</td></tr>")
@@ -413,6 +389,38 @@ th { color:#33433a; background:#f5eddf; }
 
 def _e(value: object) -> str:
     return html.escape(str(value if value is not None else ""), quote=True)
+
+
+def _md(value: object) -> str:
+    """Escape markdown table/list control characters in generated reports."""
+    text = str(value if value is not None else "")
+    return text.replace("\r", " ").replace("\n", " ").replace("|", "\\|").replace("`", "\\`")
+
+
+def _md_inline_code(value: object) -> str:
+    """Render an inline-code span with a delimiter longer than any backtick run.
+
+    Backslashes do not reliably escape backticks inside code spans across
+    Markdown renderers.  A longer delimiter preserves hostile/untrusted values
+    as literal text without allowing them to close the span early.
+    """
+    text = str(value if value is not None else "").replace("\r", " ").replace("\n", " ").replace("|", "\\|")
+    longest = _longest_backtick_run(text)
+    delimiter = "`" * (longest + 1)
+    if longest:
+        return f"{delimiter} {text} {delimiter}"
+    return f"{delimiter}{text}{delimiter}"
+
+
+def _longest_backtick_run(text: str) -> int:
+    longest = current = 0
+    for char in text:
+        if char == "`":
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    return longest
 
 
 def _safe_metadata_value(key: str, value: object) -> str:

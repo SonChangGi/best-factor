@@ -97,6 +97,28 @@ class WebReportTest(unittest.TestCase):
         self.assertIn("No latest holdings were available", html)
         self.assertIn("No skipped diagnostics were recorded.", html)
 
+    def test_markdown_report_escapes_table_and_inline_code_controls(self):
+        rankings = [
+            {"rank": 1, "factor": "mom|bad`code", "composite_score": 0.5, "cagr": 0.1, "sharpe": 1, "sortino": 1, "calmar": 1, "max_drawdown": -0.1, "volatility": 0.2, "coverage": 1}
+        ]
+        metadata = {
+            "provider": "csv",
+            "factor_preset": "zoo`bad",
+            "tested_factor_count": 1,
+            "effective_factor_count": 1,
+            "caveats": ["pipe | newline\ntext"],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "report.md"
+            write_report(path, rankings, [{"ticker": "AAA|BBB", "weight": 1, "score": 1, "rebalance_date": "2024-01-31", "price_date_used": "2024-01-31"}], {"reason|`bad": 1}, metadata)
+            md = path.read_text()
+
+        self.assertIn("mom\\|bad\\`code", md)
+        self.assertIn("AAA\\|BBB", md)
+        self.assertIn("`` reason\\|`bad ``", md)
+        self.assertIn("`` zoo`bad ``", md)
+        self.assertIn("pipe \\| newline text", md)
+
     def test_report_metadata_sanitizes_windows_paths(self):
         rankings = [{"rank": 1, "factor": "momentum", "composite_score": 0.5, "cagr": 0.1, "sharpe": 1, "sortino": 1, "calmar": 1, "max_drawdown": -0.1, "volatility": 0.2, "coverage": 1}]
         metadata = {

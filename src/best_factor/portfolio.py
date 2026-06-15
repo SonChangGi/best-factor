@@ -21,6 +21,8 @@ def run_backtests(
     min_market_cap: float = 0.0,
     min_dollar_volume: float = 0.0,
     transaction_cost_bps: float = 0.0,
+    transaction_cost_model: str = "one_way_notional",
+    adv_window: int = 63,
 ) -> dict[str, object]:
     grouped = group_prices(prices)
     universe_by_ticker = {str(row["ticker"]): row for row in universe}
@@ -48,6 +50,7 @@ def run_backtests(
                 min_market_cap,
                 min_dollar_volume,
                 adv_cache,
+                adv_window,
             )
             skipped.update(reasons)
             if not selected:
@@ -59,6 +62,7 @@ def run_backtests(
                     end,
                     previous_holdings[factor],
                     transaction_cost_bps,
+                    transaction_cost_model,
                     "empty_after_filters",
                 )
                 previous_holdings[factor] = {}
@@ -83,6 +87,7 @@ def run_backtests(
                     end,
                     previous_holdings[factor],
                     transaction_cost_bps,
+                    transaction_cost_model,
                     "invalid_period_missing_price",
                 )
                 previous_holdings[factor] = {}
@@ -97,12 +102,14 @@ def run_backtests(
                     end,
                     previous_holdings[factor],
                     transaction_cost_bps,
+                    transaction_cost_model,
                     "empty_after_filters",
                 )
                 previous_holdings[factor] = {}
                 continue
             current_holdings = {str(holding["ticker"]): float(holding["weight"]) for holding, _ in tradable}
             turnover = _turnover(previous_holdings[factor], current_holdings)
+            traded_notional = _traded_notional(previous_holdings[factor], current_holdings)
             period_return = 0.0
             for holding, ret in tradable:
                 ticker = str(holding["ticker"])
@@ -117,7 +124,7 @@ def run_backtests(
                         "price_date_used": start,
                     }
                 )
-            cost = (transaction_cost_bps / 10000.0) * turnover
+            cost = _transaction_cost(transaction_cost_bps, turnover, traded_notional, transaction_cost_model)
             all_returns.append(
                 {
                     "factor": factor,
@@ -143,6 +150,8 @@ def run_backtests_from_score_batches(
     min_market_cap: float = 0.0,
     min_dollar_volume: float = 0.0,
     transaction_cost_bps: float = 0.0,
+    transaction_cost_model: str = "one_way_notional",
+    adv_window: int = 63,
 ) -> dict[str, object]:
     """Backtest directly from ranked score batches without materializing all scores."""
     grouped = group_prices(prices)
@@ -172,6 +181,7 @@ def run_backtests_from_score_batches(
             min_market_cap,
             min_dollar_volume,
             adv_cache,
+            adv_window,
         )
         skipped.update(reasons)
         if not selected:
@@ -183,6 +193,7 @@ def run_backtests_from_score_batches(
                 end,
                 previous_holdings[factor],
                 transaction_cost_bps,
+                transaction_cost_model,
                 "empty_after_filters",
             )
             previous_holdings[factor] = {}
@@ -207,6 +218,7 @@ def run_backtests_from_score_batches(
                 end,
                 previous_holdings[factor],
                 transaction_cost_bps,
+                transaction_cost_model,
                 "invalid_period_missing_price",
             )
             previous_holdings[factor] = {}
@@ -221,12 +233,14 @@ def run_backtests_from_score_batches(
                 end,
                 previous_holdings[factor],
                 transaction_cost_bps,
+                transaction_cost_model,
                 "empty_after_filters",
             )
             previous_holdings[factor] = {}
             continue
         current_holdings = {str(holding["ticker"]): float(holding["weight"]) for holding, _ in tradable}
         turnover = _turnover(previous_holdings[factor], current_holdings)
+        traded_notional = _traded_notional(previous_holdings[factor], current_holdings)
         period_return = 0.0
         for holding, ret in tradable:
             ticker = str(holding["ticker"])
@@ -241,7 +255,7 @@ def run_backtests_from_score_batches(
                     "price_date_used": start,
                 }
             )
-        cost = (transaction_cost_bps / 10000.0) * turnover
+        cost = _transaction_cost(transaction_cost_bps, turnover, traded_notional, transaction_cost_model)
         all_returns.append(
             {
                 "factor": factor,
@@ -358,6 +372,7 @@ def _select_holdings(
     min_market_cap: float,
     min_dollar_volume: float,
     adv_cache: dict[tuple[str, dt.date, int], float] | None = None,
+    adv_window: int = 63,
 ) -> tuple[list[dict[str, object]], Counter[str]]:
     reasons: Counter[str] = Counter()
     candidates = []
@@ -379,11 +394,12 @@ def _select_holdings(
                 reasons["market_cap_below_min"] += 1
                 continue
         if min_dollar_volume > 0:
-            cache_key = (ticker, signal_date, 63)
+            window = max(1, int(adv_window or 63))
+            cache_key = (ticker, signal_date, window)
             if adv_cache is not None and cache_key in adv_cache:
                 adv = adv_cache[cache_key]
             else:
-                adv = _average_dollar_volume(grouped_prices.get(ticker, []), signal_date, 63)
+                adv = _average_dollar_volume(grouped_prices.get(ticker, []), signal_date, window)
                 if adv_cache is not None:
                     adv_cache[cache_key] = adv
             if adv < min_dollar_volume:
@@ -451,6 +467,7 @@ def _append_empty_period(
     end: dt.date,
     previous: dict[str, float],
     transaction_cost_bps: float,
+    transaction_cost_model: str,
     skip_reason: str,
 ) -> None:
     """Record an attempted but uninvested/invalid period as explicit cash-like output.
@@ -461,7 +478,8 @@ def _append_empty_period(
     a prior non-empty portfolio into cash.
     """
     turnover = _turnover(previous, {})
-    cost = (transaction_cost_bps / 10000.0) * turnover
+    traded_notional = _traded_notional(previous, {})
+    cost = _transaction_cost(transaction_cost_bps, turnover, traded_notional, transaction_cost_model)
     all_returns.append(
         {
             "factor": factor,
@@ -478,6 +496,20 @@ def _append_empty_period(
 def _turnover(previous: dict[str, float], current: dict[str, float]) -> float:
     tickers = set(previous) | set(current)
     return 0.5 * sum(abs(current.get(t, 0.0) - previous.get(t, 0.0)) for t in tickers)
+
+
+def _traded_notional(previous: dict[str, float], current: dict[str, float]) -> float:
+    tickers = set(previous) | set(current)
+    return sum(abs(current.get(t, 0.0) - previous.get(t, 0.0)) for t in tickers)
+
+
+def _transaction_cost(transaction_cost_bps: float, turnover: float, traded_notional: float, model: str) -> float:
+    rate = transaction_cost_bps / 10000.0
+    if model == "one_way_notional":
+        return rate * traded_notional
+    if model == "portfolio_turnover":
+        return rate * turnover
+    raise ValueError("transaction_cost_model must be 'one_way_notional' or 'portfolio_turnover'")
 
 
 def _is_active_stock(universe: dict[str, object]) -> bool:
