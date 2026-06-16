@@ -99,7 +99,7 @@ jobs:
           ))
           rm -rf /tmp/best-factor-live-run
           COMMON_ARGS=(
-            --provider yfinance
+            --provider yfinance_yahoo_chart
             --tickers "${TICKERS[@]}"
             --period 5y
             --price-chunk-size "${PRICE_CHUNK_SIZE}"
@@ -143,10 +143,10 @@ jobs:
           )"
           echo "market-cap eligible names: ${MARKET_CAP_ELIGIBLE_COUNT}/${#TICKERS[@]}"
           if (( MARKET_CAP_ELIGIBLE_COUNT >= MIN_MARKET_CAP_NAMES )); then
-            DATA_SCOPE=live_yfinance_current_market_cap_and_liquidity_screen_actions
+            DATA_SCOPE=live_resilient_current_market_cap_and_liquidity_screen_actions
             python -m best_factor.cli run "${COMMON_ARGS[@]}" --min-market-cap "${MIN_MARKET_CAP}"
           else
-            DATA_SCOPE=live_yfinance_current_common_stock_liquidity_screen_actions
+            DATA_SCOPE=live_resilient_current_common_stock_liquidity_screen_actions
             echo "Market-cap metadata preflight found only ${MARKET_CAP_ELIGIBLE_COUNT} eligible names; running liquidity-only fallback." >&2
             rm -rf /tmp/best-factor-live-run
             python -m best_factor.cli run "${COMMON_ARGS[@]}" \

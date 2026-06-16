@@ -73,9 +73,14 @@ INTEGER_COLUMNS = {
     "latest_portfolio_adv_window",
     "latest_portfolio_period_count",
     "latest_portfolio_nonempty_period_count",
+    "price_download_request_count",
+    "price_download_yfinance_chunk_count",
+    "price_download_yahoo_chart_request_count",
+    "provider_error_count",
+    "fallback_filled_ticker_count",
 }
 CORE_ARTIFACTS = ("factor_rankings.csv", "factor_metrics.csv", "run_metadata.json")
-SAFE_SOURCE_KINDS = {"csv", "yfinance"}
+SAFE_SOURCE_KINDS = {"csv", "yfinance", "yahoo_chart", "yfinance_yahoo_chart"}
 PUBLIC_METADATA_KEYS = {
     "provider",
     "provider_version",
@@ -130,7 +135,19 @@ PUBLIC_METADATA_KEYS = {
     "failed_price_ticker_count",
     "price_download_chunk_size",
     "price_download_chunk_count",
+    "price_download_request_count",
+    "price_download_yfinance_chunk_count",
+    "price_download_yahoo_chart_request_count",
     "price_download_success_rate",
+    "provider_order",
+    "provider_attempted_sources",
+    "provider_fill_counts",
+    "provider_failed_tickers_by_source",
+    "provider_error_count",
+    "provider_limitations",
+    "fallback_source",
+    "fallback_filled_ticker_count",
+    "fallback_filled_tickers",
     "factor_scores_archive",
     "universe_build_universe_source_urls",
     "universe_build_symbol_directory_source_hash",

@@ -220,7 +220,7 @@ class DocsSiteTest(unittest.TestCase):
             self.assertIn(key, payload)
         self.assertEqual(payload["schema_version"], 1)
         self.assertRegex(payload["generated_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
-        self.assertIn(payload["data_scope"], {"fixture_sample", "live_yfinance_current_common_stock_liquidity_screen_actions", "live_yfinance_current_market_cap_and_liquidity_screen_actions"})
+        self.assertIn(payload["data_scope"], {"fixture_sample", "live_resilient_current_common_stock_liquidity_screen_actions", "live_resilient_current_market_cap_and_liquidity_screen_actions"})
         self.assertIn("static_data_warning", payload["summary"])
         self.assertNotIn("run_config", payload["metadata"])
         self.assertNotIn("cache_dir", payload["metadata"])
@@ -306,8 +306,9 @@ class DocsSiteTest(unittest.TestCase):
             "NODE_OPTIONS: --no-deprecation",
             "github.repository == 'SonChangGi/best-factor'",
             "github.ref == 'refs/heads/main'",
-            "live_yfinance_current_common_stock_liquidity_screen_actions",
-            "live_yfinance_current_market_cap_and_liquidity_screen_actions",
+            "--provider yfinance_yahoo_chart",
+            "live_resilient_current_common_stock_liquidity_screen_actions",
+            "live_resilient_current_market_cap_and_liquidity_screen_actions",
             "--market-cap-filter-attempted",
             "MARKET_CAP_ELIGIBLE_COUNT",
             "market_cap_metadata_insufficient_preflight",

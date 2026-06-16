@@ -300,6 +300,70 @@ class CliIntegrationTest(unittest.TestCase):
 
         self.assertEqual(calls, [["AAA", "BBB", "CCC"]])
 
+    def test_resilient_provider_records_fallback_diagnostics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "out"
+            cache_dir = Path(tmp) / "cache"
+            calls = []
+
+            def fake_fetch(tickers, period, cache_dir_arg, **kwargs):
+                calls.append(list(tickers))
+                return load_prices_csv(FIXTURES / "prices.csv"), {
+                    "provider": "yfinance_yahoo_chart",
+                    "provider_version": "yfinance:test; yahoo_chart:direct-json-v8",
+                    "fetched_at": "2026-06-11T00:00:00Z",
+                    "source": "test resilient provider",
+                    "cache_dir": str(cache_dir_arg),
+                    "requested_ticker_count": len(tickers),
+                    "succeeded_tickers": list(tickers),
+                    "failed_tickers": [],
+                    "provider_order": ["yfinance", "yahoo_chart"],
+                    "provider_attempted_sources": ["yfinance", "yahoo_chart"],
+                    "provider_fill_counts": {"yfinance": max(0, len(tickers) - 1), "yahoo_chart": 1},
+                    "provider_failed_tickers_by_source": {"yfinance": ["CCC"], "yahoo_chart": []},
+                    "provider_error_count": 1,
+                    "fallback_source": "yahoo_chart",
+                    "fallback_filled_ticker_count": 1,
+                    "fallback_filled_tickers": ["CCC"],
+                }
+
+            args = cli_module.build_parser().parse_args([
+                "run",
+                "--provider",
+                "yfinance_yahoo_chart",
+                "--tickers",
+                "AAA",
+                "BBB",
+                "CCC",
+                "--period",
+                "5y",
+                "--cache-dir",
+                str(cache_dir),
+                "--universe-file",
+                str(FIXTURES / "universe.csv"),
+                "--fundamentals-file",
+                str(FIXTURES / "fundamentals.csv"),
+                "--output-dir",
+                str(output_dir),
+                "--rebalance",
+                "M",
+                "--top-n",
+                "3",
+                "--factor-preset",
+                "core",
+            ])
+
+            with mock.patch("best_factor.cli.fetch_resilient_prices", side_effect=fake_fetch):
+                cli_module.run(args)
+            metadata = json.loads((output_dir / "run_metadata.json").read_text())
+
+        self.assertEqual(calls, [["AAA", "BBB", "CCC"]])
+        self.assertEqual(metadata["provider"], "yfinance_yahoo_chart")
+        self.assertEqual(metadata["provider_order"], ["yfinance", "yahoo_chart"])
+        self.assertEqual(metadata["provider_attempted_sources"], ["yfinance", "yahoo_chart"])
+        self.assertEqual(metadata["provider_fill_counts"]["yahoo_chart"], 1)
+        self.assertEqual(metadata["fallback_filled_ticker_count"], 1)
+
     def test_latest_price_coverage_uses_latest_broad_reference_date(self):
         prices = [
             {"ticker": "AAA", "date": dt.date(2026, 6, 12), "adj_close": 10.0, "volume": 100},

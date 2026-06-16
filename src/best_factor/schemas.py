@@ -100,15 +100,15 @@ SKIP_REASONS = {
 
 CAVEATS = [
     "Default live dashboard runs use a validated current Nasdaq Trader common-stock screen with configured price/factor-eligibility gates; it is still not survivorship-bias free or historical point-in-time membership.",
-    "Yahoo/yfinance data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms; use for research/education only.",
-    "The live updater hard-fails when too few requested stocks return prices or latest-date coverage is too low, but free-provider outages can still delay dashboard refreshes.",
+    "Yahoo/yfinance and direct Yahoo chart data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms; use for research/education only.",
+    "The live updater uses yfinance first and can fill missing tickers through a direct Yahoo chart JSON path, then still hard-fails when too few requested stocks return prices or latest-date coverage is too low.",
     "Live runs also publish history- and liquidity-qualified stock counts; the latest eligible count is a stronger diagnostic than raw price coverage, but early rebalance windows can still have smaller effective universes.",
     "Live OHLC prices are scaled to the adjusted-close basis before scoring OHLC-derived factors so dividends/splits do not mix raw and adjusted price scales.",
     "Fundamental fields from free sources can be sparse or not point-in-time; unavailable factor rows are skipped with explicit reason codes.",
     "Factor-zoo mode evaluates many related candidates; the selected winner is best among tested candidates in this run. Recent-tail holdout rank is only a robustness diagnostic, not fully untouched out-of-sample validation, and the winner may reflect multiple-testing/data-snooping.",
     "Coverage is measured as non-empty portfolio-return periods divided by attempted scheduled periods; dynamic diagnostics may use zero_coverage:<factor> reason codes.",
     "Outputs are research artifacts, not investment advice or trade instructions.",
-    "Current yfinance universe and market-cap metadata are current-screen inputs, not historical point-in-time membership or point-in-time market capitalization.",
+    "Current free-provider universe and market-cap metadata are current-screen inputs, not historical point-in-time membership or point-in-time market capitalization.",
     "Default transaction-cost modeling charges bps on one-way traded notional; it is still a simplified close-to-close cost model and does not include bid-ask spread, market impact, taxes, borrow, or participation limits.",
     "Latest portfolio capacity uses a simple 5%/10% trailing ADV participation heuristic for the displayed weights; it is not an order-book, market-impact, tax, borrow, or broker execution model.",
 ]

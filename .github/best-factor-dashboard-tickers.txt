@@ -1,5 +1,5 @@
 # Best Factor live dashboard stock universe
-# Generated from Nasdaq Trader Symbol Directory conservative common-stock screen plus yfinance 4-month average dollar volume ranking.
+# Generated from Nasdaq Trader Symbol Directory conservative common-stock screen plus yfinance-primary/Yahoo-chart-fallback 4-month average dollar volume ranking.
 # Target: top 1,800 validated individual stocks by recent average dollar volume, expanding coverage beyond the prior 1,200-name universe.
 # Filters: ETF=N, Test Issue=N, Financial Status=N, letters-only tickers, Common Stock names only, no funds/units/warrants/rights/preferred/depositary/ADR/ordinary/common-share/SPAC-like names.
 # Benchmarks such as ^IXIC/ONEQ/QQQ are intentionally excluded and passed separately as benchmark-tickers.

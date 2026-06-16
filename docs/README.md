@@ -52,6 +52,6 @@ The deployed `best-factor` page is refreshed by the `SonChangGi/best-factor` Git
 - `0 6 * * *` = 15:00 KST same-day stale-data retry.
 - `0 9 * * *` = 18:00 KST final same-day stale-data retry.
 
-Fallback runs first inspect the deployed `docs/data/latest-results.json`; they skip deployment when the JSON was generated today in KST and already covers the latest expected US regular session. The dashboard's manual update button opens the same workflow dispatch page because a static GitHub Pages site cannot safely run Python or store a GitHub token in the browser.
+The primary live run uses `yfinance_yahoo_chart`: yfinance is attempted first, and tickers missing from that path are retried through a direct Yahoo chart JSON adapter. Fallback runs first inspect the deployed `docs/data/latest-results.json`; they skip deployment when the JSON was generated today in KST and already covers the latest expected US regular session. The dashboard's manual update button opens the same workflow dispatch page because a static GitHub Pages site cannot safely run Python or store a GitHub token in the browser.
 
 The economic read-through panel is an explanatory layer over the generated metrics. It does not turn the exploratory factor-zoo winner into investment advice; it highlights economic rationale, risk-adjusted metrics, holdout robustness, concentration, and execution caveats.

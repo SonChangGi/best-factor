@@ -159,7 +159,19 @@ class SiteExportTest(unittest.TestCase):
                         "rankable_stock_universe_count": 718,
                         "failed_price_ticker_count": 30,
                         "price_download_chunk_size": 100,
+                        "price_download_chunk_count": 8,
+                        "price_download_yfinance_chunk_count": 8,
+                        "price_download_yahoo_chart_request_count": 3,
                         "price_download_success_rate": 0.96,
+                        "provider_order": ["yfinance", "yahoo_chart"],
+                        "provider_attempted_sources": ["yfinance", "yahoo_chart"],
+                        "provider_fill_counts": {"yfinance": 717, "yahoo_chart": 3},
+                        "provider_failed_tickers_by_source": {"yfinance": ["AAA"], "yahoo_chart": []},
+                        "provider_error_count": 1,
+                        "provider_limitations": "Free Yahoo-family sources only.",
+                        "fallback_source": "yahoo_chart",
+                        "fallback_filled_ticker_count": 3,
+                        "fallback_filled_tickers": ["AAA", "BBB", "CCC"],
                         "factor_scores_archive": "skipped_for_large_live_run",
                         "universe_build_common_stock_candidate_count": 3740,
                         "universe_build_excluded_symbol_counts": {"etf": 1200},
@@ -298,6 +310,17 @@ class SiteExportTest(unittest.TestCase):
         self.assertIn("configured latest-data gate", payload["metadata"]["latest_data_reference_note"])
         self.assertEqual(payload["metadata"]["rankable_stock_universe_count"], 718)
         self.assertEqual(payload["metadata"]["price_download_chunk_size"], 100)
+        self.assertEqual(payload["metadata"]["price_download_chunk_count"], 8)
+        self.assertEqual(payload["metadata"]["price_download_yfinance_chunk_count"], 8)
+        self.assertEqual(payload["metadata"]["price_download_yahoo_chart_request_count"], 3)
+        self.assertEqual(payload["metadata"]["provider_order"], ["yfinance", "yahoo_chart"])
+        self.assertEqual(payload["metadata"]["provider_attempted_sources"], ["yfinance", "yahoo_chart"])
+        self.assertEqual(payload["metadata"]["provider_fill_counts"], {"yfinance": 717, "yahoo_chart": 3})
+        self.assertEqual(payload["metadata"]["provider_failed_tickers_by_source"], {"yfinance": ["AAA"], "yahoo_chart": []})
+        self.assertEqual(payload["metadata"]["provider_error_count"], 1)
+        self.assertEqual(payload["metadata"]["fallback_source"], "yahoo_chart")
+        self.assertEqual(payload["metadata"]["fallback_filled_ticker_count"], 3)
+        self.assertEqual(payload["metadata"]["fallback_filled_tickers"], ["AAA", "BBB", "CCC"])
         self.assertEqual(payload["metadata"]["factor_scores_archive"], "skipped_for_large_live_run")
         self.assertEqual(payload["metadata"]["universe_build_common_stock_candidate_count"], 3740)
         self.assertEqual(payload["metadata"]["universe_build_excluded_symbol_counts"], {"etf": 1200})
@@ -341,6 +364,11 @@ class SiteExportTest(unittest.TestCase):
             _minimal_core(run_dir, metadata={"provider": "custom", "source": "yfinance:AAPL,MSFT"})
             by_scheme = build_site_payload(run_dir, generated_at="2026-06-10T01:02:03Z")
         self.assertEqual(by_scheme["metadata"]["source_kind"], "yfinance")
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            _minimal_core(run_dir, metadata={"provider": "yfinance_yahoo_chart", "source": "internal"})
+            by_resilient_provider = build_site_payload(run_dir, generated_at="2026-06-10T01:02:03Z")
+        self.assertEqual(by_resilient_provider["metadata"]["source_kind"], "yfinance_yahoo_chart")
 
     def test_no_source_files_have_no_source_hash(self):
         args = Namespace(prices_file=None, universe_file=None, fundamentals_file=None)

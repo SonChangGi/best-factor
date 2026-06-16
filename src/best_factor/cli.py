@@ -12,6 +12,8 @@ from pathlib import Path
 
 from .calendar import rebalance_dates as build_rebalance_dates
 from .data import (
+    fetch_resilient_prices,
+    fetch_yahoo_chart_prices,
     fetch_yfinance_prices,
     group_prices,
     load_fundamentals_csv,
@@ -83,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="best-factor", description="Rank US equity factors and emit latest holdings/weights.")
     sub = parser.add_subparsers(dest="command")
     run = sub.add_parser("run", help="run a factor backtest")
-    run.add_argument("--provider", choices=["csv", "yfinance"], default="csv")
+    run.add_argument("--provider", choices=["csv", "yfinance", "yahoo_chart", "yfinance_yahoo_chart"], default="csv")
     run.add_argument("--prices-file", help="long-form CSV prices file for provider=csv")
     run.add_argument("--universe-file", help="optional universe metadata CSV")
     run.add_argument("--fundamentals-file", help="optional fundamentals CSV")
@@ -116,7 +118,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--tickers", nargs="*", default=[])
     run.add_argument("--period", default="5y")
     run.add_argument("--cache-dir", default=".cache/best-factor")
-    run.add_argument("--price-chunk-size", type=int, default=100, help="ticker chunk size for yfinance price downloads")
+    run.add_argument(
+        "--price-chunk-size",
+        type=int,
+        default=100,
+        help="ticker chunk size for yfinance downloads; direct Yahoo chart fallback requests are per ticker",
+    )
     run.add_argument("--min-price-tickers", type=int, default=0, help="fail if fewer unique stock tickers have price data")
     run.add_argument("--min-price-coverage-ratio", type=float, default=0.0, help="fail if price coverage is below this requested-ticker ratio")
     run.add_argument(
@@ -170,6 +177,23 @@ def build_site(args: argparse.Namespace) -> dict[str, object]:
     return write_site_payload(args.run_dir, args.output_file, data_scope=args.data_scope)
 
 
+def _fetch_live_prices(
+    provider: str,
+    tickers: list[str],
+    period: str,
+    cache_dir: str | Path,
+    *,
+    chunk_size: int,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    if provider == "yfinance":
+        return fetch_yfinance_prices(tickers, period, cache_dir, chunk_size=chunk_size)
+    if provider == "yahoo_chart":
+        return fetch_yahoo_chart_prices(tickers, period, cache_dir, chunk_size=chunk_size)
+    if provider == "yfinance_yahoo_chart":
+        return fetch_resilient_prices(tickers, period, cache_dir, chunk_size=chunk_size)
+    raise ValueError(f"unsupported live price provider: {provider}")
+
+
 def run(args: argparse.Namespace) -> dict[str, object]:
     if args.top_n <= 0:
         raise ValueError("--top-n must be positive")
@@ -205,11 +229,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         tickers = _normalize_symbols(args.tickers)
         _reject_benchmark_overlap(tickers, benchmark_tickers)
         if not tickers:
-            raise ValueError("--tickers are required when --provider yfinance")
-        prices, provider_metadata = fetch_yfinance_prices(tickers, args.period, cache_dir, chunk_size=args.price_chunk_size)
+            raise ValueError(f"--tickers are required when --provider {args.provider}")
+        prices, provider_metadata = _fetch_live_prices(args.provider, tickers, args.period, cache_dir, chunk_size=args.price_chunk_size)
         if benchmark_tickers:
             try:
-                benchmark_prices, benchmark_provider_metadata = fetch_yfinance_prices(benchmark_tickers, args.period, cache_dir, chunk_size=args.price_chunk_size)
+                benchmark_prices, benchmark_provider_metadata = _fetch_live_prices(
+                    args.provider,
+                    benchmark_tickers,
+                    args.period,
+                    cache_dir,
+                    chunk_size=args.price_chunk_size,
+                )
             except Exception as exc:
                 benchmark_prices = []
                 benchmark_provider_metadata = {

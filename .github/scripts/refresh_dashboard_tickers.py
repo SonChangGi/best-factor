@@ -2,13 +2,13 @@
 
 This is an operator utility, not a scheduled workflow step.  It rebuilds the
 priority list from current Nasdaq Trader common-stock candidates and ranks names
-by recent yfinance average dollar volume so the public dashboard can broaden its
+by recent free Yahoo-family average dollar volume so the public dashboard can broaden its
 universe without admitting ETFs, benchmarks, ADRs, warrants, funds, or other
 non-common-stock rows.
 
-Economic limitation: both the symbol directories and yfinance volume data are
-current/free-data inputs, not historical point-in-time membership or liquidity
-screens.  The dashboard and run metadata disclose that limitation.
+Economic limitation: both the symbol directories and Yahoo-family volume data
+are current/free-data inputs, not historical point-in-time membership or
+liquidity screens.  The dashboard and run metadata disclose that limitation.
 """
 from __future__ import annotations
 
@@ -17,13 +17,13 @@ import json
 import math
 from pathlib import Path
 
-from best_factor.data import fetch_yfinance_prices
+from best_factor.data import fetch_resilient_prices
 
 import build_live_universe
 
 HEADER = [
     "# Best Factor live dashboard stock universe",
-    "# Generated from Nasdaq Trader Symbol Directory conservative common-stock screen plus yfinance 4-month average dollar volume ranking.",
+    "# Generated from Nasdaq Trader Symbol Directory conservative common-stock screen plus yfinance-primary/Yahoo-chart-fallback 4-month average dollar volume ranking.",
     "# Target: top {target_count:,} validated individual stocks by recent average dollar volume, expanding coverage beyond the prior 1,200-name universe.",
     "# Filters: ETF=N, Test Issue=N, Financial Status=N, letters-only tickers, Common Stock names only, no funds/units/warrants/rights/preferred/depositary/ADR/ordinary/common-share/SPAC-like names.",
     "# Benchmarks such as ^IXIC/ONEQ/QQQ are intentionally excluded and passed separately as benchmark-tickers.",
@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     candidates, symbol_metadata = build_live_universe.load_symbol_directory_candidates(args.symbol_directory_url)
     candidate_tickers = sorted(candidates)
-    prices, provider_metadata = fetch_yfinance_prices(
+    prices, provider_metadata = fetch_resilient_prices(
         candidate_tickers,
         args.period,
         args.cache_dir,
@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     ranked = rank_by_average_dollar_volume(prices, min_observations=args.min_observations, window=args.adv_window)
     if len(ranked) < args.target_count:
         raise ValueError(
-            f"only {len(ranked)} tickers had enough yfinance price/volume observations "
+            f"only {len(ranked)} tickers had enough free Yahoo-family price/volume observations "
             f"for target {args.target_count}"
         )
     selected = [ticker for _, ticker, _ in ranked[: args.target_count]]
@@ -91,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, default=Path(".github/best-factor-dashboard-tickers.txt"))
     parser.add_argument("--metadata-json", type=Path, help="optional JSON summary path")
     parser.add_argument("--target-count", type=int, default=1800)
-    parser.add_argument("--period", default="4mo", help="yfinance history period for recent liquidity ranking")
+    parser.add_argument("--period", default="4mo", help="Yahoo-family history period for recent liquidity ranking")
     parser.add_argument("--adv-window", type=int, default=84, help="max trailing rows used for average dollar volume")
     parser.add_argument("--min-observations", type=int, default=20, help="minimum valid price-volume observations required for ranking")
     parser.add_argument("--price-chunk-size", type=int, default=100)
