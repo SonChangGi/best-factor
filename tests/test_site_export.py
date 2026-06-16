@@ -115,6 +115,20 @@ class SiteExportTest(unittest.TestCase):
                         "transaction_cost_bps": 5.0,
                         "transaction_cost_model": "one_way_notional",
                         "transaction_cost_note": "Transaction-cost bps are charged on one-way traded notional.",
+                        "latest_portfolio_holding_count": 20,
+                        "latest_portfolio_effective_holdings": 13.5,
+                        "latest_portfolio_max_weight": 0.14,
+                        "latest_portfolio_top5_weight": 0.47,
+                        "latest_portfolio_adv_window": 63,
+                        "latest_portfolio_min_adv": 75000000.0,
+                        "latest_portfolio_min_adv_ticker": "AAA",
+                        "latest_portfolio_weighted_adv": 950000000.0,
+                        "latest_portfolio_capacity_5pct_adv": 26785714.29,
+                        "latest_portfolio_capacity_10pct_adv": 53571428.57,
+                        "latest_portfolio_capacity_limit_ticker": "AAA",
+                        "latest_portfolio_average_turnover": 0.58,
+                        "latest_portfolio_latest_turnover": 0.42,
+                        "latest_portfolio_capacity_note": "Rough capacity uses ADV and is not an order-book model.",
                         "requested_ticker_count": 750,
                         "price_ticker_count": 720,
                         "active_priced_stock_count": 720,
@@ -138,6 +152,10 @@ class SiteExportTest(unittest.TestCase):
                         "price_coverage_ratio": 0.96,
                         "latest_data_ticker_count": 715,
                         "latest_data_coverage_ratio": 0.993,
+                        "latest_data_reference_date": "2026-05-29",
+                        "latest_data_max_date": "2026-06-01",
+                        "latest_data_max_date_ticker_count": 100,
+                        "latest_data_reference_note": "Latest stock price date with enough ticker coverage under the configured latest-data gate.",
                         "rankable_stock_universe_count": 718,
                         "failed_price_ticker_count": 30,
                         "price_download_chunk_size": 100,
@@ -244,6 +262,18 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["metadata"]["transaction_cost_bps"], 5.0)
         self.assertEqual(payload["metadata"]["transaction_cost_model"], "one_way_notional")
         self.assertIn("one-way traded notional", payload["metadata"]["transaction_cost_note"])
+        self.assertEqual(payload["metadata"]["latest_portfolio_holding_count"], 20)
+        self.assertEqual(payload["metadata"]["latest_portfolio_effective_holdings"], 13.5)
+        self.assertEqual(payload["metadata"]["latest_portfolio_max_weight"], 0.14)
+        self.assertEqual(payload["metadata"]["latest_portfolio_top5_weight"], 0.47)
+        self.assertEqual(payload["metadata"]["latest_portfolio_adv_window"], 63)
+        self.assertEqual(payload["metadata"]["latest_portfolio_min_adv"], 75000000.0)
+        self.assertEqual(payload["metadata"]["latest_portfolio_min_adv_ticker"], "AAA")
+        self.assertEqual(payload["metadata"]["latest_portfolio_weighted_adv"], 950000000.0)
+        self.assertEqual(payload["metadata"]["latest_portfolio_capacity_10pct_adv"], 53571428.57)
+        self.assertEqual(payload["metadata"]["latest_portfolio_capacity_limit_ticker"], "AAA")
+        self.assertEqual(payload["metadata"]["latest_portfolio_average_turnover"], 0.58)
+        self.assertIn("order-book", payload["metadata"]["latest_portfolio_capacity_note"])
         self.assertEqual(payload["metadata"]["requested_ticker_count"], 750)
         self.assertEqual(payload["metadata"]["price_ticker_count"], 720)
         self.assertEqual(payload["metadata"]["active_priced_stock_count"], 720)
@@ -262,6 +292,10 @@ class SiteExportTest(unittest.TestCase):
         self.assertAlmostEqual(payload["metadata"]["min_latest_data_coverage_ratio"], 0.9)
         self.assertAlmostEqual(payload["metadata"]["price_coverage_ratio"], 0.96)
         self.assertAlmostEqual(payload["metadata"]["latest_data_coverage_ratio"], 0.993)
+        self.assertEqual(payload["metadata"]["latest_data_reference_date"], "2026-05-29")
+        self.assertEqual(payload["metadata"]["latest_data_max_date"], "2026-06-01")
+        self.assertEqual(payload["metadata"]["latest_data_max_date_ticker_count"], 100)
+        self.assertIn("configured latest-data gate", payload["metadata"]["latest_data_reference_note"])
         self.assertEqual(payload["metadata"]["rankable_stock_universe_count"], 718)
         self.assertEqual(payload["metadata"]["price_download_chunk_size"], 100)
         self.assertEqual(payload["metadata"]["factor_scores_archive"], "skipped_for_large_live_run")

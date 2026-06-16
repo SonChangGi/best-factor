@@ -74,7 +74,7 @@ jobs:
 
       - name: Build validated Nasdaq Trader stock universe
         if: steps.freshness.outputs.should_update == 'true'
-        run: python .github/scripts/build_live_universe.py .github/best-factor-dashboard-tickers.txt /tmp/best-factor-universe.csv --metadata-json /tmp/best-factor-universe-metadata.json --min-symbols 1100
+        run: python .github/scripts/build_live_universe.py .github/best-factor-dashboard-tickers.txt /tmp/best-factor-universe.csv --metadata-json /tmp/best-factor-universe-metadata.json --min-symbols 1700
 
       - name: Generate latest dashboard JSON
         if: steps.freshness.outputs.should_update == 'true'
@@ -84,10 +84,10 @@ jobs:
           TOP_N=20
           MIN_MARKET_CAP=10000000000
           MIN_MARKET_CAP_NAMES=20
-          MIN_PRICE_TICKERS=1000
+          MIN_PRICE_TICKERS=1600
           MIN_PRICE_COVERAGE_RATIO=0.90
           MIN_LATEST_DATA_COVERAGE_RATIO=0.90
-          MIN_FACTOR_ELIGIBLE_TICKERS=900
+          MIN_FACTOR_ELIGIBLE_TICKERS=1100
           MIN_HISTORY_OBSERVATIONS=252
           ELIGIBILITY_ADV_WINDOW=63
           PRICE_CHUNK_SIZE=100

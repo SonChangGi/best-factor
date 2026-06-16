@@ -107,9 +107,14 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("market_cap_filter_basis", app)
         self.assertIn("분석 주식 수", app)
         self.assertIn("price_coverage_ratio", app)
+        self.assertIn("latest_data_reference_date", app)
         self.assertIn("실질 후보 수", app)
         self.assertIn("latest_factor_eligible_ticker_count", app)
         self.assertIn("transaction_cost_model", app)
+        self.assertIn("실무 운용 진단", app)
+        self.assertIn("latest_portfolio_capacity_10pct_adv", app)
+        self.assertIn("portfolioDiagnostics", app)
+        self.assertIn("fmtUsd", app)
         self.assertIn("market_cap_filter_status", app)
         self.assertIn("RANKING_DEFAULT_TOP = 20", app)
         self.assertIn("Holdout 보조 검증", app)
@@ -195,6 +200,15 @@ class DocsSiteTest(unittest.TestCase):
               ],
             }};
             if (context.__bestFactorDashboard.benchmarkLabelForTest(proxyPayload) !== 'Nasdaq Composite ETF proxy (ONEQ)') throw new Error('bad proxy benchmark label');
+            const portfolioDiagnostics = context.__bestFactorDashboard.portfolioDiagnosticsForTest({{
+              metadata: {{
+                latest_portfolio_effective_holdings: 13.5,
+                latest_portfolio_capacity_10pct_adv: 53571428.57,
+                latest_portfolio_capacity_limit_ticker: 'AAA'
+              }}
+            }});
+            if (portfolioDiagnostics.effectiveHoldings !== 13.5 || portfolioDiagnostics.capacityLimitTicker !== 'AAA') throw new Error('bad portfolio diagnostics');
+            if (!context.__bestFactorDashboard.fmtUsdForTest(53571428.57).includes('$')) throw new Error('bad USD formatter');
             """
         )
         completed = subprocess.run(["node", "-e", script], cwd=ROOT, text=True, capture_output=True)
@@ -236,10 +250,16 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("requested_ticker_count", payload["metadata"])
         self.assertIn("price_coverage_ratio", payload["metadata"])
         self.assertIn("latest_data_coverage_ratio", payload["metadata"])
+        self.assertIn("latest_data_reference_date", payload["metadata"])
+        self.assertIn("latest_data_reference_note", payload["metadata"])
         self.assertIn("rankable_stock_universe_count", payload["metadata"])
         self.assertIn("latest_factor_eligible_ticker_count", payload["metadata"])
         self.assertIn("factor_eligibility_note", payload["metadata"])
         self.assertIn("transaction_cost_model", payload["metadata"])
+        self.assertIn("latest_portfolio_effective_holdings", payload["metadata"])
+        self.assertIn("latest_portfolio_top5_weight", payload["metadata"])
+        self.assertIn("latest_portfolio_capacity_10pct_adv", payload["metadata"])
+        self.assertIn("latest_portfolio_capacity_note", payload["metadata"])
         self.assertIn("market_cap_filter_status", payload["metadata"])
         self.assertIn("benchmark_note", payload["metadata"])
         self.assertIn("current_screen_note", payload["metadata"])
@@ -293,15 +313,15 @@ class DocsSiteTest(unittest.TestCase):
             "market_cap_metadata_insufficient_preflight",
             "--top-n \"${TOP_N}\"",
             "--benchmark-tickers '^IXIC' ONEQ QQQ",
-            "--min-symbols 1100",
+            "--min-symbols 1700",
             "--min-price-tickers",
-            "MIN_PRICE_TICKERS=1000",
+            "MIN_PRICE_TICKERS=1600",
             "--min-price-coverage-ratio",
             "MIN_PRICE_COVERAGE_RATIO=0.90",
             "--min-latest-data-coverage-ratio",
             "MIN_LATEST_DATA_COVERAGE_RATIO=0.90",
             "--min-factor-eligible-tickers",
-            "MIN_FACTOR_ELIGIBLE_TICKERS=900",
+            "MIN_FACTOR_ELIGIBLE_TICKERS=1100",
             "--min-history-observations",
             "MIN_HISTORY_OBSERVATIONS=252",
             "--eligibility-adv-window",
@@ -344,7 +364,7 @@ class DocsSiteTest(unittest.TestCase):
         self.assertTrue(ticker_file.exists())
         tickers = [line.split("#", 1)[0].strip() for line in ticker_file.read_text(encoding="utf-8").splitlines()]
         tickers = [ticker for ticker in tickers if ticker]
-        self.assertGreaterEqual(len(tickers), 1200)
+        self.assertGreaterEqual(len(tickers), 1800)
         self.assertEqual(len(tickers), len(set(tickers)))
         for forbidden in {"SPY", "QQQ", "ONEQ", "^IXIC", "IWM", "DIA", "VTI", "VOO"}:
             self.assertNotIn(forbidden, tickers)
@@ -357,7 +377,7 @@ class DocsSiteTest(unittest.TestCase):
         spec.loader.exec_module(module)
         tickers = module.read_tickers(ROOT / ".github" / "best-factor-dashboard-tickers.txt")
         self.assertIn("AAPL", tickers)
-        self.assertGreaterEqual(len(tickers), 1200)
+        self.assertGreaterEqual(len(tickers), 1800)
         self.assertNotIn("SPY", tickers)
         rows, selection = module.select_committed_common_stocks(
             ["AAPL", "SPY", "MSFT"],

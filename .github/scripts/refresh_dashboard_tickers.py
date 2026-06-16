@@ -24,7 +24,7 @@ import build_live_universe
 HEADER = [
     "# Best Factor live dashboard stock universe",
     "# Generated from Nasdaq Trader Symbol Directory conservative common-stock screen plus yfinance 4-month average dollar volume ranking.",
-    "# Target: top {target_count:,} validated individual stocks by recent average dollar volume, expanding coverage beyond the prior 750-name universe.",
+    "# Target: top {target_count:,} validated individual stocks by recent average dollar volume, expanding coverage beyond the prior 1,200-name universe.",
     "# Filters: ETF=N, Test Issue=N, Financial Status=N, letters-only tickers, Common Stock names only, no funds/units/warrants/rights/preferred/depositary/ADR/ordinary/common-share/SPAC-like names.",
     "# Benchmarks such as ^IXIC/ONEQ/QQQ are intentionally excluded and passed separately as benchmark-tickers.",
 ]
@@ -90,7 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Refresh the Best Factor dashboard ticker priority list")
     parser.add_argument("--output", type=Path, default=Path(".github/best-factor-dashboard-tickers.txt"))
     parser.add_argument("--metadata-json", type=Path, help="optional JSON summary path")
-    parser.add_argument("--target-count", type=int, default=1200)
+    parser.add_argument("--target-count", type=int, default=1800)
     parser.add_argument("--period", default="4mo", help="yfinance history period for recent liquidity ranking")
     parser.add_argument("--adv-window", type=int, default=84, help="max trailing rows used for average dollar volume")
     parser.add_argument("--min-observations", type=int, default=20, help="minimum valid price-volume observations required for ranking")

@@ -1,4 +1,5 @@
 import csv
+import datetime as dt
 import json
 import subprocess
 import sys
@@ -97,6 +98,12 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertIn("factor_eligibility_note", metadata)
         self.assertEqual(metadata["transaction_cost_model"], "one_way_notional")
         self.assertIn("one-way traded notional", metadata["transaction_cost_note"])
+        self.assertIn("latest_portfolio_effective_holdings", metadata)
+        self.assertIn("latest_portfolio_top5_weight", metadata)
+        self.assertIn("latest_portfolio_capacity_10pct_adv", metadata)
+        self.assertIn("latest_portfolio_capacity_note", metadata)
+        self.assertIn("ADV", metadata["latest_portfolio_capacity_note"])
+        self.assertIn("latest_portfolio_average_turnover", metadata)
         self.assertIn("market_cap_filter_status", metadata)
         self.assertIn("rebalance_frequency", metadata)
         self.assertIn("benchmark_tickers", metadata)
@@ -292,6 +299,21 @@ class CliIntegrationTest(unittest.TestCase):
                 cli_module.run(args)
 
         self.assertEqual(calls, [["AAA", "BBB", "CCC"]])
+
+    def test_latest_price_coverage_uses_latest_broad_reference_date(self):
+        prices = [
+            {"ticker": "AAA", "date": dt.date(2026, 6, 12), "adj_close": 10.0, "volume": 100},
+            {"ticker": "BBB", "date": dt.date(2026, 6, 12), "adj_close": 10.0, "volume": 100},
+            {"ticker": "CCC", "date": dt.date(2026, 6, 12), "adj_close": 10.0, "volume": 100},
+            {"ticker": "AAA", "date": dt.date(2026, 6, 15), "adj_close": 11.0, "volume": 100},
+        ]
+        coverage = cli_module._latest_price_coverage(prices, min_coverage_ratio=0.9)
+        self.assertEqual(coverage["latest_data_reference_date"], "2026-06-12")
+        self.assertEqual(coverage["latest_data_max_date"], "2026-06-15")
+        self.assertEqual(coverage["latest_data_ticker_count"], 3)
+        self.assertEqual(coverage["latest_data_max_date_ticker_count"], 1)
+        self.assertAlmostEqual(coverage["latest_data_coverage_ratio"], 1.0)
+        self.assertIn("ignored", coverage["latest_data_reference_note"])
 
     def test_site_subcommand_exports_github_pages_json(self):
         out = self.run_cli()

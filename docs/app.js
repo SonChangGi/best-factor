@@ -163,6 +163,7 @@
 
   function renderSummary(payload) {
     const summary = payload.summary || {};
+    const implementation = portfolioDiagnostics(payload);
     const cards = [
       ['In-sample best factor', summary.best_factor, '이번 실행 후보 중 종합 점수 기준 1위 · true OOS 아님'],
       ['Composite', fmtNumber(summary.best_composite_score, 4), '성과/위험 지표를 합산한 비교 점수'],
@@ -170,6 +171,8 @@
       ['Effective', `${summary.effective_factor_count ?? '—'} / ${summary.tested_factor_count ?? '—'}`, '유효 / 테스트된 팩터 수'],
       ['Holdout rank', summary.best_factor_holdout_rank ? `#${summary.best_factor_holdout_rank}` : '—', '최근 tail 기간 보조 검증 순위'],
       ['Holdings', summary.holding_count, '최신 최고 팩터 편입 종목 수'],
+      ['Effective holdings', fmtNumber(implementation.effectiveHoldings, 1), '비중 집중도를 반영한 실질 보유 종목 수'],
+      ['10% ADV capacity', fmtUsd(implementation.capacity10), '최신 비중을 10% ADV 참여율로 맞추는 거친 용량 추정'],
       ['Data end', summary.data_end_date || payload.data_scope, '가격 데이터 기준일'],
     ];
     const nodes = cards.map(([label, value, help], index) => card(label, value, help, index === 0 ? '탐색적 · out-of-sample 아님' : ''));
@@ -199,6 +202,7 @@
     const metrics = metricForFactor(payload, summary.best_factor || best.factor) || best;
     const meta = factorMeta(payload, summary.best_factor || best.factor) || {};
     const holdings = payload.latest_holdings || [];
+    const implementation = portfolioDiagnostics(payload);
     const topWeight = Math.max(...holdings.map((row) => Number(row.weight) || 0), 0);
     const totalWeight = sumWeights(holdings);
     const holdout = holdoutSummary(summary, payload.metadata || {});
@@ -222,7 +226,10 @@
       ]),
       analysisCard('실행 전 점검', '표시 비중은 연구용 close-to-close 모델 포트폴리오입니다. 실제 운용 전 다음 세션 체결, 슬리피지, 세금, 집중도, 섹터 편중, 유동성 한도를 별도로 검증해야 합니다.', [
         ['보유 종목 수', holdings.length],
-        ['최대 단일 비중', fmtPct(topWeight)],
+        ['유효 보유 종목 수', fmtNumber(implementation.effectiveHoldings, 1)],
+        ['최대 / Top5 비중', `${fmtPct(topWeight)} / ${fmtPct(implementation.top5Weight)}`],
+        ['10% ADV 용량 추정', `${fmtUsd(implementation.capacity10)} · 제한 종목 ${fmtText(implementation.capacityLimitTicker)}`],
+        ['평균 / 최근 회전율', `${fmtPct(implementation.averageTurnover)} / ${fmtPct(implementation.latestTurnover)}`],
         ['비중 합계', fmtPct(totalWeight)],
       ])
     );
@@ -232,6 +239,7 @@
     const summary = payload.summary || {};
     const metadata = payload.metadata || {};
     const skipped = payload.skipped_reasons || [];
+    const implementation = portfolioDiagnostics(payload);
     q('#diagnostics-grid').replaceChildren(
       diagnosticCard('데이터 커버리지', [
         ['JSON 생성', payload.generated_at],
@@ -246,7 +254,7 @@
         gateItem('라이브러리 후보', `${summary.factor_library_size ?? metadata.factor_library_size ?? 'unknown'}개`, Number(summary.factor_library_size ?? metadata.factor_library_size) >= 300 ? 'pass' : 'warn'),
         gateItem('선택 후보', `${summary.selected_factor_count ?? metadata.selected_factor_count ?? summary.tested_factor_count ?? 'unknown'}개`, Number(summary.selected_factor_count ?? metadata.selected_factor_count ?? summary.tested_factor_count) >= 300 ? 'pass' : 'warn'),
         gateItem('분석 주식 수', `${metadata.price_ticker_count ?? 'unknown'} / 요청 ${metadata.requested_ticker_count ?? 'unknown'}개 · 랭크 가능 ${metadata.rankable_stock_universe_count ?? 'unknown'}개`, Number(metadata.price_ticker_count) >= Number(metadata.min_price_tickers || 500) ? 'pass' : 'warn'),
-        gateItem('가격 커버리지', `${fmtPct(metadata.price_coverage_ratio)} · 최신 ${fmtPct(metadata.latest_data_coverage_ratio)}`, Number(metadata.price_coverage_ratio) >= Number(metadata.min_price_coverage_ratio || 0.9) && Number(metadata.latest_data_coverage_ratio) >= Number(metadata.min_latest_data_coverage_ratio || 0.9) ? 'pass' : 'warn'),
+        gateItem('가격 커버리지', `${fmtPct(metadata.price_coverage_ratio)} · 최신 기준일 ${fmtText(metadata.latest_data_reference_date || metadata.data_end_date)} ${fmtPct(metadata.latest_data_coverage_ratio)}`, Number(metadata.price_coverage_ratio) >= Number(metadata.min_price_coverage_ratio || 0.9) && Number(metadata.latest_data_coverage_ratio) >= Number(metadata.min_latest_data_coverage_ratio || 0.9) ? 'pass' : 'warn'),
         gateItem('실질 후보 수', `${metadata.latest_factor_eligible_ticker_count ?? 'unknown'} / 최소 ${metadata.min_factor_eligible_tickers ?? 'none'}개 · history ${metadata.history_qualified_ticker_count ?? 'unknown'} · liquidity ${metadata.liquidity_qualified_ticker_count ?? 'unknown'}`, Number(metadata.latest_factor_eligible_ticker_count) >= Number(metadata.min_factor_eligible_tickers || 0) ? 'pass' : 'warn'),
         gateItem('테스트 팩터', `${summary.tested_factor_count ?? 'unknown'}개`, 'pass'),
         gateItem('유효 팩터', `${summary.effective_factor_count ?? 'unknown'}개`, Number(summary.effective_factor_count) > 0 ? 'pass' : 'warn'),
@@ -264,6 +272,33 @@
         ...(metadata.transaction_cost_note ? [gateItem('거래비용 모델', `${metadata.transaction_cost_bps ?? 0}bps · ${metadata.transaction_cost_model || 'unknown'} · ${metadata.transaction_cost_note}`, 'pass')] : []),
         ...(metadata.factor_eligibility_note ? [gateItem('실질 후보 진단', metadata.factor_eligibility_note, 'pass')] : []),
         ...(skipped.length ? skipped.map((row) => gateItem(row.skip_reason, `${row.count}개`, 'warn')) : [gateItem('스킵 사유', '없음', 'pass')]),
+      ]),
+      diagnosticListCard('실무 운용 진단', [
+        gateItem(
+          '집중도',
+          `유효 보유 ${fmtNumber(implementation.effectiveHoldings, 1)}개 · 최대 단일 ${fmtPct(implementation.maxWeight)} · Top5 ${fmtPct(implementation.top5Weight)} · 비중합 ${fmtPct(implementation.weightSum)}`,
+          Number(implementation.effectiveHoldings) >= Math.min(10, Number(metadata.latest_portfolio_holding_count || 20) * 0.5) ? 'pass' : 'warn'
+        ),
+        gateItem(
+          '유동성',
+          `최소 ADV ${fmtUsd(implementation.minAdv)} (${fmtText(implementation.minAdvTicker)}) · 가중 ADV ${fmtUsd(implementation.weightedAdv)} · ${implementation.advWindow || '—'}일 평균`,
+          Number(implementation.minAdv) >= Number(metadata.eligibility_min_dollar_volume || 0) ? 'pass' : 'warn'
+        ),
+        gateItem(
+          '용량 추정',
+          `5% ADV ${fmtUsd(implementation.capacity5)} · 10% ADV ${fmtUsd(implementation.capacity10)} · 제한 종목 ${fmtText(implementation.capacityLimitTicker)}`,
+          Number.isFinite(Number(implementation.capacity10)) && Number(implementation.capacity10) > 0 ? 'pass' : 'warn'
+        ),
+        gateItem(
+          '회전율/거래비용',
+          `평균 turnover ${fmtPct(implementation.averageTurnover)} · 최근 ${fmtPct(implementation.latestTurnover)} · 비용 ${metadata.transaction_cost_bps ?? 0}bps ${metadata.transaction_cost_model || 'unknown'}`,
+          'pass'
+        ),
+        gateItem(
+          '용량 해석 한계',
+          metadata.latest_portfolio_capacity_note || 'ADV 기반 휴리스틱일 뿐 호가/시장충격/세금/대차/브로커 체결 모델이 아닙니다.',
+          'warn'
+        ),
       ])
     );
   }
@@ -927,6 +962,10 @@
       ['price_coverage_ratio', fmtPct(metadata.price_coverage_ratio)],
       ['latest_data_ticker_count', metadata.latest_data_ticker_count || 'unknown'],
       ['latest_data_coverage_ratio', fmtPct(metadata.latest_data_coverage_ratio)],
+      ['latest_data_reference_date', metadata.latest_data_reference_date || 'unknown'],
+      ['latest_data_max_date', metadata.latest_data_max_date || 'unknown'],
+      ['latest_data_max_date_ticker_count', metadata.latest_data_max_date_ticker_count ?? 'unknown'],
+      ['latest_data_reference_note', metadata.latest_data_reference_note || 'unknown'],
       ['universe_build_source_urls', metadata.universe_build_universe_source_urls || 'unknown'],
       ['universe_build_common_stock_candidate_count', metadata.universe_build_common_stock_candidate_count || 'unknown'],
       ['universe_build_excluded_symbol_counts', metadata.universe_build_excluded_symbol_counts || 'unknown'],
@@ -943,6 +982,18 @@
       ['transaction_cost_bps', metadata.transaction_cost_bps ?? 'unknown'],
       ['transaction_cost_model', metadata.transaction_cost_model || 'unknown'],
       ['transaction_cost_note', metadata.transaction_cost_note || 'unknown'],
+      ['latest_portfolio_holding_count', metadata.latest_portfolio_holding_count ?? 'unknown'],
+      ['latest_portfolio_effective_holdings', fmtNumber(metadata.latest_portfolio_effective_holdings, 2)],
+      ['latest_portfolio_max_weight', fmtPct(metadata.latest_portfolio_max_weight)],
+      ['latest_portfolio_top5_weight', fmtPct(metadata.latest_portfolio_top5_weight)],
+      ['latest_portfolio_min_adv', fmtUsd(metadata.latest_portfolio_min_adv)],
+      ['latest_portfolio_weighted_adv', fmtUsd(metadata.latest_portfolio_weighted_adv)],
+      ['latest_portfolio_capacity_5pct_adv', fmtUsd(metadata.latest_portfolio_capacity_5pct_adv)],
+      ['latest_portfolio_capacity_10pct_adv', fmtUsd(metadata.latest_portfolio_capacity_10pct_adv)],
+      ['latest_portfolio_capacity_limit_ticker', metadata.latest_portfolio_capacity_limit_ticker || 'unknown'],
+      ['latest_portfolio_average_turnover', fmtPct(metadata.latest_portfolio_average_turnover)],
+      ['latest_portfolio_latest_turnover', fmtPct(metadata.latest_portfolio_latest_turnover)],
+      ['latest_portfolio_capacity_note', metadata.latest_portfolio_capacity_note || 'unknown'],
       ['rebalance_frequency', metadata.rebalance_frequency || 'unknown'],
       ['benchmark_tickers', metadata.benchmark_tickers || 'none'],
       ['benchmark_return_count', metadata.benchmark_return_count ?? (payload.benchmark_returns || []).length],
@@ -1013,6 +1064,27 @@
   function factorMeta(payload, factorName) {
     const name = String(factorName || '');
     return factorCatalog(payload).find((item) => String(item.name || '') === name);
+  }
+
+  function portfolioDiagnostics(payload) {
+    const metadata = payload.metadata || {};
+    return {
+      holdingCount: Number(metadata.latest_portfolio_holding_count),
+      weightSum: Number(metadata.latest_portfolio_weight_sum),
+      minWeight: Number(metadata.latest_portfolio_min_weight),
+      maxWeight: Number(metadata.latest_portfolio_max_weight),
+      top5Weight: Number(metadata.latest_portfolio_top5_weight),
+      effectiveHoldings: Number(metadata.latest_portfolio_effective_holdings),
+      advWindow: metadata.latest_portfolio_adv_window,
+      minAdv: Number(metadata.latest_portfolio_min_adv),
+      minAdvTicker: metadata.latest_portfolio_min_adv_ticker,
+      weightedAdv: Number(metadata.latest_portfolio_weighted_adv),
+      capacity5: Number(metadata.latest_portfolio_capacity_5pct_adv),
+      capacity10: Number(metadata.latest_portfolio_capacity_10pct_adv),
+      capacityLimitTicker: metadata.latest_portfolio_capacity_limit_ticker,
+      averageTurnover: Number(metadata.latest_portfolio_average_turnover),
+      latestTurnover: Number(metadata.latest_portfolio_latest_turnover),
+    };
   }
 
   function addSelectedFactor(factorName) {
@@ -1283,6 +1355,21 @@
     return `${(numeric * 100).toFixed(2)}%`;
   }
 
+  function fmtUsd(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '—';
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        notation: 'compact',
+        maximumFractionDigits: numeric >= 1000000 ? 1 : 0,
+      }).format(numeric);
+    } catch (_) {
+      return `$${numeric.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+    }
+  }
+
   function fmtText(value) {
     if (value === null || value === undefined || value === '') return '—';
     if (Array.isArray(value) || typeof value === 'object') {
@@ -1343,7 +1430,9 @@
       selectedComparisonFactorForTest: selectedComparisonFactor,
       equitySeriesFromReturnsForTest: equitySeriesFromReturns,
       comparisonMetricsForTest: comparisonMetrics,
-      benchmarkLabelForTest: benchmarkLabel
+      benchmarkLabelForTest: benchmarkLabel,
+      portfolioDiagnosticsForTest: portfolioDiagnostics,
+      fmtUsdForTest: fmtUsd
     };
   }
 })();

@@ -156,19 +156,19 @@ For manual and scheduled updates, the deployed Pages artifact is the freshness s
 
 ### Live dashboard universe
 
-`.github/best-factor-dashboard-tickers.txt` is the committed public dashboard priority universe. It currently contains **1,200** individual-stock priorities generated from the current Nasdaq Trader symbol directories plus a yfinance 4-month average-dollar-volume screen. It is not a survivorship-free historical universe and not the whole US market.
+`.github/best-factor-dashboard-tickers.txt` is the committed public dashboard priority universe. It currently targets **1,800** individual-stock priorities generated from the current Nasdaq Trader symbol directories plus a yfinance 4-month average-dollar-volume screen. It is not a survivorship-free historical universe and not the whole US market.
 
 Each live workflow run first rebuilds a validated universe CSV from the public Nasdaq Trader `nasdaqlisted.txt` and `otherlisted.txt` symbol directories. The validator emits only conservative current common-stock rows and excludes benchmarks, ETFs, funds, preferred/depositary shares, units, warrants, rights, ADR/ADS/ordinary-share rows, unsupported symbol formats, and other non-common-stock patterns. The live run then requests prices for the validated stocks in chunks and fails closed unless all configured data-coverage gates pass:
 
-- at least **1,100** validated current common-stock universe rows before price fetching;
-- at least **1,000** unique stock tickers with successful price data;
+- at least **1,700** validated current common-stock universe rows before price fetching;
+- at least **1,600** unique stock tickers with successful price data;
 - at least **90%** requested-price coverage;
 - at least **90%** latest-date price coverage;
-- at least **900** latest signal-date factor-eligible stocks after the configured trailing-history and liquidity diagnostics.
+- at least **1,100** latest signal-date factor-eligible stocks after the configured trailing-history and liquidity diagnostics.
 
-For large live runs, the workflow skips the raw `factor_scores.csv` archive and uses streaming factor-score/backtest construction to avoid turning the factor zoo into a massive CI artifact. The final run metadata records requested, priced, rankable, failed, coverage, source-hash, exclusion-count, and **factor-eligible** stock-count fields so the dashboard can show whether the expanded 1,000+ priced-stock and 900+ factor-eligible-stock requirements were met by names that also have enough trailing history and liquidity.
+For large live runs, the workflow skips the raw `factor_scores.csv` archive and uses streaming factor-score/backtest construction to avoid turning the factor zoo into a massive CI artifact. The final run metadata records requested, priced, rankable, failed, coverage, source-hash, exclusion-count, and **factor-eligible** stock-count fields so the dashboard can show whether the expanded 1,600+ priced-stock and 1,100+ factor-eligible-stock requirements were met by names that also have enough trailing history and liquidity.
 
-The workflow applies a 63-session trailing average-dollar-volume liquidity filter and charges **5 bps one-way traded notional** transaction costs by default. This means an initial full portfolio buy costs 1x notional and a full disjoint replacement costs 2x notional; the older `portfolio_turnover` convention remains available only for backward-compatible research comparisons.
+The workflow applies a 63-session trailing average-dollar-volume liquidity filter and charges **5 bps one-way traded notional** transaction costs by default. This means an initial full portfolio buy costs 1x notional and a full disjoint replacement costs 2x notional; the older `portfolio_turnover` convention remains available only for backward-compatible research comparisons. The dashboard also publishes latest-portfolio implementation diagnostics: effective holding count, max/top-5 concentration, minimum/weighted trailing ADV, 5%/10% ADV capacity heuristics, limiting ticker, and average/latest turnover. These are practical sanity checks, not an order-book or market-impact model.
 
 A market-cap-filtered backtest is run only after a metadata preflight confirms enough names meet the threshold. If the preflight is insufficient, the workflow falls back to the truthful scope `live_yfinance_current_common_stock_liquidity_screen_actions` and records `market_cap_metadata_insufficient_preflight`; other CLI/provider failures are not swallowed by the fallback. The final run metadata records whether the market-cap filter was attempted, whether it was effective, its status string, and any fallback reason so dashboard snapshots are not silently compared under different screens.
 
@@ -219,7 +219,7 @@ The default approach uses free/current-universe data and should be interpreted a
 - Fundamental files must include `as_of_date` and `available_at`; rows without `available_at` are treated as non-point-in-time and skipped for historical factor scoring.
 - Some factors or rows may be skipped with explicit reason codes such as `missing_fundamentals`, `insufficient_history`, `insufficient_volume`, `market_cap_unavailable`, `market_cap_below_min`, `empty_after_filters`, `provider_error`, `not_enough_assets`, `missing_rebalance_price`, `missing_exit_price`, `invalid_period_missing_price`, `inactive_or_non_stock`, and dynamic `zero_coverage:<factor>` diagnostics.
 - Factor-zoo mode compares many related definitions. The top-ranked factor can be an in-sample winner caused by multiple-testing/data-snooping. The reported recent-tail holdout rank is a robustness diagnostic, not proof of a universal anomaly; recheck with true holdout periods, alternate universes, costs, and higher-quality point-in-time data before drawing investment conclusions.
-- Default live results include a simple transaction-cost haircut, but they still do not model bid/ask spread variation, market impact, taxes, borrow constraints, execution latency, or capacity.
+- Default live results include a simple transaction-cost haircut and an ADV capacity heuristic, but they still do not model bid/ask spread variation, order-book depth, nonlinear market impact, taxes, borrow constraints, execution latency, or broker-specific fills.
 
 For higher-confidence research, use a survivorship-aware universe and point-in-time fundamentals from a licensed data source through a new provider adapter.
 

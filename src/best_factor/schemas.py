@@ -99,7 +99,7 @@ SKIP_REASONS = {
 }
 
 CAVEATS = [
-    "Default live runs use a validated current Nasdaq Trader common-stock screen with a 500+ live-price minimum; it is still not survivorship-bias free or historical point-in-time membership.",
+    "Default live dashboard runs use a validated current Nasdaq Trader common-stock screen with configured price/factor-eligibility gates; it is still not survivorship-bias free or historical point-in-time membership.",
     "Yahoo/yfinance data can be delayed, revised, rate-limited, unavailable, or subject to Yahoo terms; use for research/education only.",
     "The live updater hard-fails when too few requested stocks return prices or latest-date coverage is too low, but free-provider outages can still delay dashboard refreshes.",
     "Live runs also publish history- and liquidity-qualified stock counts; the latest eligible count is a stronger diagnostic than raw price coverage, but early rebalance windows can still have smaller effective universes.",
@@ -110,6 +110,7 @@ CAVEATS = [
     "Outputs are research artifacts, not investment advice or trade instructions.",
     "Current yfinance universe and market-cap metadata are current-screen inputs, not historical point-in-time membership or point-in-time market capitalization.",
     "Default transaction-cost modeling charges bps on one-way traded notional; it is still a simplified close-to-close cost model and does not include bid-ask spread, market impact, taxes, borrow, or participation limits.",
+    "Latest portfolio capacity uses a simple 5%/10% trailing ADV participation heuristic for the displayed weights; it is not an order-book, market-impact, tax, borrow, or broker execution model.",
 ]
 
 TIMING_CONVENTION = (

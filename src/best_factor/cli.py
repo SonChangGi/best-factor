@@ -234,7 +234,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             f"price_coverage_ratio {price_coverage_ratio:.4f} is below --min-price-coverage-ratio "
             f"{float(args.min_price_coverage_ratio):.4f} for {len(tickers)}/{requested_count} price tickers"
         )
-    latest_price_coverage = _latest_price_coverage(prices)
+    latest_price_coverage = _latest_price_coverage(
+        prices,
+        min_coverage_ratio=float(args.min_latest_data_coverage_ratio or 0.0),
+    )
     latest_data_coverage_ratio = float(latest_price_coverage.get("latest_data_coverage_ratio") or 0.0)
     if (
         float(args.min_latest_data_coverage_ratio or 0.0) > 0
@@ -244,6 +247,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             f"latest_data_coverage_ratio {latest_data_coverage_ratio:.4f} is below "
             f"--min-latest-data-coverage-ratio {float(args.min_latest_data_coverage_ratio):.4f}"
         )
+    latest_reference_date = latest_price_coverage.get("latest_data_reference_date")
+    if latest_reference_date:
+        reference_date = dt.date.fromisoformat(str(latest_reference_date)[:10])
+        if str(latest_price_coverage.get("latest_data_max_date") or "") > reference_date.isoformat():
+            prices = [row for row in prices if row.get("date") <= reference_date]
+            benchmark_prices = [row for row in benchmark_prices if row.get("date") <= reference_date]
     universe = load_universe_csv(args.universe_file, tickers)
     universe_build_metadata = _read_json_file(args.universe_metadata_file)
     fundamentals = load_fundamentals_csv(args.fundamentals_file)
@@ -330,6 +339,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         for ticker in benchmark_tickers
         for row in benchmark_returns_for_schedule(benchmark_prices, ticker, _benchmark_label(ticker), schedule)
     ]
+    latest_portfolio_diagnostics = _latest_portfolio_diagnostics(
+        latest,
+        prices,
+        returns,
+        best_factor,
+        adv_window=int(args.eligibility_adv_window or 63),
+    )
 
     metadata = {
         **provider_metadata,
@@ -369,6 +385,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "transaction_cost_bps": float(args.transaction_cost_bps or 0.0),
         "transaction_cost_model": args.transaction_cost_model,
         "transaction_cost_note": _transaction_cost_note(args.transaction_cost_model),
+        **latest_portfolio_diagnostics,
         "rebalance_frequency": args.rebalance,
         "benchmark_tickers": benchmark_tickers,
         "benchmark_label": _benchmark_label(benchmark_tickers[0]) if benchmark_tickers else None,
@@ -478,6 +495,166 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     return {"output_dir": str(output_dir), "best_factor": best_factor, "latest_holdings": latest}
 
 
+def _latest_portfolio_diagnostics(
+    latest_holdings: list[dict[str, object]],
+    prices: list[dict[str, object]],
+    returns: list[dict[str, object]],
+    best_factor: str,
+    *,
+    adv_window: int,
+) -> dict[str, object]:
+    """Return practical implementation diagnostics for the latest winning portfolio.
+
+    These diagnostics intentionally use only information already available to the
+    free-data run: latest model weights, trailing price/volume history, and the
+    realized backtest turnover series.  They are not a broker/exchange capacity
+    model; the dashboard discloses that the capacity numbers are rough
+    participation-rate heuristics.
+    """
+    if not latest_holdings:
+        return {
+            "latest_portfolio_holding_count": 0,
+            "latest_portfolio_capacity_note": _capacity_note(),
+        }
+    weights = [max(0.0, _finite_float(row.get("weight"), 0.0)) for row in latest_holdings]
+    positive_weights = [weight for weight in weights if weight > 0]
+    weight_sum = sum(positive_weights)
+    sorted_weights = sorted(positive_weights, reverse=True)
+    effective_holdings = (1.0 / sum(weight * weight for weight in positive_weights)) if positive_weights else 0.0
+    signal_date = _latest_holding_signal_date(latest_holdings)
+    adv_window = max(1, int(adv_window or 63))
+    adv_by_ticker = _latest_holding_adv(latest_holdings, prices, signal_date, adv_window)
+    positive_adv_pairs = [(ticker, value) for ticker, value in adv_by_ticker.items() if math.isfinite(value) and value > 0]
+    adv_values = [value for _, value in positive_adv_pairs]
+    weighted_adv = sum((_finite_float(row.get("weight"), 0.0) * adv_by_ticker.get(str(row.get("ticker") or "").upper(), 0.0)) for row in latest_holdings)
+    capacity_5 = _capacity_at_participation(latest_holdings, adv_by_ticker, participation_rate=0.05)
+    capacity_10 = _capacity_at_participation(latest_holdings, adv_by_ticker, participation_rate=0.10)
+    turnover_stats = _best_factor_turnover_stats(returns, best_factor)
+
+    diagnostics: dict[str, object] = {
+        "latest_portfolio_holding_count": len(latest_holdings),
+        "latest_portfolio_rebalance_date": _latest_holding_date_text(latest_holdings, "rebalance_date"),
+        "latest_portfolio_price_date_used": _latest_holding_date_text(latest_holdings, "price_date_used"),
+        "latest_portfolio_weight_sum": weight_sum,
+        "latest_portfolio_min_weight": min(positive_weights) if positive_weights else 0.0,
+        "latest_portfolio_max_weight": max(positive_weights) if positive_weights else 0.0,
+        "latest_portfolio_top5_weight": sum(sorted_weights[:5]),
+        "latest_portfolio_effective_holdings": effective_holdings,
+        "latest_portfolio_adv_window": adv_window,
+        "latest_portfolio_capacity_note": _capacity_note(),
+        **turnover_stats,
+    }
+    if positive_adv_pairs:
+        min_ticker, min_adv = min(positive_adv_pairs, key=lambda item: item[1])
+        diagnostics.update(
+            {
+                "latest_portfolio_min_adv": min_adv,
+                "latest_portfolio_min_adv_ticker": min_ticker,
+                "latest_portfolio_median_adv": statistics.median(adv_values),
+                "latest_portfolio_weighted_adv": weighted_adv,
+                "latest_portfolio_capacity_5pct_adv": capacity_5.get("capacity"),
+                "latest_portfolio_capacity_10pct_adv": capacity_10.get("capacity"),
+                "latest_portfolio_capacity_limit_ticker": capacity_10.get("ticker"),
+            }
+        )
+    return diagnostics
+
+
+def _latest_holding_signal_date(latest_holdings: list[dict[str, object]]) -> dt.date | None:
+    for key in ("price_date_used", "rebalance_date"):
+        dates = []
+        for row in latest_holdings:
+            value = row.get(key)
+            if isinstance(value, dt.datetime):
+                dates.append(value.date())
+            elif isinstance(value, dt.date):
+                dates.append(value)
+            elif value:
+                try:
+                    dates.append(dt.date.fromisoformat(str(value)[:10]))
+                except ValueError:
+                    continue
+        if dates:
+            return max(dates)
+    return None
+
+
+def _latest_holding_date_text(latest_holdings: list[dict[str, object]], key: str) -> str:
+    values = [str(row.get(key).isoformat() if hasattr(row.get(key), "isoformat") else row.get(key)) for row in latest_holdings if row.get(key)]
+    return max(values) if values else ""
+
+
+def _latest_holding_adv(
+    latest_holdings: list[dict[str, object]],
+    prices: list[dict[str, object]],
+    signal_date: dt.date | None,
+    adv_window: int,
+) -> dict[str, float]:
+    grouped = group_prices(prices)
+    out: dict[str, float] = {}
+    for row in latest_holdings:
+        ticker = str(row.get("ticker") or "").upper()
+        if not ticker:
+            continue
+        history = grouped.get(ticker, [])
+        if signal_date is not None:
+            history = [price_row for price_row in history if price_row.get("date") <= signal_date]
+        out[ticker] = _average_dollar_volume(history, adv_window)
+    return out
+
+
+def _capacity_at_participation(
+    latest_holdings: list[dict[str, object]],
+    adv_by_ticker: dict[str, float],
+    *,
+    participation_rate: float,
+) -> dict[str, object]:
+    candidates: list[tuple[float, str]] = []
+    for row in latest_holdings:
+        ticker = str(row.get("ticker") or "").upper()
+        weight = _finite_float(row.get("weight"), 0.0)
+        adv = adv_by_ticker.get(ticker, 0.0)
+        if weight > 0 and adv > 0 and math.isfinite(adv):
+            candidates.append((participation_rate * adv / weight, ticker))
+    if not candidates:
+        return {}
+    capacity, ticker = min(candidates, key=lambda item: item[0])
+    return {"capacity": capacity, "ticker": ticker}
+
+
+def _best_factor_turnover_stats(returns: list[dict[str, object]], best_factor: str) -> dict[str, object]:
+    rows = [row for row in returns if str(row.get("factor") or "") == best_factor]
+    rows.sort(key=lambda row: row.get("period_end") or row.get("period_start") or dt.date.min)
+    turnover_values = [_finite_float(row.get("turnover"), math.nan) for row in rows]
+    turnover_values = [value for value in turnover_values if math.isfinite(value)]
+    nonempty_periods = sum(1 for row in rows if int(_finite_float(row.get("holdings_count"), 0)) > 0)
+    out: dict[str, object] = {
+        "latest_portfolio_period_count": len(rows),
+        "latest_portfolio_nonempty_period_count": nonempty_periods,
+        "latest_portfolio_nonempty_coverage": _safe_ratio(nonempty_periods, len(rows)),
+    }
+    if turnover_values:
+        out["latest_portfolio_average_turnover"] = statistics.mean(turnover_values)
+        out["latest_portfolio_latest_turnover"] = turnover_values[-1]
+    return out
+
+
+def _finite_float(value: object, default: float = math.nan) -> float:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return number if math.isfinite(number) else default
+
+
+def _capacity_note() -> str:
+    return (
+        "Rough capacity uses each latest holding's trailing average dollar volume and asks what total "
+        "portfolio notional would keep that holding's target trade to 5% or 10% of ADV. It is not an "
+        "order-book, market-impact, tax, borrow, or broker execution model."
+    )
+
+
 def _read_json_file(path: str | None) -> dict[str, object]:
     if not path:
         return {}
@@ -487,13 +664,37 @@ def _read_json_file(path: str | None) -> dict[str, object]:
     return payload
 
 
-def _latest_price_coverage(prices: list[dict[str, object]]) -> dict[str, object]:
+def _latest_price_coverage(prices: list[dict[str, object]], *, min_coverage_ratio: float = 0.0) -> dict[str, object]:
     grouped = group_prices(prices)
-    latest_date = max((row["date"] for row in prices if hasattr(row.get("date"), "isoformat")), default=None)
-    if latest_date is None or not grouped:
+    valid_dates = sorted({row["date"] for row in prices if hasattr(row.get("date"), "isoformat")})
+    if not valid_dates or not grouped:
         return {"latest_data_ticker_count": 0, "latest_data_coverage_ratio": 0.0}
-    count = sum(1 for rows in grouped.values() if rows and rows[-1]["date"] == latest_date)
-    return {"latest_data_ticker_count": count, "latest_data_coverage_ratio": _safe_ratio(count, len(grouped))}
+    max_date = valid_dates[-1]
+    date_counts: Counter[dt.date] = Counter()
+    for rows in grouped.values():
+        seen_dates = {row["date"] for row in rows if hasattr(row.get("date"), "isoformat")}
+        date_counts.update(seen_dates)
+    min_count = math.ceil(max(0.0, min(1.0, float(min_coverage_ratio or 0.0))) * len(grouped))
+    reference_date = max_date
+    if min_count > 0:
+        eligible_dates = [date for date in valid_dates if date_counts.get(date, 0) >= min_count]
+        if eligible_dates:
+            reference_date = eligible_dates[-1]
+    reference_count = int(date_counts.get(reference_date, 0))
+    max_date_count = int(date_counts.get(max_date, 0))
+    return {
+        "latest_data_ticker_count": reference_count,
+        "latest_data_coverage_ratio": _safe_ratio(reference_count, len(grouped)),
+        "latest_data_reference_date": reference_date.isoformat(),
+        "latest_data_max_date": max_date.isoformat(),
+        "latest_data_max_date_ticker_count": max_date_count,
+        "latest_data_reference_note": (
+            "Latest stock price date with enough ticker coverage under the configured latest-data gate; "
+            "later sparse provider rows are ignored for portfolio/backtest freshness."
+            if reference_date < max_date
+            else "Latest stock price date satisfies the configured latest-data coverage gate."
+        ),
+    }
 
 
 def _stock_eligibility_diagnostics(
