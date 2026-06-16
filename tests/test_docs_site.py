@@ -2,10 +2,12 @@ import importlib.util
 import json
 import re
 import shutil
+import sys
 import subprocess
 import textwrap
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
@@ -271,6 +273,7 @@ class DocsSiteTest(unittest.TestCase):
             "cron: \"0 9 * * *\"",
             "Check KST dashboard freshness gate",
             "check_dashboard_freshness.py",
+            "refresh_dashboard_tickers.py",
             "steps.freshness.outputs.should_update == 'true'",
             "contents: read",
             "pages: write",
@@ -290,15 +293,15 @@ class DocsSiteTest(unittest.TestCase):
             "market_cap_metadata_insufficient_preflight",
             "--top-n \"${TOP_N}\"",
             "--benchmark-tickers '^IXIC' ONEQ QQQ",
-            "--min-symbols 700",
+            "--min-symbols 1100",
             "--min-price-tickers",
-            "MIN_PRICE_TICKERS=500",
+            "MIN_PRICE_TICKERS=1000",
             "--min-price-coverage-ratio",
             "MIN_PRICE_COVERAGE_RATIO=0.90",
             "--min-latest-data-coverage-ratio",
             "MIN_LATEST_DATA_COVERAGE_RATIO=0.90",
             "--min-factor-eligible-tickers",
-            "MIN_FACTOR_ELIGIBLE_TICKERS=500",
+            "MIN_FACTOR_ELIGIBLE_TICKERS=900",
             "--min-history-observations",
             "MIN_HISTORY_OBSERVATIONS=252",
             "--eligibility-adv-window",
@@ -313,19 +316,35 @@ class DocsSiteTest(unittest.TestCase):
         self.assertNotIn("git commit", workflow)
         self.assertNotIn("git push", workflow)
 
-
     def test_dependabot_tracks_actions_and_python_dependencies(self):
         dependabot = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
         self.assertIn('package-ecosystem: "github-actions"', dependabot)
         self.assertIn('package-ecosystem: "pip"', dependabot)
         self.assertIn('interval: "weekly"', dependabot)
 
+    def test_ticker_refresh_helper_ranks_by_recent_dollar_volume_without_network(self):
+        script_dir = ROOT / ".github" / "scripts"
+        spec = importlib.util.spec_from_file_location("refresh_dashboard_tickers", script_dir / "refresh_dashboard_tickers.py")
+        module = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        with mock.patch.object(sys, "path", [str(script_dir), *sys.path]):
+            spec.loader.exec_module(module)
+        prices = [
+            {"ticker": "AAA", "date": "2026-01-01", "adj_close": 10, "volume": 10},
+            {"ticker": "AAA", "date": "2026-01-02", "adj_close": 10, "volume": 20},
+            {"ticker": "BBB", "date": "2026-01-01", "adj_close": 50, "volume": 10},
+            {"ticker": "BBB", "date": "2026-01-02", "adj_close": 50, "volume": 10},
+            {"ticker": "CCC", "date": "2026-01-02", "adj_close": 100, "volume": 100},
+        ]
+        ranked = module.rank_by_average_dollar_volume(prices, min_observations=2, window=2)
+        self.assertEqual([row[1] for row in ranked], ["BBB", "AAA"])
+
     def test_dashboard_universe_is_committed_individual_stock_list(self):
         ticker_file = ROOT / ".github" / "best-factor-dashboard-tickers.txt"
         self.assertTrue(ticker_file.exists())
         tickers = [line.split("#", 1)[0].strip() for line in ticker_file.read_text(encoding="utf-8").splitlines()]
         tickers = [ticker for ticker in tickers if ticker]
-        self.assertGreaterEqual(len(tickers), 700)
+        self.assertGreaterEqual(len(tickers), 1200)
         self.assertEqual(len(tickers), len(set(tickers)))
         for forbidden in {"SPY", "QQQ", "ONEQ", "^IXIC", "IWM", "DIA", "VTI", "VOO"}:
             self.assertNotIn(forbidden, tickers)
@@ -338,7 +357,7 @@ class DocsSiteTest(unittest.TestCase):
         spec.loader.exec_module(module)
         tickers = module.read_tickers(ROOT / ".github" / "best-factor-dashboard-tickers.txt")
         self.assertIn("AAPL", tickers)
-        self.assertGreaterEqual(len(tickers), 700)
+        self.assertGreaterEqual(len(tickers), 1200)
         self.assertNotIn("SPY", tickers)
         rows, selection = module.select_committed_common_stocks(
             ["AAPL", "SPY", "MSFT"],

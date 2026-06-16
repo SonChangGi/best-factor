@@ -1,10 +1,12 @@
 import datetime as dt
 import math
+import statistics
 import time
 import unittest
 
 from best_factor.factors import (
     DEFAULT_FACTORS,
+    _population_stdev,
     build_score_index,
     compute_factor_scores,
     factor_catalog,
@@ -61,6 +63,11 @@ class FactorZooTest(unittest.TestCase):
         catalog = factor_catalog(["skew_63d", "overnight_return_21d"])
         self.assertEqual([row["name"] for row in catalog], ["skew_63d", "overnight_return_21d"])
         self.assertIn("category_description", catalog[0])
+
+    def test_fast_population_stdev_matches_standard_library(self):
+        values = [0.01, -0.03, 0.04, 0.0, 0.02]
+        self.assertAlmostEqual(_population_stdev(values), statistics.pstdev(values), places=15)
+        self.assertEqual(_population_stdev([]), 0.0)
 
     def test_representative_generated_factors_score_with_sufficient_history(self):
         prices = _factor_prices(tickers=("AAA", "BBB"), days=800)

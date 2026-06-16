@@ -156,17 +156,17 @@ For manual and scheduled updates, the deployed Pages artifact is the freshness s
 
 ### Live dashboard universe
 
-`.github/best-factor-dashboard-tickers.txt` is the committed public dashboard priority universe. It currently contains **750** individual-stock priorities generated from the current Nasdaq Trader symbol directories plus a yfinance dollar-volume screen. It is not a survivorship-free historical universe and not the whole US market.
+`.github/best-factor-dashboard-tickers.txt` is the committed public dashboard priority universe. It currently contains **1,200** individual-stock priorities generated from the current Nasdaq Trader symbol directories plus a yfinance 4-month average-dollar-volume screen. It is not a survivorship-free historical universe and not the whole US market.
 
 Each live workflow run first rebuilds a validated universe CSV from the public Nasdaq Trader `nasdaqlisted.txt` and `otherlisted.txt` symbol directories. The validator emits only conservative current common-stock rows and excludes benchmarks, ETFs, funds, preferred/depositary shares, units, warrants, rights, ADR/ADS/ordinary-share rows, unsupported symbol formats, and other non-common-stock patterns. The live run then requests prices for the validated stocks in chunks and fails closed unless all configured data-coverage gates pass:
 
-- at least **700** validated current common-stock universe rows before price fetching;
-- at least **500** unique stock tickers with successful price data;
+- at least **1,100** validated current common-stock universe rows before price fetching;
+- at least **1,000** unique stock tickers with successful price data;
 - at least **90%** requested-price coverage;
 - at least **90%** latest-date price coverage;
-- at least **500** latest signal-date factor-eligible stocks after the configured trailing-history and liquidity diagnostics.
+- at least **900** latest signal-date factor-eligible stocks after the configured trailing-history and liquidity diagnostics.
 
-For large live runs, the workflow skips the raw `factor_scores.csv` archive and uses streaming factor-score/backtest construction to avoid turning the factor zoo into a massive CI artifact. The final run metadata records requested, priced, rankable, failed, coverage, source-hash, exclusion-count, and **factor-eligible** stock-count fields so the dashboard can show whether the 500+ stock requirement was met by names that also have enough trailing history and liquidity.
+For large live runs, the workflow skips the raw `factor_scores.csv` archive and uses streaming factor-score/backtest construction to avoid turning the factor zoo into a massive CI artifact. The final run metadata records requested, priced, rankable, failed, coverage, source-hash, exclusion-count, and **factor-eligible** stock-count fields so the dashboard can show whether the expanded 1,000+ priced-stock and 900+ factor-eligible-stock requirements were met by names that also have enough trailing history and liquidity.
 
 The workflow applies a 63-session trailing average-dollar-volume liquidity filter and charges **5 bps one-way traded notional** transaction costs by default. This means an initial full portfolio buy costs 1x notional and a full disjoint replacement costs 2x notional; the older `portfolio_turnover` convention remains available only for backward-compatible research comparisons.
 

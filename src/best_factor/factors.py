@@ -9,10 +9,9 @@ provides point-in-time rows with ``available_at``.
 from __future__ import annotations
 
 import math
-import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Sequence
 
 from .data import group_prices
 
@@ -573,9 +572,9 @@ def _fundamentals_asof(records: list[dict[str, object]], signal_date: object) ->
 
 def _score_factor(factor: FactorDefinition, history: _History, fundamentals: dict[str, float] | None) -> tuple[float, str]:
     params = dict(factor.params)
-    closes = list(history.closes)
-    rows = list(history.rows)
-    volumes = list(history.volumes)
+    closes = history.closes
+    rows = history.rows
+    volumes = history.volumes
     kind = factor.kind
     if kind == "momentum":
         return _momentum(closes, lookback=int(params["lookback"]), skip=int(params.get("skip", 0)))
@@ -640,7 +639,7 @@ def _fundamental_score(params: dict[str, object], fundamentals: dict[str, float]
     return value, ""
 
 
-def _momentum(closes: list[tuple[object, float]], lookback: int, skip: int) -> tuple[float, str]:
+def _momentum(closes: Sequence[tuple[object, float]], lookback: int, skip: int) -> tuple[float, str]:
     if len(closes) <= lookback:
         return math.nan, "insufficient_history"
     end_index = len(closes) - 1 - skip
@@ -654,14 +653,14 @@ def _momentum(closes: list[tuple[object, float]], lookback: int, skip: int) -> t
     return end / start - 1.0, ""
 
 
-def _reversal(closes: list[tuple[object, float]], lookback: int) -> tuple[float, str]:
+def _reversal(closes: Sequence[tuple[object, float]], lookback: int) -> tuple[float, str]:
     value, reason = _momentum(closes, lookback=lookback, skip=0)
     if reason:
         return value, reason
     return -value, ""
 
 
-def _volatility(rows: list[dict[str, object]], closes: list[tuple[object, float]], window: int, measure: str) -> tuple[float, str]:
+def _volatility(rows: Sequence[dict[str, object]], closes: Sequence[tuple[object, float]], window: int, measure: str) -> tuple[float, str]:
     if measure == "range":
         if len(rows) < window:
             return math.nan, "insufficient_history"
@@ -680,18 +679,18 @@ def _volatility(rows: list[dict[str, object]], closes: list[tuple[object, float]
         return math.nan, "insufficient_history"
     if measure == "downside":
         downside = [min(0.0, r) for r in returns]
-        return -statistics.pstdev(downside), ""
+        return -_population_stdev(downside), ""
     if measure == "upside":
         upside = [max(0.0, r) for r in returns]
-        return -statistics.pstdev(upside), ""
-    return -statistics.pstdev(returns), ""
+        return -_population_stdev(upside), ""
+    return -_population_stdev(returns), ""
 
 
-def _return_skew(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+def _return_skew(closes: Sequence[tuple[object, float]], window: int) -> tuple[float, str]:
     returns = _window_returns(closes, window)
     if len(returns) < window:
         return math.nan, "insufficient_history"
-    stdev = statistics.pstdev(returns)
+    stdev = _population_stdev(returns)
     if stdev <= 0:
         return math.nan, "insufficient_history"
     mean = sum(returns) / len(returns)
@@ -699,11 +698,11 @@ def _return_skew(closes: list[tuple[object, float]], window: int) -> tuple[float
     return third_moment / (stdev ** 3), ""
 
 
-def _return_kurtosis(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+def _return_kurtosis(closes: Sequence[tuple[object, float]], window: int) -> tuple[float, str]:
     returns = _window_returns(closes, window)
     if len(returns) < window:
         return math.nan, "insufficient_history"
-    stdev = statistics.pstdev(returns)
+    stdev = _population_stdev(returns)
     if stdev <= 0:
         return math.nan, "insufficient_history"
     mean = sum(returns) / len(returns)
@@ -712,7 +711,7 @@ def _return_kurtosis(closes: list[tuple[object, float]], window: int) -> tuple[f
     return -excess, ""
 
 
-def _tail_loss(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+def _tail_loss(closes: Sequence[tuple[object, float]], window: int) -> tuple[float, str]:
     returns = _window_returns(closes, window)
     if len(returns) < window:
         return math.nan, "insufficient_history"
@@ -721,7 +720,7 @@ def _tail_loss(closes: list[tuple[object, float]], window: int) -> tuple[float, 
     return sum(worst) / len(worst), ""
 
 
-def _trend_efficiency(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+def _trend_efficiency(closes: Sequence[tuple[object, float]], window: int) -> tuple[float, str]:
     if len(closes) < window + 1:
         return math.nan, "insufficient_history"
     window_closes = closes[-(window + 1):]
@@ -736,34 +735,34 @@ def _trend_efficiency(closes: list[tuple[object, float]], window: int) -> tuple[
     return (end / start - 1.0) / path_noise, ""
 
 
-def _return_consistency(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+def _return_consistency(closes: Sequence[tuple[object, float]], window: int) -> tuple[float, str]:
     returns = _window_returns(closes, window)
     if len(returns) < window:
         return math.nan, "insufficient_history"
     return sum(1 for ret in returns if ret > 0) / len(returns), ""
 
 
-def _risk_adjusted_momentum(closes: list[tuple[object, float]], lookback: int, skip: int, vol_window: int) -> tuple[float, str]:
+def _risk_adjusted_momentum(closes: Sequence[tuple[object, float]], lookback: int, skip: int, vol_window: int) -> tuple[float, str]:
     mom, reason = _momentum(closes, lookback=lookback, skip=skip)
     if reason:
         return mom, reason
     returns = _window_returns(closes, vol_window)
     if len(returns) < vol_window:
         return math.nan, "insufficient_history"
-    vol = statistics.pstdev(returns)
+    vol = _population_stdev(returns)
     if vol <= 0:
         return math.nan, "insufficient_history"
     return mom / vol, ""
 
 
-def _liquidity(volumes: list[tuple[object, float, float]], window: int) -> tuple[float, str]:
+def _liquidity(volumes: Sequence[tuple[object, float, float]], window: int) -> tuple[float, str]:
     if len(volumes) < window:
         return math.nan, "insufficient_history"
     dollar = [volume * close for _, volume, close in volumes[-window:]]
     return sum(dollar) / len(dollar), ""
 
 
-def _illiquidity(closes: list[tuple[object, float]], volumes: list[tuple[object, float, float]], window: int) -> tuple[float, str]:
+def _illiquidity(closes: Sequence[tuple[object, float]], volumes: Sequence[tuple[object, float, float]], window: int) -> tuple[float, str]:
     returns = _window_returns(closes, window)
     if len(returns) < window or len(volumes) < window:
         return math.nan, "insufficient_history"
@@ -774,7 +773,7 @@ def _illiquidity(closes: list[tuple[object, float]], volumes: list[tuple[object,
     return -sum(values) / len(values) * 1_000_000.0, ""
 
 
-def _volume_trend(volumes: list[tuple[object, float, float]], short: int, long: int) -> tuple[float, str]:
+def _volume_trend(volumes: Sequence[tuple[object, float, float]], short: int, long: int) -> tuple[float, str]:
     if len(volumes) < long:
         return math.nan, "insufficient_history"
     short_vals = [volume * close for _, volume, close in volumes[-short:]]
@@ -785,7 +784,7 @@ def _volume_trend(volumes: list[tuple[object, float, float]], short: int, long: 
     return (sum(short_vals) / len(short_vals)) / long_avg - 1.0, ""
 
 
-def _volume_shock(volumes: list[tuple[object, float, float]], short: int, long: int) -> tuple[float, str]:
+def _volume_shock(volumes: Sequence[tuple[object, float, float]], short: int, long: int) -> tuple[float, str]:
     if len(volumes) < long or short >= long:
         return math.nan, "insufficient_history"
     dollar = [volume * close for _, volume, close in volumes[-long:]]
@@ -796,7 +795,7 @@ def _volume_shock(volumes: list[tuple[object, float, float]], short: int, long: 
         return math.nan, "insufficient_history"
     short_avg = sum(dollar[-short:]) / short
     baseline_avg = sum(baseline) / len(baseline)
-    baseline_std = statistics.pstdev(baseline)
+    baseline_std = _population_stdev(baseline)
     if baseline_std <= 0:
         if baseline_avg <= 0:
             return math.nan, "insufficient_volume"
@@ -804,7 +803,7 @@ def _volume_shock(volumes: list[tuple[object, float, float]], short: int, long: 
     return (short_avg - baseline_avg) / baseline_std, ""
 
 
-def _price_volume_corr(closes: list[tuple[object, float]], volumes: list[tuple[object, float, float]], window: int) -> tuple[float, str]:
+def _price_volume_corr(closes: Sequence[tuple[object, float]], volumes: Sequence[tuple[object, float, float]], window: int) -> tuple[float, str]:
     returns = _window_returns(closes, window)
     if len(returns) < window or len(volumes) < window + 1:
         return math.nan, "insufficient_history"
@@ -819,7 +818,7 @@ def _price_volume_corr(closes: list[tuple[object, float]], volumes: list[tuple[o
     return _correlation(returns, changes)
 
 
-def _moving_average_gap(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+def _moving_average_gap(closes: Sequence[tuple[object, float]], window: int) -> tuple[float, str]:
     if len(closes) < window:
         return math.nan, "insufficient_history"
     values = [close for _, close in closes[-window:]]
@@ -829,7 +828,7 @@ def _moving_average_gap(closes: list[tuple[object, float]], window: int) -> tupl
     return closes[-1][1] / avg - 1.0, ""
 
 
-def _moving_average_cross(closes: list[tuple[object, float]], short: int, long: int) -> tuple[float, str]:
+def _moving_average_cross(closes: Sequence[tuple[object, float]], short: int, long: int) -> tuple[float, str]:
     if len(closes) < long:
         return math.nan, "insufficient_history"
     short_avg = sum(close for _, close in closes[-short:]) / short
@@ -839,7 +838,7 @@ def _moving_average_cross(closes: list[tuple[object, float]], short: int, long: 
     return short_avg / long_avg - 1.0, ""
 
 
-def _range_position(rows: list[dict[str, object]], window: int) -> tuple[float, str]:
+def _range_position(rows: Sequence[dict[str, object]], window: int) -> tuple[float, str]:
     if len(rows) < window:
         return math.nan, "insufficient_history"
     window_rows = rows[-window:]
@@ -853,7 +852,7 @@ def _range_position(rows: list[dict[str, object]], window: int) -> tuple[float, 
     return (close - lo) / (hi - lo), ""
 
 
-def _drawdown_high(closes: list[tuple[object, float]], window: int) -> tuple[float, str]:
+def _drawdown_high(closes: Sequence[tuple[object, float]], window: int) -> tuple[float, str]:
     if len(closes) < window:
         return math.nan, "insufficient_history"
     values = [close for _, close in closes[-window:]]
@@ -863,7 +862,7 @@ def _drawdown_high(closes: list[tuple[object, float]], window: int) -> tuple[flo
     return closes[-1][1] / high - 1.0, ""
 
 
-def _breakout_strength(rows: list[dict[str, object]], window: int) -> tuple[float, str]:
+def _breakout_strength(rows: Sequence[dict[str, object]], window: int) -> tuple[float, str]:
     if len(rows) < window + 1:
         return math.nan, "insufficient_history"
     prior = rows[-(window + 1):-1]
@@ -877,7 +876,7 @@ def _breakout_strength(rows: list[dict[str, object]], window: int) -> tuple[floa
     return close / prior_high - 1.0, ""
 
 
-def _range_contraction(rows: list[dict[str, object]], short: int, long: int) -> tuple[float, str]:
+def _range_contraction(rows: Sequence[dict[str, object]], short: int, long: int) -> tuple[float, str]:
     if len(rows) < long:
         return math.nan, "insufficient_history"
     short_avg, short_reason = _average_range(rows[-short:])
@@ -889,7 +888,7 @@ def _range_contraction(rows: list[dict[str, object]], short: int, long: int) -> 
     return -(short_avg / long_avg - 1.0), ""
 
 
-def _overnight_return(rows: list[dict[str, object]], window: int) -> tuple[float, str]:
+def _overnight_return(rows: Sequence[dict[str, object]], window: int) -> tuple[float, str]:
     if len(rows) < window + 1:
         return math.nan, "insufficient_history"
     returns = []
@@ -903,7 +902,7 @@ def _overnight_return(rows: list[dict[str, object]], window: int) -> tuple[float
     return sum(returns) / len(returns), ""
 
 
-def _intraday_return(rows: list[dict[str, object]], window: int) -> tuple[float, str]:
+def _intraday_return(rows: Sequence[dict[str, object]], window: int) -> tuple[float, str]:
     if len(rows) < window:
         return math.nan, "insufficient_history"
     returns = []
@@ -917,7 +916,7 @@ def _intraday_return(rows: list[dict[str, object]], window: int) -> tuple[float,
     return sum(returns) / len(returns), ""
 
 
-def _acceleration(closes: list[tuple[object, float]], short: int, long: int, skip: int) -> tuple[float, str]:
+def _acceleration(closes: Sequence[tuple[object, float]], short: int, long: int, skip: int) -> tuple[float, str]:
     short_mom, short_reason = _momentum(closes, lookback=short, skip=skip)
     long_mom, long_reason = _momentum(closes, lookback=long, skip=skip)
     if short_reason or long_reason:
@@ -925,13 +924,13 @@ def _acceleration(closes: list[tuple[object, float]], short: int, long: int, ski
     return short_mom - long_mom, ""
 
 
-def _window_returns(closes: list[tuple[object, float]], window: int) -> list[float]:
+def _window_returns(closes: Sequence[tuple[object, float]], window: int) -> list[float]:
     if len(closes) < window + 1:
         return []
     return _returns(closes[-(window + 1):])
 
 
-def _returns(closes: list[tuple[object, float]]) -> list[float]:
+def _returns(closes: Sequence[tuple[object, float]]) -> list[float]:
     out = []
     for (_, prev), (_, current) in zip(closes, closes[1:]):
         if prev > 0:
@@ -939,7 +938,16 @@ def _returns(closes: list[tuple[object, float]]) -> list[float]:
     return out
 
 
-def _average_range(rows: list[dict[str, object]]) -> tuple[float, str]:
+def _population_stdev(values: list[float]) -> float:
+    """Fast population standard deviation for hot factor-zoo paths."""
+    if not values:
+        return 0.0
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    return math.sqrt(max(0.0, variance))
+
+
+def _average_range(rows: Sequence[dict[str, object]]) -> tuple[float, str]:
     ranges = []
     for row in rows:
         close = float(row.get("adj_close", row.get("close", math.nan)))
