@@ -171,6 +171,7 @@ jobs:
             /tmp/best-factor-live-run/report.html
             /tmp/best-factor-universe-metadata.json
             docs/data/latest-results.json
+            docs/data/summary.json
 
       - name: Configure GitHub Pages
         if: steps.freshness.outputs.should_update == 'true'

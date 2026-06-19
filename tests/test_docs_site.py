@@ -15,7 +15,7 @@ DOCS = ROOT / "docs"
 
 class DocsSiteTest(unittest.TestCase):
     def test_docs_site_files_and_sections_exist(self):
-        for relative in ["index.html", "styles.css", "app.js", "data/latest-results.json"]:
+        for relative in ["index.html", "styles.css", "app.js", "data/latest-results.json", "data/summary.json"]:
             self.assertTrue((DOCS / relative).exists(), relative)
         html = (DOCS / "index.html").read_text(encoding="utf-8")
         for marker in [
@@ -216,12 +216,17 @@ class DocsSiteTest(unittest.TestCase):
 
     def test_sample_json_matches_schema_and_freshness_contract(self):
         payload = json.loads((DOCS / "data" / "latest-results.json").read_text(encoding="utf-8"))
+        summary = json.loads((DOCS / "data" / "summary.json").read_text(encoding="utf-8"))
         for key in ["schema_version", "generated_at", "data_scope", "summary", "rankings", "metrics", "latest_holdings", "factor_period_returns", "benchmark_returns", "skipped_reasons", "holdout_rankings", "holdout_metrics", "factor_catalog", "factor_family_summary", "metadata", "automation", "caveats"]:
             self.assertIn(key, payload)
         self.assertEqual(payload["schema_version"], 1)
         self.assertRegex(payload["generated_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
         self.assertIn(payload["data_scope"], {"fixture_sample", "live_resilient_current_common_stock_liquidity_screen_actions", "live_resilient_current_market_cap_and_liquidity_screen_actions"})
         self.assertIn("static_data_warning", payload["summary"])
+        self.assertEqual(summary["contract"], "quant-research-summary")
+        self.assertEqual(summary["projectId"], "best")
+        self.assertTrue(summary["primaryEntities"])
+        self.assertTrue(any("not executable trade instructions" in item for item in summary["limitations"]))
         self.assertNotIn("run_config", payload["metadata"])
         self.assertNotIn("cache_dir", payload["metadata"])
         self.assertNotIn("prices_file", json.dumps(payload["metadata"]))

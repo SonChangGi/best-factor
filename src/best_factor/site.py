@@ -282,6 +282,101 @@ def build_site_payload(
     return payload
 
 
+def build_public_summary(payload: dict[str, object]) -> dict[str, object]:
+    """Build the compact cross-project summary consumed by quant-dashboard."""
+
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    holdings = payload.get("latest_holdings") if isinstance(payload.get("latest_holdings"), list) else []
+    rankings = payload.get("rankings") if isinstance(payload.get("rankings"), list) else []
+    caveats = [str(item) for item in (payload.get("caveats") if isinstance(payload.get("caveats"), list) else [])]
+    data_end_date = summary.get("data_end_date") or metadata.get("data_end_date")
+    coverage_ratio = metadata.get("price_coverage_ratio")
+    state = "ok"
+    degraded_reasons: list[str] = []
+    if not holdings:
+        state = "degraded"
+        degraded_reasons.append("latest holdings missing")
+    if isinstance(coverage_ratio, (int, float)) and coverage_ratio < 0.9:
+        state = "degraded"
+        degraded_reasons.append("price coverage below 90%")
+    primary_entities = []
+    for row in holdings[:30]:
+        if not isinstance(row, dict):
+            continue
+        ticker = row.get("ticker")
+        primary_entities.append(
+            {
+                "symbol": ticker,
+                "name": ticker,
+                "label": f"{ticker} · rank {row.get('rank', len(primary_entities) + 1)}",
+                "sector": "US Equity Factor",
+                "sectorLabel": "미국 주식 팩터",
+                "themes": ["Factor", "Best Factor", str(summary.get("best_factor") or "")],
+                "metrics": {
+                    "weight": row.get("weight"),
+                    "score": row.get("score"),
+                    "rebalanceDate": row.get("rebalance_date") or row.get("date"),
+                    "factor": row.get("factor") or summary.get("best_factor"),
+                    "bestCompositeScore": summary.get("best_composite_score"),
+                },
+                "signals": ["최신 보유 비중은 연구용 모델 출력이며 실행 가능한 매매 지시가 아닙니다."],
+                "warnings": ["현재 유니버스/동일종가/무료 데이터 한계와 holdout의 비독립성을 함께 확인하세요."],
+            }
+        )
+    return {
+        "schemaVersion": 1,
+        "contract": "quant-research-summary",
+        "projectId": "best",
+        "projectName": "Best Factor Lab",
+        "generatedAt": payload.get("generated_at"),
+        "dataAsOf": data_end_date,
+        "timezone": "UTC",
+        "detailUrl": "https://sonchanggi.github.io/best-factor/",
+        "detailDataUrl": "https://sonchanggi.github.io/best-factor/data/latest-results.json",
+        "status": {
+            "state": state,
+            "label": f"{summary.get('best_factor') or 'factor N/A'} · {len(holdings)} holdings",
+            "cadence": "09:00 KST primary with fallback freshness checks",
+            "expectedFreshnessDays": 7,
+            "degradedReasons": degraded_reasons,
+        },
+        "coverage": {
+            "rankingCount": len(rankings),
+            "holdingCount": len(holdings),
+            "testedFactorCount": summary.get("tested_factor_count"),
+            "selectedFactorCount": summary.get("selected_factor_count"),
+            "priceCoverageRatio": coverage_ratio,
+            "universeTickerCount": metadata.get("universe_ticker_count"),
+            "rankableStockUniverseCount": metadata.get("rankable_stock_universe_count"),
+        },
+        "highlights": [
+            {"label": "Best factor", "value": summary.get("best_factor"), "description": "현재 run의 in-sample winner"},
+            {"label": "Composite", "value": summary.get("best_composite_score"), "description": "ranking formula composite score"},
+            {"label": "Holdout rank", "value": summary.get("best_factor_holdout_rank"), "description": "최근 tail 보조 검증, true OOS 아님"},
+        ],
+        "primaryEntities": primary_entities,
+        "limitations": [
+            "Latest holdings are research weights, not executable trade instructions.",
+            "Universe is a current screen, not point-in-time historical constituents.",
+            "Holdout is a recent-tail robustness check, not a true untouched out-of-sample test.",
+            *caveats[:4],
+        ],
+        "sources": [
+            {"label": "Yahoo/yfinance free public data", "url": "https://finance.yahoo.com/"},
+        ],
+        "automation": {
+            "workflowUrl": "https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml",
+            "manualUpdateLabel": "GitHub Actions update-dashboard 수동 실행",
+            "tokenPolicy": "Static page keeps no GitHub token.",
+        },
+        "payload": {
+            "summaryBytes": None,
+            "detailBytes": None,
+        },
+    }
+
+
 def _holdout_value(metadata: dict[str, object], key: str) -> object | None:
     validation = metadata.get("holdout_validation")
     if isinstance(validation, dict):
@@ -299,6 +394,12 @@ def write_site_payload(
     """Write dashboard JSON and return the payload."""
     payload = build_site_payload(run_dir, data_scope=data_scope, generated_at=generated_at)
     write_json(output_file, payload)
+    summary = build_public_summary(payload)
+    try:
+        summary["payload"]["detailBytes"] = Path(output_file).stat().st_size  # type: ignore[index]
+    except OSError:
+        pass
+    write_json(Path(output_file).with_name("summary.json"), summary)
     return payload
 
 

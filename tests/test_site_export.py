@@ -7,7 +7,7 @@ from argparse import Namespace
 from pathlib import Path
 
 from best_factor.cli import _source_hash_for_run
-from best_factor.site import build_site_payload, write_site_payload
+from best_factor.site import build_public_summary, build_site_payload, write_site_payload
 
 
 class SiteExportTest(unittest.TestCase):
@@ -243,6 +243,11 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(payload["summary"]["best_factor_holdout_rank"], 1)
         self.assertEqual(payload["summary"]["best_factor_holdout_cagr"], 0.2)
         self.assertIn("not live market data", payload["summary"]["static_data_warning"])
+        public_summary = build_public_summary(payload)
+        self.assertEqual(public_summary["contract"], "quant-research-summary")
+        self.assertEqual(public_summary["projectId"], "best")
+        self.assertTrue(public_summary["primaryEntities"])
+        self.assertTrue(any("not executable trade instructions" in item for item in public_summary["limitations"]))
         self.assertEqual(payload["automation"]["timezone"], "Asia/Seoul")
         self.assertEqual(payload["automation"]["primary_refresh_kst"], "09:00")
         self.assertIn("10:00", payload["automation"]["fallback_refresh_kst"])
@@ -399,7 +404,9 @@ class SiteExportTest(unittest.TestCase):
             out = Path(tmp) / "site" / "latest-results.json"
             payload = write_site_payload(run_dir, out)
             loaded = json.loads(out.read_text())
+            summary = json.loads((out.parent / "summary.json").read_text())
         self.assertEqual(loaded["schema_version"], 1)
+        self.assertEqual(summary["contract"], "quant-research-summary")
         self.assertRegex(payload["generated_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 
