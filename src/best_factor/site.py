@@ -21,9 +21,9 @@ SCHEMA_VERSION = 1
 STATIC_DATA_WARNING = "Static snapshot generated from a prior run; not live market data or investment advice."
 UPDATE_AUTOMATION = {
     "timezone": "Asia/Seoul",
-    "primary_refresh_kst": "09:00",
-    "fallback_refresh_kst": ["10:00", "12:00", "15:00", "18:00"],
-    "fallback_policy": "10:00/12:00/15:00/18:00 KST scheduled checks rerun only when the deployed JSON is missing, not generated today in KST, or data_end_date is older than the latest expected US regular session.",
+    "primary_refresh_kst": "manual",
+    "fallback_refresh_kst": [],
+    "fallback_policy": "Automatic live-data schedules are suspended after the multi-repo rollback; run workflow_dispatch only after reviewing the deployed JSON and provider state.",
     "manual_update_method": "GitHub Actions workflow_dispatch",
     "manual_update_note": "Static GitHub Pages cannot run Python in the browser; the button opens the authorized GitHub Actions workflow run page.",
 }
@@ -337,7 +337,7 @@ def build_public_summary(payload: dict[str, object]) -> dict[str, object]:
         "status": {
             "state": state,
             "label": f"{summary.get('best_factor') or 'factor N/A'} · {len(holdings)} holdings",
-            "cadence": "09:00 KST primary with fallback freshness checks",
+            "cadence": "manual workflow_dispatch after review",
             "expectedFreshnessDays": 7,
             "degradedReasons": degraded_reasons,
         },

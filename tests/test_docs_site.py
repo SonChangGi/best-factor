@@ -47,11 +47,8 @@ class DocsSiteTest(unittest.TestCase):
             "수동 업데이트 실행 화면 열기",
             "워크플로 상태 보기",
             "update-schedule-list",
-            "09:00 KST",
-            "10:00 KST",
-            "12:00 KST",
-            "15:00 KST",
-            "18:00 KST",
+            "자동 스케줄 중지",
+            "검토 후 수동 실행",
             "economic-analysis-title",
             "economic-analysis-grid",
             "저장소 권한 필요",
@@ -162,8 +159,8 @@ class DocsSiteTest(unittest.TestCase):
             if (displayed.length !== 21) throw new Error(`bad length ${{displayed.length}}`);
             if (displayed[19] !== 'factor_20' || displayed[20] !== 'factor_25') throw new Error(displayed.join(','));
             if (context.__bestFactorDashboard.workflowUrlForTest !== 'https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml') throw new Error('bad workflow URL');
-            const scheduleText = context.__bestFactorDashboard.updateScheduleTextForTest({{ automation: {{ primary_refresh_kst: '09:00' }} }});
-            if (!scheduleText.includes('09:00 KST') || !scheduleText.includes('10:00/12:00/15:00/18:00 KST')) throw new Error(scheduleText);
+            const scheduleText = context.__bestFactorDashboard.updateScheduleTextForTest({{ automation: {{ primary_refresh_kst: 'manual' }} }});
+            if (!scheduleText.includes('자동 스케줄 중지') || !scheduleText.includes('workflow_dispatch')) throw new Error(scheduleText);
             if (!context.__bestFactorDashboard.economicNarrativeForTest('momentum').includes('가격 지속성')) throw new Error('bad economic narrative');
             const comparisonPayload = {{
               metadata: {{ benchmark_label: 'Nasdaq Composite', benchmark_tickers: ['^IXIC'], rebalance_frequency: 'M' }},
@@ -272,11 +269,8 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("same-close", payload["metadata"].get("timing_convention", ""))
         self.assertIn("multiple-testing", " ".join(payload["caveats"]))
         self.assertEqual(payload["automation"].get("timezone"), "Asia/Seoul")
-        self.assertEqual(payload["automation"].get("primary_refresh_kst"), "09:00")
-        self.assertIn("10:00", payload["automation"].get("fallback_refresh_kst", []))
-        self.assertIn("12:00", payload["automation"].get("fallback_refresh_kst", []))
-        self.assertIn("15:00", payload["automation"].get("fallback_refresh_kst", []))
-        self.assertIn("18:00", payload["automation"].get("fallback_refresh_kst", []))
+        self.assertEqual(payload["automation"].get("primary_refresh_kst"), "manual")
+        self.assertEqual(payload["automation"].get("fallback_refresh_kst", []), [])
 
     def test_hostile_json_would_not_be_injected_into_static_shell(self):
         html = (DOCS / "index.html").read_text(encoding="utf-8")
@@ -287,60 +281,23 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("textContent = fmtText", app)
         self.assertNotIn("innerHTML", app)
 
-    def test_update_workflow_uses_custom_pages_deploy_without_self_push(self):
+    def test_update_workflow_deploys_committed_docs_on_push_and_manual_live_refresh_only(self):
         workflow = (ROOT / ".github" / "workflows" / "update-dashboard.yml").read_text(encoding="utf-8")
-        for marker in [
-            "workflow_dispatch",
-            "cron: \"0 0 * * *\"",
-            "cron: \"0 1 * * *\"",
-            "cron: \"0 3 * * *\"",
-            "cron: \"0 6 * * *\"",
-            "cron: \"0 9 * * *\"",
-            "Check KST dashboard freshness gate",
-            "check_dashboard_freshness.py",
-            "refresh_dashboard_tickers.py",
-            "steps.freshness.outputs.should_update == 'true'",
-            "contents: read",
-            "pages: write",
-            "id-token: write",
-            "actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6",
-            "actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5",
-            "actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5",
-            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",
-            "cancel-in-progress: false",
-            "NODE_OPTIONS: --no-deprecation",
-            "github.repository == 'SonChangGi/best-factor'",
-            "github.ref == 'refs/heads/main'",
-            "--provider yfinance_yahoo_chart",
-            "live_resilient_current_common_stock_liquidity_screen_actions",
-            "live_resilient_current_market_cap_and_liquidity_screen_actions",
-            "--market-cap-filter-attempted",
-            "MARKET_CAP_ELIGIBLE_COUNT",
-            "market_cap_metadata_insufficient_preflight",
-            "--top-n \"${TOP_N}\"",
-            "--benchmark-tickers '^IXIC' ONEQ QQQ",
-            "--min-symbols 1700",
-            "--min-price-tickers",
-            "MIN_PRICE_TICKERS=1600",
-            "--min-price-coverage-ratio",
-            "MIN_PRICE_COVERAGE_RATIO=0.90",
-            "--min-latest-data-coverage-ratio",
-            "MIN_LATEST_DATA_COVERAGE_RATIO=0.90",
-            "--min-factor-eligible-tickers",
-            "MIN_FACTOR_ELIGIBLE_TICKERS=1100",
-            "--min-history-observations",
-            "MIN_HISTORY_OBSERVATIONS=252",
-            "--eligibility-adv-window",
-            "ELIGIBILITY_ADV_WINDOW=63",
-            "--transaction-cost-model one_way_notional",
-            "--skip-factor-scores-csv",
-            "--universe-metadata-file /tmp/best-factor-universe-metadata.json",
-        ]:
-            self.assertIn(marker, workflow)
-        self.assertNotIn("30 22 * * 1-5", workflow)
-        self.assertNotIn("if ! python -m best_factor.cli run", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("Automatic live-data refresh is suspended", workflow)
+        self.assertNotIn("schedule:", workflow)
+        self.assertNotIn("cron:", workflow)
+        self.assertIn("deploy-committed-docs:", workflow)
+        self.assertIn("github.event_name == 'push'", workflow)
+        self.assertIn("Upload committed dashboard artifact", workflow)
+        self.assertIn("path: docs", workflow)
+        self.assertIn("update-and-deploy:", workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn("python -m best_factor.cli run", workflow)
+        self.assertIn("actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5", workflow)
         self.assertNotIn("git commit", workflow)
         self.assertNotIn("git push", workflow)
+
 
     def test_dependabot_tracks_actions_and_python_dependencies(self):
         dependabot = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")

@@ -86,9 +86,9 @@
       <div class="panel-heading">
         <div>
           <p class="eyebrow">Update automation</p>
-          <h2 id="update-title">자동·수동 최신 데이터 갱신</h2>
+          <h2 id="update-title">검토 후 수동 최신 데이터 갱신</h2>
         </div>
-        <p>Best Factor 전용 GitHub Actions가 한국 시간 기준 매일 09:00에 yfinance를 기본으로 데이터를 새로 받고, 누락 종목은 직접 Yahoo chart 경로로 보완합니다. 10:00·12:00·15:00·18:00에는 공개 JSON이 없거나 stale이면 다시 실행합니다.</p>
+        <p>자동 live-data 스케줄은 멀티 repo 롤백 이후 중지되어 있습니다. 공개 JSON과 provider 상태를 확인한 뒤 수동 workflow_dispatch로 yfinance 기본 수집과 Yahoo chart 보완 경로를 실행합니다.</p>
       </div>
       <div class="update-grid">
         <div>
@@ -97,11 +97,8 @@
             <a id="workflow-link" class="button secondary" href="https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml" target="_blank" rel="noopener noreferrer">워크플로 상태 보기</a>
           </div>
           <ul id="update-schedule-list" class="schedule-list">
-            <li><strong>09:00 KST</strong> 기본 자동 업데이트</li>
-            <li><strong>10:00 KST</strong> stale/missing 데이터 감지 시 재실행</li>
-            <li><strong>12:00 KST</strong> 공급자 지연·일시 실패 대비 2차 확인</li>
-            <li><strong>15:00 KST</strong> 무료 데이터 지연 대비 같은 날 재시도</li>
-            <li><strong>18:00 KST</strong> 최종 같은 날 stale 데이터 확인</li>
+            <li><strong>자동 스케줄 중지</strong> 멀티 repo 롤백 이후 예약 실행은 비활성화되어 있습니다.</li>
+            <li><strong>검토 후 수동 실행</strong> stale/missing 데이터와 provider 상태를 확인한 뒤 실행합니다.</li>
           </ul>
           <p id="update-status" class="helper" role="status" aria-live="polite">저장소 권한 필요 · 실행 완료 후 이 페이지의 생성 시각과 데이터 기준일을 확인하세요.</p>
           <p id="freshness-detail" class="helper">공개 JSON의 generated_at과 data_end_date를 기준으로 최신성 게이트를 판단합니다.</p>

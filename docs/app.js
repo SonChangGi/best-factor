@@ -9,9 +9,9 @@
   const WORKFLOW_COMMAND = `gh workflow run ${WORKFLOW_FILE} --repo ${REPO_OWNER}/${REPO_NAME} --ref main`;
   const UPDATE_AUTOMATION_DEFAULT = {
     timezone: 'Asia/Seoul',
-    primary_refresh_kst: '09:00',
-    fallback_refresh_kst: ['10:00', '12:00', '15:00', '18:00'],
-    fallback_policy: '10:00/12:00/15:00/18:00 KST scheduled checks rerun only when the deployed JSON is missing, not generated today in KST, or data_end_date is older than the latest expected US regular session.',
+    primary_refresh_kst: 'manual',
+    fallback_refresh_kst: [],
+    fallback_policy: 'Automatic live-data schedules are suspended after the multi-repo rollback; run workflow_dispatch only after reviewing the deployed JSON and provider state.',
     manual_update_method: 'GitHub Actions workflow_dispatch'
   };
   const RANKING_DEFAULT_TOP = 20;
@@ -149,7 +149,7 @@
       statusLine('상태', '정적 JSON 로드 완료'),
       statusLine('생성', payload.generated_at),
       statusLine('데이터 기준', summary.data_end_date || payload.data_scope),
-      statusLine('자동 갱신', updateScheduleText(payload)),
+      statusLine('수동 갱신', updateScheduleText(payload)),
       statusLine('최고 팩터', summary.best_factor),
       statusLine('주의', summary.static_data_warning)
     ];
@@ -184,8 +184,8 @@
     const scheduleList = q('#update-schedule-list');
     if (scheduleList) {
       scheduleList.replaceChildren(
-        scheduleItem(`${automation.primary_refresh_kst} KST`, '기본 자동 업데이트: 새 데이터를 받아 백테스트·랭킹·Pages 배포를 실행합니다.'),
-        ...automation.fallback_refresh_kst.map((time) => scheduleItem(`${time} KST`, 'fallback 최신성 확인: 공개 JSON이 없거나 stale이면 다시 실행하고, 이미 최신이면 비용 절약을 위해 스킵합니다.'))
+        scheduleItem('자동 스케줄 중지', '멀티 repo 롤백 이후 live-data 예약 실행은 비활성화되어 있습니다.'),
+        scheduleItem('검토 후 수동 실행', '공개 JSON과 provider 상태를 확인한 뒤 workflow_dispatch로 백테스트·랭킹·Pages 배포를 실행합니다.')
       );
     }
     setText('#update-status', `${updateScheduleText(payload)} · 수동 업데이트는 GitHub Actions workflow_dispatch 권한이 필요합니다.`);
@@ -1147,7 +1147,7 @@
 
   function updateScheduleText(payload) {
     const automation = automationConfig(payload || {});
-    return `${automation.primary_refresh_kst} KST 자동 · ${automation.fallback_refresh_kst.join('/')} KST 실패 방지`;
+    return '자동 스케줄 중지 · 검토 후 workflow_dispatch 수동 실행';
   }
 
   function scheduleItem(time, description) {

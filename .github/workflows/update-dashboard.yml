@@ -2,17 +2,8 @@ name: Update Best Factor Dashboard
 
 on:
   workflow_dispatch:
-  schedule:
-    # 09:00 KST primary refresh. GitHub cron is UTC.
-    - cron: "0 0 * * *"
-    # 10:00 KST stale/missing-data fallback check.
-    - cron: "0 1 * * *"
-    # 12:00 KST second fallback check for provider/API delays.
-    - cron: "0 3 * * *"
-    # 15:00 KST same-day stale-data retry for slower free-data availability.
-    - cron: "0 6 * * *"
-    # 18:00 KST final same-day stale-data retry.
-    - cron: "0 9 * * *"
+    # Automatic live-data refresh is suspended after the multi-repo rollback.
+    # Manual dispatch remains available when a reviewed refresh is needed.
   push:
     branches: [main]
     paths:
@@ -36,8 +27,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  deploy-committed-docs:
+    if: github.repository == 'SonChangGi/best-factor' && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout isolated best-factor repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+      - name: Upload committed dashboard artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: docs
+      - name: Deploy committed dashboard to GitHub Pages
+        id: deployment
+        env:
+          NODE_OPTIONS: --no-deprecation
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+
   update-and-deploy:
-    if: github.repository == 'SonChangGi/best-factor' && github.ref == 'refs/heads/main'
+    if: github.repository == 'SonChangGi/best-factor' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment:

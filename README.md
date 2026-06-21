@@ -140,19 +140,11 @@ gh workflow run update-dashboard.yml --repo SonChangGi/best-factor --ref main
 
 The workflow installs the live-data extra, runs network-free tests plus syntax/static import checks before live generation, archives each generated run artifact, and uses GitHub Pages custom workflow deployment (`actions/configure-pages`, `actions/upload-pages-artifact`, and `actions/deploy-pages`) so the generated `docs/` artifact is published by that same run. It intentionally does not rely on a workflow self-commit to trigger a branch-based Pages build.
 
-### KST daily update automation
+### Manual update automation
 
-The only automated deployment target is `SonChangGi/best-factor`. The workflow schedules are written in UTC but map to Korea Standard Time:
+The only automated deployment target is `SonChangGi/best-factor`, but live-data cron schedules are suspended after the multi-repo rollback. Pushes deploy the committed `docs/` artifact, while reviewed `workflow_dispatch` runs execute the live yfinance-primary/Yahoo-chart-fallback generation path.
 
-- `0 0 * * *` → **09:00 KST** primary daily refresh. It always regenerates the live yfinance-primary/Yahoo-chart-fallback run.
-- `0 1 * * *` → **10:00 KST** fallback freshness check. It reruns only if the deployed `latest-results.json` is missing, broken, not generated today in KST, or has `data_end_date` older than the latest expected US regular trading session.
-- `0 3 * * *` → **12:00 KST** second fallback check for provider/API delays.
-- `0 6 * * *` → **15:00 KST** same-day stale-data retry for slower free-data availability.
-- `0 9 * * *` → **18:00 KST** final same-day stale-data retry.
-
-Fallback checks use the same stale/missing-data gate and skip if an earlier result is already current.
-
-For manual and scheduled updates, the deployed Pages artifact is the freshness source of truth; the checked-in `docs/data/latest-results.json` is a seed/sample until the next workflow artifact is deployed. The freshness gate is implemented in `.github/scripts/check_dashboard_freshness.py` with a small NYSE holiday/weekend calendar so Korean-morning checks do not demand impossible weekend/holiday data.
+For manual updates, the deployed Pages artifact is the freshness source of truth; the checked-in `docs/data/latest-results.json` is a seed/sample until a reviewed workflow artifact is deployed. The freshness gate remains implemented in `.github/scripts/check_dashboard_freshness.py` for manual and recoverability checks.
 
 ### Live dashboard universe
 
@@ -174,7 +166,7 @@ A market-cap-filtered backtest is run only after a metadata preflight confirms e
 
 The live price adapter publishes source-chain diagnostics (`provider_order`, `provider_attempted_sources`, `provider_fill_counts`, `fallback_filled_ticker_count`, provider error counts, and failed tickers by source). This makes it visible whether the yfinance primary route was enough or the direct Yahoo chart contingency filled missing stocks. The fallback improves operational resilience but is still Yahoo-family free data, not an independent licensed feed.
 
-The live workflow keeps overlapping benchmark symbols out of the stock universe, avoids canceling a primary refresh in favor of later fallback checks, pins third-party GitHub Actions by SHA, and uses Dependabot for weekly action/Python dependency review. This keeps the public page reproducible and cheap to update, but the results remain research-grade and current-universe biased.
+The live workflow keeps overlapping benchmark symbols out of the stock universe, keeps push-time docs deploys separate from reviewed manual live refreshes, pins third-party GitHub Actions by SHA, and uses Dependabot for weekly action/Python dependency review. This keeps the public page reproducible and cheap to update, but the results remain research-grade and current-universe biased.
 
 ## Data schemas
 
