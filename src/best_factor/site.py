@@ -21,11 +21,16 @@ SCHEMA_VERSION = 1
 STATIC_DATA_WARNING = "Static snapshot generated from a prior run; not live market data or investment advice."
 UPDATE_AUTOMATION = {
     "timezone": "Asia/Seoul",
-    "primary_refresh_kst": "manual",
-    "fallback_refresh_kst": [],
-    "fallback_policy": "Automatic live-data schedules are suspended after the multi-repo rollback; run workflow_dispatch only after reviewing the deployed JSON and provider state.",
+    "primary_refresh_kst": "09:00 Tue-Sat",
+    "fallback_refresh_kst": [
+        "10:00 Tue-Sat stale/missing JSON only",
+        "12:00 Tue-Sat stale/missing JSON only",
+        "15:00 Tue-Sat stale/missing JSON only",
+        "18:00 Tue-Sat stale/missing JSON only",
+    ],
+    "fallback_policy": "Primary scheduled runs refresh after each expected US regular session; fallback schedules rerun only when deployed JSON is stale, missing, or broken. workflow_dispatch remains available for reviewed reruns.",
     "manual_update_method": "GitHub Actions workflow_dispatch",
-    "manual_update_note": "Static GitHub Pages cannot run Python in the browser; the button opens the authorized GitHub Actions workflow run page.",
+    "manual_update_note": "Static GitHub Pages cannot run Python in the browser; the button opens the authorized GitHub Actions workflow run page for reviewed reruns.",
 }
 
 RANKING_NUMERIC_COLUMNS = set(RANKING_COLUMNS) - {"factor"}
@@ -337,7 +342,7 @@ def build_public_summary(payload: dict[str, object]) -> dict[str, object]:
         "status": {
             "state": state,
             "label": f"{summary.get('best_factor') or 'factor N/A'} · {len(holdings)} holdings",
-            "cadence": "manual workflow_dispatch after review",
+            "cadence": "scheduled 09:00 KST Tue-Sat plus stale-data fallbacks; workflow_dispatch on demand",
             "expectedFreshnessDays": 7,
             "degradedReasons": degraded_reasons,
         },

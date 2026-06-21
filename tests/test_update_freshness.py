@@ -18,7 +18,7 @@ class DashboardFreshnessTest(unittest.TestCase):
     def test_primary_nine_kst_schedule_always_updates(self):
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 0 * * *",
+            event_schedule="0 0 * * 2-6",
             now_utc=dt.datetime(2026, 6, 11, 0, 0, tzinfo=dt.UTC),
             live_url="https://example.invalid/not-used.json",
         )
@@ -40,7 +40,7 @@ class DashboardFreshnessTest(unittest.TestCase):
         path = self.write_payload(generated_at="2026-06-11T00:20:00Z", data_end_date="2026-06-10")
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 1 * * *",
+            event_schedule="0 1 * * 2-6",
             now_utc=dt.datetime(2026, 6, 11, 1, 0, tzinfo=dt.UTC),
             json_file=path,
         )
@@ -52,7 +52,7 @@ class DashboardFreshnessTest(unittest.TestCase):
         path = self.write_payload(generated_at="2026-06-11T00:20:00Z", data_end_date="2026-06-09")
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 1 * * *",
+            event_schedule="0 1 * * 2-6",
             now_utc=dt.datetime(2026, 6, 11, 1, 0, tzinfo=dt.UTC),
             json_file=path,
         )
@@ -88,7 +88,7 @@ class DashboardFreshnessTest(unittest.TestCase):
         path = self.write_payload(generated_at="2026-06-10T12:00:00Z", data_end_date="2026-06-10")
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 1 * * *",
+            event_schedule="0 1 * * 2-6",
             now_utc=dt.datetime(2026, 6, 11, 1, 0, tzinfo=dt.UTC),
             json_file=path,
         )
@@ -98,7 +98,7 @@ class DashboardFreshnessTest(unittest.TestCase):
     def test_fallback_reruns_when_public_json_is_missing_or_broken(self):
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 9 * * *",
+            event_schedule="0 9 * * 2-6",
             now_utc=dt.datetime(2026, 6, 11, 9, 0, tzinfo=dt.UTC),
             json_file=Path("/tmp/definitely-missing-best-factor.json"),
         )

@@ -9,9 +9,14 @@
   const WORKFLOW_COMMAND = `gh workflow run ${WORKFLOW_FILE} --repo ${REPO_OWNER}/${REPO_NAME} --ref main`;
   const UPDATE_AUTOMATION_DEFAULT = {
     timezone: 'Asia/Seoul',
-    primary_refresh_kst: 'manual',
-    fallback_refresh_kst: [],
-    fallback_policy: 'Automatic live-data schedules are suspended after the multi-repo rollback; run workflow_dispatch only after reviewing the deployed JSON and provider state.',
+    primary_refresh_kst: '09:00 Tue-Sat',
+    fallback_refresh_kst: [
+      '10:00 Tue-Sat stale/missing JSON only',
+      '12:00 Tue-Sat stale/missing JSON only',
+      '15:00 Tue-Sat stale/missing JSON only',
+      '18:00 Tue-Sat stale/missing JSON only'
+    ],
+    fallback_policy: 'Primary scheduled runs refresh after each expected US regular session; fallback schedules rerun only when deployed JSON is stale, missing, or broken. workflow_dispatch remains available for reviewed reruns.',
     manual_update_method: 'GitHub Actions workflow_dispatch'
   };
   const RANKING_DEFAULT_TOP = 20;
@@ -149,7 +154,7 @@
       statusLine('상태', '정적 JSON 로드 완료'),
       statusLine('생성', payload.generated_at),
       statusLine('데이터 기준', summary.data_end_date || payload.data_scope),
-      statusLine('수동 갱신', updateScheduleText(payload)),
+      statusLine('갱신', updateScheduleText(payload)),
       statusLine('최고 팩터', summary.best_factor),
       statusLine('주의', summary.static_data_warning)
     ];
@@ -184,11 +189,12 @@
     const scheduleList = q('#update-schedule-list');
     if (scheduleList) {
       scheduleList.replaceChildren(
-        scheduleItem('자동 스케줄 중지', '멀티 repo 롤백 이후 live-data 예약 실행은 비활성화되어 있습니다.'),
-        scheduleItem('검토 후 수동 실행', '공개 JSON과 provider 상태를 확인한 뒤 workflow_dispatch로 백테스트·랭킹·Pages 배포를 실행합니다.')
+        scheduleItem('09:00 KST Tue-Sat', '예상되는 직전 미국 정규장 종료분을 기준으로 live-data 백테스트와 Pages 배포를 실행합니다.'),
+        scheduleItem('10/12/15/18 KST fallback', '공개 JSON이 stale, 누락, 파손 상태일 때만 재실행해 rate-limit와 불필요한 중복 run을 줄입니다.'),
+        scheduleItem('검토 후 수동 재실행', 'provider 장애 복구나 산출물 점검 후 workflow_dispatch로 동일한 검증·갱신·배포 경로를 실행합니다.')
       );
     }
-    setText('#update-status', `${updateScheduleText(payload)} · 수동 업데이트는 GitHub Actions workflow_dispatch 권한이 필요합니다.`);
+    setText('#update-status', `${updateScheduleText(payload)} · 수동 재실행은 GitHub Actions workflow_dispatch 권한이 필요합니다.`);
     const detail = `마지막 생성 ${fmtKst(payload.generated_at)} · 데이터 기준 ${fmtText((payload.summary || {}).data_end_date || (payload.metadata || {}).data_end_date)} · 판정 정책: ${automation.fallback_policy || UPDATE_AUTOMATION_DEFAULT.fallback_policy}`;
     setText('#freshness-detail', detail);
   }
@@ -1147,7 +1153,11 @@
 
   function updateScheduleText(payload) {
     const automation = automationConfig(payload || {});
-    return '자동 스케줄 중지 · 검토 후 workflow_dispatch 수동 실행';
+    if (!automation.primary_refresh_kst || automation.primary_refresh_kst === 'manual') {
+      return '자동 스케줄 없음 · workflow_dispatch 수동 실행';
+    }
+    const fallback = automation.fallback_refresh_kst.length ? ` · fallback ${automation.fallback_refresh_kst.join(', ')}` : '';
+    return `자동 ${automation.primary_refresh_kst}${fallback}`;
   }
 
   function scheduleItem(time, description) {
