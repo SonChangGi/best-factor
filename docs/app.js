@@ -333,7 +333,14 @@
   function renderFactorExplanations(payload) {
     const summary = payload.summary || {};
     const families = factorFamilies(payload);
-    setText('#factor-scope-meta', `${summary.selected_factor_count ?? families.reduce((total, item) => total + (Number(item.count) || 0), 0)}개 후보 · ${families.length}개 팩터군`);
+    const catalog = factorCatalog(payload);
+    const catalogByCategory = new Map();
+    catalog.forEach((item) => {
+      const category = String(item.category || 'unknown');
+      if (!catalogByCategory.has(category)) catalogByCategory.set(category, []);
+      catalogByCategory.get(category).push(item);
+    });
+    setText('#factor-scope-meta', `${summary.selected_factor_count ?? families.reduce((total, item) => total + (Number(item.count) || 0), 0)}개 후보 · ${families.length}개 팩터군 · 산식은 조정가격/거래량/선택적 PIT 재무 원자료 기준`);
     const root = q('#factor-family-grid');
     if (!root) return;
     if (!families.length) {
@@ -352,9 +359,32 @@
         span(`종류 ${fmtText(Object.keys(family.kind_counts || {}).join(', ') || '—')}`),
         span(`PIT 재무 필요 ${fmtText(family.requires_fundamentals_count ?? 0)}개`)
       );
+      const familyCatalog = catalogByCategory.get(String(family.category || 'unknown')) || [];
+      const sampleNames = new Set((family.examples || []).slice(0, 6).map((name) => String(name)));
+      const samples = [
+        ...familyCatalog.filter((item) => sampleNames.has(String(item.name))),
+        ...familyCatalog.filter((item) => !sampleNames.has(String(item.name))),
+      ].slice(0, 4);
+      const details = el('details', 'factor-method-details');
+      const summaryEl = el('summary', 'factor-method-summary');
+      summaryEl.textContent = '계산법/예시 팩터 보기';
+      const methodList = el('div', 'factor-method-list');
+      samples.forEach((item) => {
+        const method = factorMethodDetails(item);
+        const row = el('div', 'factor-method-row');
+        row.append(
+          strong(fmtText(item.name)),
+          small(`산식: ${method.formula}`),
+          small(`해석: ${method.method}`),
+          small(`파라미터: ${method.params}`)
+        );
+        methodList.append(row);
+      });
+      if (!samples.length) methodList.append(small('이 팩터군의 세부 카탈로그가 없습니다.'));
+      details.append(summaryEl, methodList);
       const examples = el('div', 'factor-examples');
       (family.examples || []).slice(0, 6).forEach((name) => examples.append(span(name, 'factor-pill')));
-      article.append(meta, examples);
+      article.append(meta, details, examples);
       return article;
     }));
   }
@@ -837,7 +867,13 @@
       article.append(head, bar(percentForMetric(row[state.sortMetric], state.sortMetric), `정렬 지표 ${state.sortMetric}`));
       if (meta) {
         const detail = el('div', 'rank-detail');
-        detail.append(span(`${familyTitle(meta.category)} · ${fmtText(meta.kind)}`, 'badge'), small(meta.description));
+        const method = factorMethodDetails(meta);
+        detail.append(
+          span(`${familyTitle(meta.category)} · ${fmtText(meta.kind)}`, 'badge'),
+          small(meta.description),
+          small(`산식: ${method.formula}`),
+          small(`해석: ${method.method}`)
+        );
         if ((meta.requires_fundamentals || []).length) {
           detail.append(span(`PIT fundamentals: ${meta.requires_fundamentals.join(', ')}`, 'badge warn-badge'));
         }
@@ -1091,6 +1127,121 @@
   function factorMeta(payload, factorName) {
     const name = String(factorName || '');
     return factorCatalog(payload).find((item) => String(item.name || '') === name);
+  }
+
+
+  function factorMethodDetails(meta) {
+    const kind = String(meta?.kind || 'unknown');
+    const params = meta?.params || {};
+    const dependencies = Array.isArray(meta?.dependencies) ? meta.dependencies : [];
+    const lookback = Number(params.lookback);
+    const skip = Number(params.skip || 0);
+    const window = Number(params.window);
+    const short = Number(params.short);
+    const long = Number(params.long);
+    const volWindow = Number(params.vol_window);
+    const field = params.field ? String(params.field) : '';
+    const direction = String(params.direction || 'positive');
+    let formula = '카탈로그 정의에 따른 점수';
+    let method = '같은 기준일의 종목별 점수를 계산한 뒤 값이 높은 순서로 팩터 랭킹과 편입 후보를 정렬합니다.';
+
+    if (kind === 'momentum') {
+      formula = Number.isFinite(lookback)
+        ? `P(t-${skip}d) / P(t-${lookback}d) - 1${skip ? ` · 최근 ${skip}거래일 스킵` : ''}`
+        : '조정종가 누적수익률';
+      method = '조정종가 기준 누적수익률이 높을수록 강한 가격 모멘텀으로 봅니다.';
+    } else if (kind === 'reversal') {
+      formula = Number.isFinite(lookback) ? `-(P(t) / P(t-${lookback}d) - 1)` : '-최근 수익률';
+      method = '최근 많이 오른 종목을 낮게, 되돌림 가능성이 큰 종목을 높게 보는 단기 반전 신호입니다.';
+    } else if (kind === 'volatility') {
+      const measure = params.measure ? String(params.measure) : 'total';
+      formula = measure === 'range'
+        ? `-mean((high-low)/close, ${windowLabel(window)})`
+        : `-stdev(daily_return, ${windowLabel(window)})`;
+      method = '값이 덜 음수일수록 변동성/일중 범위가 낮아 방어적 성격이 강합니다.';
+    } else if (kind === 'return_skew') {
+      formula = `skewness(daily_return, ${windowLabel(window)})`;
+      method = '수익률 분포의 우측 비대칭이 클수록 긍정적으로 평가합니다.';
+    } else if (kind === 'return_kurtosis') {
+      formula = `-excess_kurtosis(daily_return, ${windowLabel(window)})`;
+      method = '극단 꼬리가 큰 분포를 낮게 보고, 과도한 첨도를 방어적으로 벌점화합니다.';
+    } else if (kind === 'tail_loss') {
+      formula = `mean(worst 10% daily_return, ${windowLabel(window)})`;
+      method = '최악 구간 평균 손실이 덜 나쁜 종목을 꼬리위험이 낮은 후보로 봅니다.';
+    } else if (kind === 'trend_efficiency') {
+      formula = `(P(t)/P(t-${window}d)-1) / sum(abs(daily_return), ${windowLabel(window)})`;
+      method = '같은 수익률이라도 덜 지그재그로 이동한 추세를 높게 봅니다.';
+    } else if (kind === 'return_consistency') {
+      formula = `count(daily_return > 0) / ${windowLabel(window)}`;
+      method = '상승일 비율이 높은 종목을 더 일관된 추세로 평가합니다.';
+    } else if (kind === 'risk_adjusted_momentum') {
+      formula = `momentum(${windowLabel(lookback)}, skip ${skip}d) / stdev(daily_return, ${windowLabel(volWindow)})`;
+      method = '수익률을 변동성으로 나눠 같은 위험 대비 더 강한 모멘텀을 높게 봅니다.';
+    } else if (kind === 'liquidity') {
+      formula = `mean(volume × close, ${windowLabel(window)})`;
+      method = '최근 평균 달러 거래대금이 클수록 유동성이 높다고 봅니다.';
+    } else if (kind === 'illiquidity') {
+      formula = `-mean(abs(daily_return)/(volume×close), ${windowLabel(window)}) × 1,000,000`;
+      method = '같은 거래대금 대비 가격 충격이 작을수록 높은 점수를 줍니다.';
+    } else if (kind === 'volume_trend') {
+      formula = `mean($volume, ${windowLabel(short)}) / mean($volume, ${windowLabel(long)}) - 1`;
+      method = '단기 거래대금이 장기 평균보다 증가한 정도를 봅니다.';
+    } else if (kind === 'volume_shock') {
+      formula = `(mean($volume, ${windowLabel(short)}) - baseline_mean) / baseline_stdev`;
+      method = '최근 거래대금이 과거 기준선 대비 얼마나 이례적으로 커졌는지 봅니다.';
+    } else if (kind === 'price_volume_corr') {
+      formula = `corr(daily_return, Δ(volume×close), ${windowLabel(window)})`;
+      method = '가격 상승과 거래대금 증가가 함께 나타나는 축적 압력을 봅니다.';
+    } else if (kind === 'moving_average_gap') {
+      formula = `P(t) / MA_${window} - 1`;
+      method = '현재 가격이 이동평균보다 얼마나 위에 있는지로 추세 위치를 평가합니다.';
+    } else if (kind === 'moving_average_cross') {
+      formula = `MA_${short} / MA_${long} - 1`;
+      method = '단기 이동평균이 장기 이동평균보다 강한 정도를 봅니다.';
+    } else if (kind === 'range_position') {
+      formula = `(close - low_${window}) / (high_${window} - low_${window})`;
+      method = '최근 거래범위 안에서 현재가가 상단에 가까울수록 높은 점수입니다.';
+    } else if (kind === 'drawdown_high') {
+      formula = `P(t) / rolling_high_${window} - 1`;
+      method = '최근 고점 대비 낙폭이 작을수록 추세 훼손이 적다고 봅니다.';
+    } else if (kind === 'breakout_strength') {
+      formula = `close / prior_high_${window} - 1`;
+      method = '직전 고점을 얼마나 돌파했는지 또는 근접했는지 평가합니다.';
+    } else if (kind === 'range_contraction') {
+      formula = `-(avg_range_${short} / avg_range_${long} - 1)`;
+      method = '단기 변동 범위가 장기 대비 축소된 안정 구간을 높게 봅니다.';
+    } else if (kind === 'overnight_return') {
+      formula = `mean(open(t) / close(t-1) - 1, ${windowLabel(window)})`;
+      method = '장마감 후 다음 시가까지의 오버나잇 수익률 경향을 봅니다.';
+    } else if (kind === 'intraday_return') {
+      formula = `mean(close / open - 1, ${windowLabel(window)})`;
+      method = '장중 시가 대비 종가 수익률 경향을 봅니다.';
+    } else if (kind === 'acceleration') {
+      formula = `momentum(${windowLabel(short)}, skip ${skip}d) - momentum(${windowLabel(long)}, skip ${skip}d)`;
+      method = '짧은 기간 모멘텀이 긴 기간 모멘텀보다 개선된 속도를 봅니다.';
+    } else if (kind === 'fundamental') {
+      formula = direction === 'negative' ? `-${field}` : field;
+      method = direction === 'negative' ? '낮을수록 좋은 재무 배수를 부호 반전해 점수화합니다.' : '높을수록 좋은 PIT 재무 지표를 점수로 사용합니다.';
+    } else if (kind === 'composite') {
+      formula = dependencies.length ? `average_rank(${dependencies.join(', ')})` : 'eligible base factor rank blend';
+      method = '여러 기초 팩터의 순위를 평균해 한쪽 스타일 쏠림을 낮춘 복합 점수입니다.';
+    }
+
+    return { formula, method, params: paramsText(params, dependencies) };
+  }
+
+  function windowLabel(days) {
+    const numeric = Number(days);
+    if (!Number.isFinite(numeric) || numeric <= 0) return '정의 구간';
+    const months = Math.round(numeric / 21);
+    if (months >= 1 && Math.abs(months * 21 - numeric) <= 3) return `${numeric}거래일(약 ${months}개월)`;
+    return `${numeric}거래일`;
+  }
+
+  function paramsText(params, dependencies = []) {
+    const entries = Object.entries(params || {}).map(([key, value]) => `${key}=${value}`);
+    if (dependencies.length) entries.push(`dependencies=${dependencies.join('+')}`);
+    return entries.length ? entries.join(', ') : '별도 파라미터 없음';
   }
 
   function portfolioDiagnostics(payload) {

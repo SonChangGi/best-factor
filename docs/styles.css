@@ -1140,3 +1140,187 @@ td:not(:first-child),
 .bar-track { background: rgba(148,163,184,0.20) !important; }
 .legend-dot,
 .chart-legend .legend-dot { box-shadow: 0 0 0 1px rgba(255,255,255,0.24), 0 0 14px currentColor !important; }
+
+/* Shared readability jump nav — UI-only, 2026-06-29. */
+.page-jump-nav {
+  position: fixed;
+  right: clamp(14px, 2vw, 26px);
+  bottom: clamp(16px, 3vw, 30px);
+  z-index: 1000;
+  display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+.page-jump-nav a {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid rgba(226, 232, 240, 0.22);
+  border-radius: 999px;
+  color: #f8fafc !important;
+  background: rgba(10, 13, 20, 0.82) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255,255,255,0.08);
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  backdrop-filter: blur(14px);
+}
+.page-jump-nav a:hover,
+.page-jump-nav a:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.55);
+  background: rgba(20, 29, 43, 0.94) !important;
+}
+#page-bottom { scroll-margin-top: 24px; }
+@media (max-width: 640px) {
+  .page-jump-nav { right: 10px; bottom: 10px; gap: 6px; }
+  .page-jump-nav a { min-width: 54px; min-height: 36px; padding: 8px 10px; font-size: 0.76rem; }
+}
+
+/* Readability pass support — moved cautions and dense comparison cells, 2026-06-29. */
+.moved-notice {
+  margin-top: 28px !important;
+  scroll-margin-top: 28px;
+}
+.weight-matrix-cell {
+  min-width: 138px;
+  vertical-align: top;
+}
+.weight-matrix-cell strong,
+.weight-matrix-cell small {
+  display: block;
+}
+.weight-matrix-cell strong {
+  color: var(--text-strong, var(--ink, #f8fafc)) !important;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.weight-matrix-cell small {
+  margin-top: 4px;
+  color: var(--text-muted-readable, var(--muted, #b8c2d1)) !important;
+  line-height: 1.35;
+}
+
+
+/* Factor formula readability details — UI-only, 2026-06-29. */
+.factor-method-details {
+  margin-top: .85rem;
+  border: 1px solid rgba(226, 232, 240, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  overflow: hidden;
+}
+.factor-method-summary {
+  cursor: pointer;
+  padding: .72rem .85rem;
+  color: var(--ink);
+  font-weight: 900;
+}
+.factor-method-list {
+  display: grid;
+  gap: .65rem;
+  padding: 0 .85rem .85rem;
+}
+.factor-method-row {
+  display: grid;
+  gap: .28rem;
+  padding: .72rem;
+  border: 1px solid rgba(226, 232, 240, 0.11);
+  border-radius: 14px;
+  background: rgba(8, 10, 15, 0.32);
+}
+.factor-method-row strong { margin: 0; font-size: .92rem; }
+.factor-method-row small { color: var(--muted); line-height: 1.5; }
+.rank-detail small { flex-basis: 100%; }
+
+/* Mobile status wrapping — UI-only, 2026-06-29. */
+@media (max-width: 640px) {
+  .status-card { min-width: 0 !important; width: 100%; overflow: hidden; }
+  .status-line { grid-template-columns: minmax(0, 1fr); gap: .2rem; }
+  .status-label, .status-value { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+}
+
+/* Mobile copy overflow guard — UI-only, 2026-06-29. */
+@media (max-width: 640px) {
+  body { word-break: normal; overflow-wrap: anywhere; }
+  .hero, main, footer { padding-left: 14px; padding-right: 14px; }
+  .hero-copy, .hero p, .panel-heading p, .helper, .status-value { max-width: 100%; overflow-wrap: anywhere; word-break: normal; }
+}
+
+/* Mobile viewport width clamp — UI-only, 2026-06-29. */
+@media (max-width: 640px) {
+  .hero, main, .section, .site-footer {
+    width: calc(100vw - 28px) !important;
+    max-width: calc(100vw - 28px) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    overflow: hidden;
+  }
+  .controls, .panel, .card, .viz-card, .diagnostic-card, .status-card { max-width: 100%; }
+  select, input, button { min-width: 0; max-width: 100%; }
+}
+
+/* Mobile Korean text wrapping hardening — UI-only, 2026-06-29. */
+@media (max-width: 640px) {
+  .hero, main, footer, .panel, .notice, .card, .status-card, .disclaimer {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .hero h1, .hero p, .hero-copy, .panel-heading p, .notice, .status-value, .card strong, .card small, .helper, .scenario-note {
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    line-break: anywhere;
+  }
+  .hero h1 {
+    font-size: clamp(1.85rem, 8.8vw, 2.55rem);
+    line-height: 1.14;
+  }
+}
+
+/* Focused mobile overflow fix — UI-only, 2026-06-29. */
+@media (max-width: 640px) {
+  html, body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden !important;
+  }
+  body {
+    display: block;
+  }
+  .hero {
+    display: block !important;
+    width: calc(100% - 24px) !important;
+    max-width: calc(100% - 24px) !important;
+    margin: 12px auto 0 !important;
+    padding: 22px 14px !important;
+    overflow: hidden !important;
+  }
+  .hero > *, .hero-main, .hero-copy, .hero-actions, .status-card, .controls, .control-group, .panel, .cards, .card {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .hero h1 {
+    max-width: 100%;
+    font-size: clamp(1.65rem, 7.4vw, 2.2rem) !important;
+    line-height: 1.18 !important;
+    letter-spacing: -0.045em !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+  .hero p, .hero-copy, .status-value, .control-hint, .helper, .scenario-note {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    line-break: anywhere;
+  }
+  .hero-actions a, .hero-link, .button, button {
+    white-space: normal !important;
+  }
+}
+

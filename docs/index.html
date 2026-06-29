@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
   <script src="app.js" defer></script>
 </head>
-<body>
+<body id="top">
   <header class="hero" aria-labelledby="page-title">
     <div class="hero-copy">
       <p class="eyebrow">Best Factor Lab</p>
@@ -30,12 +30,6 @@
   </noscript>
 
   <main>
-    <section class="notice" aria-label="research notice">
-      <strong>중요:</strong> 이 페이지는 연구용 정적 스냅샷입니다. 표시된 결과는 투자 조언이나 매매 지시가 아니며,
-      “최고 팩터”는 수백 개 테스트 후보 중 이번 실행에서 1위라는 뜻입니다. 최근 tail holdout 보조 검증을 함께 표시하지만
-      완전한 out-of-sample 검정은 아니므로 우주(universe), 리밸런싱, 필터, 무료 데이터 품질, 랭킹 공식,
-      다중검정/데이터 스누핑 위험에 따라 결론은 달라집니다.
-    </section>
 
     <section class="controls" aria-label="대시보드 입력값">
       <label>정렬 기준
@@ -77,40 +71,11 @@
         <p id="factor-scope-meta" class="chart-meta">-</p>
       </div>
       <p class="helper">
-        기본 zoo는 단순 기간 파라미터 변형만 늘리지 않고, 모멘텀·반전·변동성·꼬리위험·유동성·가격/거래량 확인·추세 품질·장중/오버나잇·선택적 PIT 재무 팩터를 함께 비교합니다.
+        기본 zoo는 단순 기간 파라미터 변형만 늘리지 않고, 모멘텀·반전·변동성·꼬리위험·유동성·가격/거래량 확인·추세 품질·장중/오버나잇·선택적 PIT 재무 팩터를 함께 비교합니다. 각 팩터군 카드를 펼치면 예시 팩터별 산식, 파라미터, 점수 해석을 확인할 수 있습니다.
       </p>
       <div id="factor-family-grid" class="factor-family-grid" aria-live="polite"></div>
     </section>
 
-    <section class="panel update-panel" aria-labelledby="update-title">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">Update automation</p>
-          <h2 id="update-title">자동 최신 데이터 갱신과 검토 후 재실행</h2>
-        </div>
-        <p>GitHub Actions가 09:00 KST Tue-Sat에 live-data 백테스트와 Pages 배포를 실행하고, 10/12/15/18시 fallback은 공개 JSON이 stale·누락·파손 상태일 때만 재실행합니다. 수동 workflow_dispatch는 provider 장애 복구나 산출물 검토 후 동일 경로를 다시 실행할 때 사용합니다.</p>
-      </div>
-      <div class="update-grid">
-        <div>
-          <div class="update-actions">
-            <a id="manual-update-link" class="button" href="https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml" target="_blank" rel="noopener noreferrer" role="button">수동 업데이트 실행 화면 열기</a>
-            <a id="workflow-link" class="button secondary" href="https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml" target="_blank" rel="noopener noreferrer">워크플로 상태 보기</a>
-          </div>
-          <ul id="update-schedule-list" class="schedule-list">
-            <li><strong>09:00 KST Tue-Sat</strong> 예상되는 직전 미국 정규장 종료분 기준으로 live-data run을 실행합니다.</li>
-            <li><strong>10/12/15/18 KST fallback</strong> 공개 JSON freshness gate가 stale/missing/broken으로 판단할 때만 재실행합니다.</li>
-            <li><strong>검토 후 수동 재실행</strong> provider 장애나 산출물 점검 뒤 workflow_dispatch로 동일 검증·배포 경로를 실행합니다.</li>
-          </ul>
-          <p id="update-status" class="helper" role="status" aria-live="polite">저장소 권한 필요 · 실행 완료 후 이 페이지의 생성 시각과 데이터 기준일을 확인하세요.</p>
-          <p id="freshness-detail" class="helper">공개 JSON의 generated_at과 data_end_date를 기준으로 최신성 게이트를 판단합니다.</p>
-        </div>
-        <div class="command-card" aria-label="CLI workflow dispatch command">
-          <span>CLI 실행 예시</span>
-          <code id="workflow-command">gh workflow run update-dashboard.yml --repo SonChangGi/best-factor --ref main</code>
-          <button id="copy-command" type="button">명령 복사</button>
-        </div>
-      </div>
-    </section>
 
     <section class="panel economic-panel" aria-labelledby="economic-analysis-title">
       <div class="panel-heading">
@@ -267,6 +232,43 @@
       </div>
     </section>
 
+    <section class="panel update-panel" aria-labelledby="update-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Update automation</p>
+          <h2 id="update-title">자동 최신 데이터 갱신과 검토 후 재실행</h2>
+        </div>
+        <p>GitHub Actions가 09:00 KST Tue-Sat에 live-data 백테스트와 Pages 배포를 실행하고, 10/12/15/18시 fallback은 공개 JSON이 stale·누락·파손 상태일 때만 재실행합니다. 수동 workflow_dispatch는 provider 장애 복구나 산출물 검토 후 동일 경로를 다시 실행할 때 사용합니다.</p>
+      </div>
+      <div class="update-grid">
+        <div>
+          <div class="update-actions">
+            <a id="manual-update-link" class="button" href="https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml" target="_blank" rel="noopener noreferrer" role="button">수동 업데이트 실행 화면 열기</a>
+            <a id="workflow-link" class="button secondary" href="https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml" target="_blank" rel="noopener noreferrer">워크플로 상태 보기</a>
+          </div>
+          <ul id="update-schedule-list" class="schedule-list">
+            <li><strong>09:00 KST Tue-Sat</strong> 예상되는 직전 미국 정규장 종료분 기준으로 live-data run을 실행합니다.</li>
+            <li><strong>10/12/15/18 KST fallback</strong> 공개 JSON freshness gate가 stale/missing/broken으로 판단할 때만 재실행합니다.</li>
+            <li><strong>검토 후 수동 재실행</strong> provider 장애나 산출물 점검 뒤 workflow_dispatch로 동일 검증·배포 경로를 실행합니다.</li>
+          </ul>
+          <p id="update-status" class="helper" role="status" aria-live="polite">저장소 권한 필요 · 실행 완료 후 이 페이지의 생성 시각과 데이터 기준일을 확인하세요.</p>
+          <p id="freshness-detail" class="helper">공개 JSON의 generated_at과 data_end_date를 기준으로 최신성 게이트를 판단합니다.</p>
+        </div>
+        <div class="command-card" aria-label="CLI workflow dispatch command">
+          <span>CLI 실행 예시</span>
+          <code id="workflow-command">gh workflow run update-dashboard.yml --repo SonChangGi/best-factor --ref main</code>
+          <button id="copy-command" type="button">명령 복사</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="notice moved-notice" aria-label="research notice">
+      <strong>리서치 고지:</strong> 이 페이지는 연구용 정적 스냅샷입니다. 표시된 결과는 투자 조언이나 매매 지시가 아니며,
+      “최고 팩터”는 수백 개 테스트 후보 중 이번 실행에서 1위라는 뜻입니다. 최근 tail holdout 보조 검증을 함께 표시하지만
+      완전한 out-of-sample 검정은 아니므로 우주(universe), 리밸런싱, 필터, 무료 데이터 품질, 랭킹 공식,
+      다중검정/데이터 스누핑 위험에 따라 결론은 달라집니다.
+    </section>
+
     <section class="panel caveats" aria-labelledby="caveats-title">
       <div class="panel-heading">
         <div>
@@ -282,5 +284,10 @@
     <span>Best Factor Lab</span>
     <span id="generated-at"></span>
   </footer>
+  <nav class="page-jump-nav" aria-label="페이지 빠른 이동">
+    <a href="#top" aria-label="맨 위로 이동">↑ 위</a>
+    <a href="#page-bottom" aria-label="맨 아래로 이동">↓ 아래</a>
+  </nav>
+  <div id="page-bottom" tabindex="-1" aria-hidden="true"></div>
 </body>
 </html>
