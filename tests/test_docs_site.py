@@ -84,12 +84,36 @@ class DocsSiteTest(unittest.TestCase):
                     if path.is_file() and path.suffix not in {".pyc", ".pyo"}:
                         combined.append(path.read_text(encoding="utf-8"))
         haystack = "\n".join(combined)
-        page_paths = re.findall(r"sonchanggi\.github\.io/([A-Za-z0-9_.-]+)", haystack)
+        raw_page_paths = re.findall(r"sonchanggi\.github\.io/([A-Za-z0-9_.\-/]+)", haystack)
+        page_paths = []
+        for raw_path in raw_page_paths:
+            parts = raw_path.strip("/").split("/")
+            if parts[:2] == ["quant-dashboard", "risk-score"]:
+                page_paths.append("quant-dashboard/risk-score")
+            elif parts:
+                page_paths.append(parts[0])
         repo_paths = re.findall(r"github\.com/SonChangGi/([A-Za-z0-9_.-]+)", haystack)
         short_repo_paths = re.findall(r"SonChangGi/([A-Za-z0-9_.-]+)", haystack)
         self.assertTrue(page_paths)
         self.assertTrue(repo_paths)
-        self.assertTrue(all(path in {"best-factor", "quant-dashboard"} for path in page_paths))
+        allowed_page_paths = {
+            "best-factor",
+            "dram-price",
+            "etf-tracking",
+            "momentum-factor-lab",
+            "port",
+            "quant-dashboard",
+            "quant-dashboard/risk-score",
+            "sox",
+            "valuation",
+        }
+        self.assertTrue(all(path in allowed_page_paths for path in page_paths))
+        common_nav = (DOCS / "common-ui.js").read_text(encoding="utf-8")
+        common_nav_paths = {
+            path.rstrip("/")
+            for path in re.findall(r"href: [\"']https://sonchanggi\.github\.io/([^\"']+)[\"']", common_nav)
+        }
+        self.assertEqual(common_nav_paths, allowed_page_paths)
         self.assertTrue(all(path == "best-factor" for path in repo_paths))
         self.assertTrue(all(path == "best-factor" for path in short_repo_paths))
 
