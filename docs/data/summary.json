@@ -560,7 +560,7 @@
     }
   ],
   "status": {
-    "cadence": "scheduled 09:00 KST Tue-Sat plus stale-data fallbacks; workflow_dispatch on demand",
+    "cadence": "scheduled 07:00 KST Tue-Sat plus stale-data fallbacks; workflow_dispatch on demand",
     "degradedReasons": [],
     "expectedFreshnessDays": 7,
     "label": "ramom_168d_skip_42d_vol_126d \u00b7 20 holdings",

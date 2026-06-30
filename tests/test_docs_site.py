@@ -48,8 +48,8 @@ class DocsSiteTest(unittest.TestCase):
             "워크플로 상태 보기",
             "update-schedule-list",
             "자동 최신 데이터 갱신",
-            "09:00 KST Tue-Sat",
-            "10/12/15/18 KST fallback",
+            "07:00 KST Tue-Sat",
+            "09/11/13 KST fallback",
             "검토 후 수동 재실행",
             "economic-analysis-title",
             "economic-analysis-grid",
@@ -161,8 +161,8 @@ class DocsSiteTest(unittest.TestCase):
             if (displayed.length !== 21) throw new Error(`bad length ${{displayed.length}}`);
             if (displayed[19] !== 'factor_20' || displayed[20] !== 'factor_25') throw new Error(displayed.join(','));
             if (context.__bestFactorDashboard.workflowUrlForTest !== 'https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml') throw new Error('bad workflow URL');
-            const scheduleText = context.__bestFactorDashboard.updateScheduleTextForTest({{ automation: {{ primary_refresh_kst: '09:00 Tue-Sat', fallback_refresh_kst: ['10:00 Tue-Sat stale/missing JSON only'] }} }});
-            if (!scheduleText.includes('09:00 Tue-Sat') || !scheduleText.includes('10:00 Tue-Sat')) throw new Error(scheduleText);
+            const scheduleText = context.__bestFactorDashboard.updateScheduleTextForTest({{ automation: {{ primary_refresh_kst: '07:00 Tue-Sat', fallback_refresh_kst: ['09:00 Tue-Sat stale/missing JSON only'] }} }});
+            if (!scheduleText.includes('07:00 Tue-Sat') || !scheduleText.includes('09:00 Tue-Sat')) throw new Error(scheduleText);
             if (!context.__bestFactorDashboard.economicNarrativeForTest('momentum').includes('가격 지속성')) throw new Error('bad economic narrative');
             const comparisonPayload = {{
               metadata: {{ benchmark_label: 'Nasdaq Composite', benchmark_tickers: ['^IXIC'], rebalance_frequency: 'M' }},
@@ -271,8 +271,8 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("same-close", payload["metadata"].get("timing_convention", ""))
         self.assertIn("multiple-testing", " ".join(payload["caveats"]))
         self.assertEqual(payload["automation"].get("timezone"), "Asia/Seoul")
-        self.assertEqual(payload["automation"].get("primary_refresh_kst"), "09:00 Tue-Sat")
-        self.assertIn("10:00 Tue-Sat stale/missing JSON only", payload["automation"].get("fallback_refresh_kst", []))
+        self.assertEqual(payload["automation"].get("primary_refresh_kst"), "07:00 Tue-Sat")
+        self.assertIn("09:00 Tue-Sat stale/missing JSON only", payload["automation"].get("fallback_refresh_kst", []))
 
     def test_hostile_json_would_not_be_injected_into_static_shell(self):
         html = (DOCS / "index.html").read_text(encoding="utf-8")
@@ -287,7 +287,7 @@ class DocsSiteTest(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "update-dashboard.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("schedule:", workflow)
-        for cron in ['cron: "0 0 * * 2-6"', 'cron: "0 1 * * 2-6"', 'cron: "0 3 * * 2-6"', 'cron: "0 6 * * 2-6"', 'cron: "0 9 * * 2-6"']:
+        for cron in ['cron: "0 22 * * 1-5"', 'cron: "0 0 * * 2-6"', 'cron: "0 2 * * 2-6"', 'cron: "0 4 * * 2-6"']:
             self.assertIn(cron, workflow)
         self.assertIn("deploy-committed-docs:", workflow)
         self.assertIn("github.event_name == 'push'", workflow)

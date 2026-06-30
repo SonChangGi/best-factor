@@ -142,9 +142,9 @@ The workflow installs the live-data extra, runs network-free tests plus syntax/s
 
 ### Manual update automation
 
-The only automated deployment target is `SonChangGi/best-factor`. Live-data cron schedules are active again at 09:00 KST Tue-Sat with 10:00/12:00/15:00/18:00 KST stale-data fallbacks, and reviewed `workflow_dispatch` runs execute the same live yfinance-primary/Yahoo-chart-fallback generation path. Pushes deploy the committed `docs/` artifact; scheduled/manual refreshes also sync the committed `docs/data/latest-results.json` and `docs/data/summary.json` before Pages deployment so later pushes do not overwrite a fresher artifact with stale JSON.
+The only automated deployment target is `SonChangGi/best-factor`. Live-data cron schedules are active again at 07:00 KST Tue-Sat with 09:00/11:00/13:00 KST stale-data fallbacks, and reviewed `workflow_dispatch` runs execute the same live yfinance-primary/Yahoo-chart-fallback generation path. Pushes deploy the committed `docs/` artifact; scheduled/manual refreshes also sync the committed `docs/data/latest-results.json` and `docs/data/summary.json` before Pages deployment so later pushes do not overwrite a fresher artifact with stale JSON.
 
-For scheduled and manual updates, the deployed Pages artifact remains the freshness source of truth. The freshness gate is implemented in `.github/scripts/check_dashboard_freshness.py`: the 09:00 KST primary schedule always tries to refresh, while fallback schedules skip if the public JSON is already fresh for the expected U.S. session.
+For scheduled and manual updates, the deployed Pages artifact remains the freshness source of truth. The freshness gate is implemented in `.github/scripts/check_dashboard_freshness.py`: the 07:00 KST primary schedule always tries to refresh, while fallback schedules skip if the public JSON is already fresh for the expected U.S. session.
 
 ### Live dashboard universe
 

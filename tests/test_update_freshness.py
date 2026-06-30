@@ -15,16 +15,16 @@ spec.loader.exec_module(freshness)
 
 
 class DashboardFreshnessTest(unittest.TestCase):
-    def test_primary_nine_kst_schedule_always_updates(self):
+    def test_primary_seven_kst_schedule_always_updates(self):
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 0 * * 2-6",
-            now_utc=dt.datetime(2026, 6, 11, 0, 0, tzinfo=dt.UTC),
+            event_schedule="0 22 * * 1-5",
+            now_utc=dt.datetime(2026, 6, 10, 22, 0, tzinfo=dt.UTC),
             live_url="https://example.invalid/not-used.json",
         )
         self.assertEqual(result["should_update"], "true")
         self.assertEqual(result["expected_data_end_date"], "2026-06-10")
-        self.assertEqual(result["freshness_reason"], "primary_09_kst_schedule_always_refreshes")
+        self.assertEqual(result["freshness_reason"], "primary_07_kst_schedule_always_refreshes")
 
     def test_manual_or_push_events_always_update(self):
         result = freshness.decide_update(
@@ -36,24 +36,24 @@ class DashboardFreshnessTest(unittest.TestCase):
         self.assertEqual(result["should_update"], "true")
         self.assertEqual(result["freshness_reason"], "manual_or_push_event_always_refreshes")
 
-    def test_ten_kst_fallback_skips_when_public_json_is_current(self):
+    def test_nine_kst_fallback_skips_when_public_json_is_current(self):
         path = self.write_payload(generated_at="2026-06-11T00:20:00Z", data_end_date="2026-06-10")
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 1 * * 2-6",
-            now_utc=dt.datetime(2026, 6, 11, 1, 0, tzinfo=dt.UTC),
+            event_schedule="0 0 * * 2-6",
+            now_utc=dt.datetime(2026, 6, 11, 0, 0, tzinfo=dt.UTC),
             json_file=path,
         )
         self.assertEqual(result["should_update"], "false")
         self.assertEqual(result["freshness_reason"], "fresh_for_kst_today_and_expected_us_session")
         self.assertEqual(result["actual_data_end_date"], "2026-06-10")
 
-    def test_ten_kst_fallback_reruns_when_data_end_is_stale(self):
+    def test_nine_kst_fallback_reruns_when_data_end_is_stale(self):
         path = self.write_payload(generated_at="2026-06-11T00:20:00Z", data_end_date="2026-06-09")
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 1 * * 2-6",
-            now_utc=dt.datetime(2026, 6, 11, 1, 0, tzinfo=dt.UTC),
+            event_schedule="0 0 * * 2-6",
+            now_utc=dt.datetime(2026, 6, 11, 0, 0, tzinfo=dt.UTC),
             json_file=path,
         )
         self.assertEqual(result["should_update"], "true")
@@ -84,12 +84,12 @@ class DashboardFreshnessTest(unittest.TestCase):
                 self.assertEqual(stale["should_update"], "true")
                 self.assertEqual(stale["freshness_reason"], "stale_data_end_before_expected_us_session")
 
-    def test_ten_kst_fallback_reruns_when_generation_is_not_today_kst(self):
+    def test_nine_kst_fallback_reruns_when_generation_is_not_today_kst(self):
         path = self.write_payload(generated_at="2026-06-10T12:00:00Z", data_end_date="2026-06-10")
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 1 * * 2-6",
-            now_utc=dt.datetime(2026, 6, 11, 1, 0, tzinfo=dt.UTC),
+            event_schedule="0 0 * * 2-6",
+            now_utc=dt.datetime(2026, 6, 11, 0, 0, tzinfo=dt.UTC),
             json_file=path,
         )
         self.assertEqual(result["should_update"], "true")
@@ -98,8 +98,8 @@ class DashboardFreshnessTest(unittest.TestCase):
     def test_fallback_reruns_when_public_json_is_missing_or_broken(self):
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 9 * * 2-6",
-            now_utc=dt.datetime(2026, 6, 11, 9, 0, tzinfo=dt.UTC),
+            event_schedule="0 4 * * 2-6",
+            now_utc=dt.datetime(2026, 6, 11, 4, 0, tzinfo=dt.UTC),
             json_file=Path("/tmp/definitely-missing-best-factor.json"),
         )
         self.assertEqual(result["should_update"], "true")

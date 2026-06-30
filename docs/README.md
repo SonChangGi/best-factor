@@ -44,7 +44,7 @@ Interpretation note: the displayed winner is the best factor among tested candid
 
 ## Update automation
 
-The deployed `best-factor` page is refreshed by the `SonChangGi/best-factor` GitHub Actions workflow only. The live-data path runs on a 09:00 KST Tue-Sat primary schedule after expected US regular sessions; 10:00/12:00/15:00/18:00 KST fallback schedules rerun only when the deployed JSON is stale, missing, or broken. Successful live runs commit the regenerated `docs/data/*.json` files before deploying Pages so later source pushes do not redeploy older committed data. Reviewed `workflow_dispatch` runs use the same validation, commit, and deploy path.
+The deployed `best-factor` page is refreshed by the `SonChangGi/best-factor` GitHub Actions workflow only. The live-data path runs on a 07:00 KST Tue-Sat primary schedule after expected US regular sessions; 09:00/11:00/13:00 KST fallback schedules rerun only when the deployed JSON is stale, missing, or broken. Successful live runs commit the regenerated `docs/data/*.json` files before deploying Pages so later source pushes do not redeploy older committed data. Reviewed `workflow_dispatch` runs use the same validation, commit, and deploy path.
 
 The live run uses `yfinance_yahoo_chart`: yfinance is attempted first, and tickers missing from that path are retried through a direct Yahoo chart JSON adapter. The dashboard's manual update button opens the same workflow dispatch page because a static GitHub Pages site cannot safely run Python or store a GitHub token in the browser.
 

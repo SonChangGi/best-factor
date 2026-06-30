@@ -2,9 +2,9 @@
 """Decide whether a scheduled fallback run should regenerate the dashboard.
 
 GitHub Actions schedules are UTC. The public dashboard's business contract is
-Korea-time freshness: a primary Tue-Sat run at 09:00 KST should publish the
-latest closed US regular session, while fallback checks at
-10:00/12:00/15:00/18:00 KST rerun only if the already deployed JSON is stale or
+Korea-time freshness: a staggered primary Tue-Sat run at 07:00 KST should
+publish the latest closed US regular session, while fallback checks at
+09:00/11:00/13:00 KST rerun only if the already deployed JSON is stale or
 missing.
 """
 from __future__ import annotations
@@ -19,8 +19,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 DEFAULT_LIVE_URL = "https://sonchanggi.github.io/best-factor/data/latest-results.json"
-DEFAULT_PRIMARY_CRONS = ("0 0 * * 2-6",)
-DEFAULT_FALLBACK_CRONS = ("0 1 * * 2-6", "0 3 * * 2-6", "0 6 * * 2-6", "0 9 * * 2-6")
+DEFAULT_PRIMARY_CRONS = ("0 22 * * 1-5",)
+DEFAULT_FALLBACK_CRONS = ("0 0 * * 2-6", "0 2 * * 2-6", "0 4 * * 2-6")
 DEFAULT_TIMEZONE = "Asia/Seoul"
 
 
@@ -85,7 +85,7 @@ def decide_update(
     if event != "schedule":
         return {**base, "should_update": "true", "freshness_reason": "manual_or_push_event_always_refreshes"}
     if schedule in primary_crons:
-        return {**base, "should_update": "true", "freshness_reason": "primary_09_kst_schedule_always_refreshes"}
+        return {**base, "should_update": "true", "freshness_reason": "primary_07_kst_schedule_always_refreshes"}
     if schedule not in fallback_crons:
         return {**base, "should_update": "true", "freshness_reason": "unknown_schedule_refreshes_conservatively"}
 

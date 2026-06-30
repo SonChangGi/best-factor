@@ -9,12 +9,11 @@
   const WORKFLOW_COMMAND = `gh workflow run ${WORKFLOW_FILE} --repo ${REPO_OWNER}/${REPO_NAME} --ref main`;
   const UPDATE_AUTOMATION_DEFAULT = {
     timezone: 'Asia/Seoul',
-    primary_refresh_kst: '09:00 Tue-Sat',
+    primary_refresh_kst: '07:00 Tue-Sat',
     fallback_refresh_kst: [
-      '10:00 Tue-Sat stale/missing JSON only',
-      '12:00 Tue-Sat stale/missing JSON only',
-      '15:00 Tue-Sat stale/missing JSON only',
-      '18:00 Tue-Sat stale/missing JSON only'
+      '09:00 Tue-Sat stale/missing JSON only',
+      '11:00 Tue-Sat stale/missing JSON only',
+      '13:00 Tue-Sat stale/missing JSON only'
     ],
     fallback_policy: 'Primary scheduled runs refresh after each expected US regular session; fallback schedules rerun only when deployed JSON is stale, missing, or broken. workflow_dispatch remains available for reviewed reruns.',
     manual_update_method: 'GitHub Actions workflow_dispatch'
@@ -189,8 +188,8 @@
     const scheduleList = q('#update-schedule-list');
     if (scheduleList) {
       scheduleList.replaceChildren(
-        scheduleItem('09:00 KST Tue-Sat', '예상되는 직전 미국 정규장 종료분을 기준으로 live-data 백테스트와 Pages 배포를 실행합니다.'),
-        scheduleItem('10/12/15/18 KST fallback', '공개 JSON이 stale, 누락, 파손 상태일 때만 재실행해 rate-limit와 불필요한 중복 run을 줄입니다.'),
+        scheduleItem('07:00 KST Tue-Sat', '예상되는 직전 미국 정규장 종료분을 기준으로 live-data 백테스트와 Pages 배포를 실행합니다.'),
+        scheduleItem('09/11/13 KST fallback', '공개 JSON이 stale, 누락, 파손 상태일 때만 재실행해 rate-limit와 불필요한 중복 run을 줄입니다.'),
         scheduleItem('검토 후 수동 재실행', 'provider 장애 복구나 산출물 점검 후 workflow_dispatch로 동일한 검증·갱신·배포 경로를 실행합니다.')
       );
     }
