@@ -1,23 +1,20 @@
 <!doctype html>
-<html lang="ko" data-project-id="best">
+<html lang="ko">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Best Factor Lab Dashboard</title>
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="common-ui.css?v=20260703-light-polish-v7" />
   <script src="app.js" defer></script>
-  <script src="common-ui.js?v=20260703-light-polish-v7" defer></script>
 </head>
 <body id="top">
   <header class="hero" aria-labelledby="page-title">
-    <nav class="top-nav" data-common-nav aria-label="Quant 프로젝트 공통 이동"></nav>
     <div class="hero-copy">
       <p class="eyebrow">Best Factor Lab</p>
       <h1 id="page-title">미국 주식 팩터 랭킹 대시보드</h1>
       <p>
-        현재 1위 팩터, 핵심 성과, 최신 편입 종목을 먼저 보여줍니다.
-        세부 방법론과 운영 메타데이터는 접힘 영역에서 확인합니다.
+        무료 데이터 기반 미국 개별주식 factor-zoo 백테스트 결과를 정적 대시보드로 제공합니다.
+        팩터별 성과·위험 지표, 최신 편입 종목과 비중, 데이터 품질 게이트를 표와 차트로 함께 확인하세요.
       </p>
       <div class="hero-actions" aria-label="상위 대시보드 이동">
         <a class="button hero-link" href="https://sonchanggi.github.io/quant-dashboard/">← 통합 대시보드로 돌아가기</a>
@@ -65,9 +62,7 @@
 
     <section class="cards" id="summary-cards" aria-label="요약 카드"></section>
 
-    <details class="panel factor-scope-panel" aria-labelledby="factor-scope-title">
-      <summary>팩터 범위와 종류</summary>
-      <div class="details-body">
+    <section class="panel factor-scope-panel" aria-labelledby="factor-scope-title">
       <div class="panel-heading">
         <div>
           <p class="eyebrow">Factor scope</p>
@@ -79,13 +74,10 @@
         기본 zoo는 단순 기간 파라미터 변형만 늘리지 않고, 모멘텀·반전·변동성·꼬리위험·유동성·가격/거래량 확인·추세 품질·장중/오버나잇·선택적 PIT 재무 팩터를 함께 비교합니다. 각 팩터군 카드를 펼치면 예시 팩터별 산식, 파라미터, 점수 해석을 확인할 수 있습니다.
       </p>
       <div id="factor-family-grid" class="factor-family-grid" aria-live="polite"></div>
-          </div>
-    </details>
+    </section>
 
 
-    <details class="panel economic-panel" aria-labelledby="economic-analysis-title">
-      <summary>경제적 해석</summary>
-      <div class="details-body">
+    <section class="panel economic-panel" aria-labelledby="economic-analysis-title">
       <div class="panel-heading">
         <div>
           <p class="eyebrow">Economic read-through</p>
@@ -94,8 +86,7 @@
         <p>현재 1위 팩터가 왜 작동했을 수 있는지, 위험조정 성과가 얼마나 견고한지, 집중도·ADV·용량·회전율 관점에서 실제 운용 전 무엇을 추가로 확인해야 하는지 데이터 기반으로 요약합니다.</p>
       </div>
       <div id="economic-analysis-grid" class="analysis-grid" aria-live="polite"></div>
-          </div>
-    </details>
+    </section>
 
     <section class="panel diagnostics-panel" aria-labelledby="diagnostics-title">
       <div class="panel-heading">
@@ -241,9 +232,7 @@
       </div>
     </section>
 
-    <details class="panel update-panel" aria-labelledby="update-title">
-      <summary>업데이트 자동화</summary>
-      <div class="details-body">
+    <section class="panel update-panel" aria-labelledby="update-title">
       <div class="panel-heading">
         <div>
           <p class="eyebrow">Update automation</p>
@@ -271,22 +260,16 @@
           <button id="copy-command" type="button">명령 복사</button>
         </div>
       </div>
-          </div>
-    </details>
+    </section>
 
-    <details class="notice moved-notice" aria-label="research notice">
-      <summary>리서치 고지</summary>
-      <div class="details-body">
+    <section class="notice moved-notice" aria-label="research notice">
       <strong>리서치 고지:</strong> 이 페이지는 연구용 정적 스냅샷입니다. 표시된 결과는 투자 조언이나 매매 지시가 아니며,
       “최고 팩터”는 수백 개 테스트 후보 중 이번 실행에서 1위라는 뜻입니다. 최근 tail holdout 보조 검증을 함께 표시하지만
       완전한 out-of-sample 검정은 아니므로 우주(universe), 리밸런싱, 필터, 무료 데이터 품질, 랭킹 공식,
       다중검정/데이터 스누핑 위험에 따라 결론은 달라집니다.
-          </div>
-    </details>
+    </section>
 
-    <details class="panel caveats" aria-labelledby="caveats-title">
-      <summary>무료 데이터 한계</summary>
-      <div class="details-body">
+    <section class="panel caveats" aria-labelledby="caveats-title">
       <div class="panel-heading">
         <div>
           <p class="eyebrow">Limitations</p>
@@ -294,8 +277,7 @@
         </div>
       </div>
       <ul id="caveats-list"></ul>
-          </div>
-    </details>
+    </section>
   </main>
 
   <footer>
