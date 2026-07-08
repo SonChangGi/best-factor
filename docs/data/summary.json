@@ -14,10 +14,10 @@
     "testedFactorCount": 318,
     "universeTickerCount": 1791
   },
-  "dataAsOf": "2026-07-07",
+  "dataAsOf": "2026-07-08",
   "detailDataUrl": "https://sonchanggi.github.io/best-factor/data/latest-results.json",
   "detailUrl": "https://sonchanggi.github.io/best-factor/",
-  "generatedAt": "2026-07-07T23:22:39Z",
+  "generatedAt": "2026-07-08T23:24:34Z",
   "highlights": [
     {
       "description": "\ud604\uc7ac run\uc758 in-sample winner",
@@ -27,12 +27,12 @@
     {
       "description": "ranking formula composite score",
       "label": "Composite",
-      "value": 0.9245430777
+      "value": 0.9291085591
     },
     {
       "description": "\ucd5c\uadfc tail \ubcf4\uc870 \uac80\uc99d, true OOS \uc544\ub2d8",
       "label": "Holdout rank",
-      "value": 4
+      "value": 3
     }
   ],
   "limitations": [
@@ -52,11 +52,11 @@
     {
       "label": "AXTI \u00b7 rank 1",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 99.43732014,
-        "weight": 0.2657420817
+        "weight": 0.2657745062
       },
       "name": "AXTI",
       "sector": "US Equity Factor",
@@ -77,11 +77,11 @@
     {
       "label": "SNDK \u00b7 rank 2",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 72.21660349,
-        "weight": 0.1541855061
+        "weight": 0.154204319
       },
       "name": "SNDK",
       "sector": "US Equity Factor",
@@ -102,11 +102,11 @@
     {
       "label": "LITE \u00b7 rank 3",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 55.87525114,
-        "weight": 0.08721499485
+        "weight": 0.08722563638
       },
       "name": "LITE",
       "sector": "US Equity Factor",
@@ -127,11 +127,11 @@
     {
       "label": "HYMC \u00b7 rank 4",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 52.40645658,
-        "weight": 0.07299910009
+        "weight": 0.07300800707
       },
       "name": "HYMC",
       "sector": "US Equity Factor",
@@ -152,11 +152,11 @@
     {
       "label": "KEX \u00b7 rank 5",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 45.85759893,
-        "weight": 0.046160419
+        "weight": 0.04616605126
       },
       "name": "KEX",
       "sector": "US Equity Factor",
@@ -177,11 +177,11 @@
     {
       "label": "DAR \u00b7 rank 6",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 45.083701,
-        "weight": 0.04298881248
+        "weight": 0.04299405776
       },
       "name": "DAR",
       "sector": "US Equity Factor",
@@ -202,11 +202,11 @@
     {
       "label": "VIAV \u00b7 rank 7",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 44.84693246,
-        "weight": 0.0420184821
+        "weight": 0.04202360898
       },
       "name": "VIAV",
       "sector": "US Equity Factor",
@@ -227,11 +227,11 @@
     {
       "label": "COGT \u00b7 rank 8",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 43.83048228,
-        "weight": 0.03785284227
+        "weight": 0.03785746088
       },
       "name": "COGT",
       "sector": "US Equity Factor",
@@ -252,11 +252,11 @@
     {
       "label": "PUMP \u00b7 rank 9",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 43.40385815,
-        "weight": 0.03610444134
+        "weight": 0.03610884662
       },
       "name": "PUMP",
       "sector": "US Equity Factor",
@@ -277,11 +277,11 @@
     {
       "label": "WDC \u00b7 rank 10",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
-        "score": 43.09252514,
-        "weight": 0.03482852913
+        "score": 43.08901364,
+        "weight": 0.03481838607
       },
       "name": "WDC",
       "sector": "US Equity Factor",
@@ -302,11 +302,11 @@
     {
       "label": "SYRE \u00b7 rank 11",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 42.77341806,
-        "weight": 0.03352075704
+        "weight": 0.03352484707
       },
       "name": "SYRE",
       "sector": "US Equity Factor",
@@ -327,11 +327,11 @@
     {
       "label": "BW \u00b7 rank 12",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 42.26566949,
-        "weight": 0.03143989002
+        "weight": 0.03144372616
       },
       "name": "BW",
       "sector": "US Equity Factor",
@@ -352,11 +352,11 @@
     {
       "label": "OUT \u00b7 rank 13",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
-        "score": 41.56407771,
-        "weight": 0.02856461024
+        "score": 41.53781882,
+        "weight": 0.02846046763
       },
       "name": "OUT",
       "sector": "US Equity Factor",
@@ -377,11 +377,11 @@
     {
       "label": "FORM \u00b7 rank 14",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 41.16520438,
-        "weight": 0.02692993826
+        "weight": 0.02693322411
       },
       "name": "FORM",
       "sector": "US Equity Factor",
@@ -402,11 +402,11 @@
     {
       "label": "TRGP \u00b7 rank 15",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 39.01169799,
-        "weight": 0.01810438819
+        "weight": 0.01810659719
       },
       "name": "TRGP",
       "sector": "US Equity Factor",
@@ -427,11 +427,11 @@
     {
       "label": "KGS \u00b7 rank 16",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 38.38796978,
-        "weight": 0.01554821066
+        "weight": 0.01555010778
       },
       "name": "KGS",
       "sector": "US Equity Factor",
@@ -452,11 +452,11 @@
     {
       "label": "SU \u00b7 rank 17",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 37.79216769,
-        "weight": 0.01310648066
+        "weight": 0.01310807985
       },
       "name": "SU",
       "sector": "US Equity Factor",
@@ -477,11 +477,11 @@
     {
       "label": "PR \u00b7 rank 18",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
-        "score": 35.88042065,
-        "weight": 0.005271714355
+        "score": 35.88042203,
+        "weight": 0.005272363261
       },
       "name": "PR",
       "sector": "US Equity Factor",
@@ -502,11 +502,11 @@
     {
       "label": "MXL \u00b7 rank 19",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 35.7623152,
-        "weight": 0.00478769186
+        "weight": 0.00478827603
       },
       "name": "MXL",
       "sector": "US Equity Factor",
@@ -527,11 +527,11 @@
     {
       "label": "ERAS \u00b7 rank 20",
       "metrics": {
-        "bestCompositeScore": 0.9245430777,
+        "bestCompositeScore": 0.9291085591,
         "factor": "ramom_168d_skip_42d_vol_126d",
         "rebalanceDate": "2026-06-30",
         "score": 35.23609152,
-        "weight": 0.002631109719
+        "weight": 0.002631430754
       },
       "name": "ERAS",
       "sector": "US Equity Factor",
