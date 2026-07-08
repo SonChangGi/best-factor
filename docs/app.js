@@ -7,6 +7,7 @@
   const WORKFLOW_FILE = 'update-dashboard.yml';
   const WORKFLOW_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE}`;
   const WORKFLOW_COMMAND = `gh workflow run ${WORKFLOW_FILE} --repo ${REPO_OWNER}/${REPO_NAME} --ref main`;
+  const THEME_STORAGE_KEY = 'best-factor-theme';
   const UPDATE_AUTOMATION_DEFAULT = {
     timezone: 'Asia/Seoul',
     primary_refresh_kst: '07:00 Tue-Sat',
@@ -40,9 +41,63 @@
   const q = (selector) => document.querySelector(selector);
 
   document.addEventListener('DOMContentLoaded', () => {
+    bindThemeToggle();
     bindControls();
     loadDashboard();
   });
+
+  function storedTheme() {
+    try {
+      return window.localStorage?.getItem(THEME_STORAGE_KEY);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveTheme(theme) {
+    try {
+      window.localStorage?.setItem(THEME_STORAGE_KEY, theme);
+    } catch (_) {
+      // Theme persistence is optional; the dashboard still works without localStorage.
+    }
+  }
+
+  function themeRoot() {
+    return document.documentElement || document.querySelector?.('html') || null;
+  }
+
+  function currentTheme() {
+    const root = themeRoot();
+    return root?.dataset?.theme || root?.getAttribute?.('data-theme') || 'light';
+  }
+
+  function applyTheme(theme) {
+    const normalized = theme === 'dark' ? 'dark' : 'light';
+    const root = themeRoot();
+    if (root?.dataset) {
+      root.dataset.theme = normalized;
+    } else if (root?.setAttribute) {
+      root.setAttribute('data-theme', normalized);
+    }
+    const button = document.querySelector('#theme-toggle');
+    if (!button) return;
+    const isDark = normalized === 'dark';
+    button.setAttribute('aria-pressed', String(isDark));
+    button.setAttribute('aria-label', isDark ? '라이트 모드로 전환' : '다크 모드로 전환');
+    const label = typeof button.querySelector === 'function' ? button.querySelector('.theme-toggle-text') : null;
+    if (label) label.textContent = isDark ? '라이트 모드' : '다크 모드';
+  }
+
+  function bindThemeToggle() {
+    applyTheme(storedTheme() || 'light');
+    const button = document.querySelector('#theme-toggle');
+    if (!button || typeof button.addEventListener !== 'function') return;
+    button.addEventListener('click', () => {
+      const nextTheme = currentTheme() === 'dark' ? 'light' : 'dark';
+      applyTheme(nextTheme);
+      saveTheme(nextTheme);
+    });
+  }
 
   function bindControls() {
     const sortSelect = q('#sort-select');
@@ -145,6 +200,78 @@
     renderMetrics(payload);
     renderMetadata(payload);
     renderCaveats(payload);
+    enableTableDrag();
+    enableScrollPanels();
+  }
+
+  function enableTableDrag() {
+    document.querySelectorAll('.table-wrap, .performance-table-wrap').forEach((wrap) => {
+      if (wrap.dataset.dragScrollBound === 'true') return;
+      wrap.dataset.dragScrollBound = 'true';
+      if (!wrap.getAttribute('tabindex')) wrap.setAttribute('tabindex', '0');
+      if (!wrap.getAttribute('aria-label')) wrap.setAttribute('aria-label', '가로로 드래그해 전체 표 보기');
+      const drag = { active: false, startX: 0, startScrollLeft: 0 };
+      wrap.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || wrap.scrollWidth <= wrap.clientWidth) return;
+        if (event.target && event.target.closest && event.target.closest('a, button, input, select, textarea, summary')) return;
+        drag.active = true;
+        drag.startX = event.clientX;
+        drag.startScrollLeft = wrap.scrollLeft;
+        wrap.classList.add('is-dragging');
+        if (wrap.setPointerCapture) wrap.setPointerCapture(event.pointerId);
+      });
+      wrap.addEventListener('pointermove', (event) => {
+        if (!drag.active) return;
+        wrap.scrollLeft = drag.startScrollLeft - (event.clientX - drag.startX);
+      });
+      const stopDrag = (event) => {
+        if (!drag.active) return;
+        drag.active = false;
+        wrap.classList.remove('is-dragging');
+        if (wrap.releasePointerCapture) wrap.releasePointerCapture(event.pointerId);
+      };
+      wrap.addEventListener('pointerup', stopDrag);
+      wrap.addEventListener('pointercancel', stopDrag);
+      wrap.addEventListener('mouseleave', () => {
+        drag.active = false;
+        wrap.classList.remove('is-dragging');
+      });
+      wrap.addEventListener('keydown', (event) => {
+        const lineStep = 64;
+        const pageStep = Math.max(160, wrap.clientHeight * 0.8);
+        let handled = true;
+        if (event.key === 'ArrowRight') wrap.scrollLeft += lineStep;
+        else if (event.key === 'ArrowLeft') wrap.scrollLeft -= lineStep;
+        else if (event.key === 'ArrowDown' && wrap.scrollHeight > wrap.clientHeight) wrap.scrollTop += lineStep;
+        else if (event.key === 'ArrowUp' && wrap.scrollHeight > wrap.clientHeight) wrap.scrollTop -= lineStep;
+        else if (event.key === 'PageDown' && wrap.scrollHeight > wrap.clientHeight) wrap.scrollTop += pageStep;
+        else if (event.key === 'PageUp' && wrap.scrollHeight > wrap.clientHeight) wrap.scrollTop -= pageStep;
+        else handled = false;
+        if (handled) event.preventDefault();
+      });
+    });
+  }
+
+  function enableScrollPanels() {
+    document.querySelectorAll('.scroll-panel').forEach((panel) => {
+      if (panel.dataset.scrollPanelBound === 'true') return;
+      panel.dataset.scrollPanelBound = 'true';
+      if (!panel.getAttribute('tabindex')) panel.setAttribute('tabindex', '0');
+      panel.addEventListener('keydown', (event) => {
+        if (panel.scrollHeight <= panel.clientHeight) return;
+        const lineStep = 72;
+        const pageStep = Math.max(180, panel.clientHeight * 0.82);
+        let handled = true;
+        if (event.key === 'ArrowDown') panel.scrollTop += lineStep;
+        else if (event.key === 'ArrowUp') panel.scrollTop -= lineStep;
+        else if (event.key === 'PageDown') panel.scrollTop += pageStep;
+        else if (event.key === 'PageUp') panel.scrollTop -= pageStep;
+        else if (event.key === 'Home') panel.scrollTop = 0;
+        else if (event.key === 'End') panel.scrollTop = panel.scrollHeight;
+        else handled = false;
+        if (handled) event.preventDefault();
+      });
+    });
   }
 
   function renderStatus(payload) {
@@ -169,14 +296,14 @@
     const summary = payload.summary || {};
     const implementation = portfolioDiagnostics(payload);
     const cards = [
-      ['In-sample best factor', summary.best_factor, '이번 실행 후보 중 종합 점수 기준 1위 · true OOS 아님'],
+      ['Best factor', summary.best_factor, '종합 점수 기준 1위 · 탐색적 결과'],
       ['Composite', fmtNumber(summary.best_composite_score, 4), '성과/위험 지표를 합산한 비교 점수'],
-      ['Factor zoo', `${summary.selected_factor_count ?? summary.tested_factor_count ?? '—'} / ${summary.factor_library_size ?? '—'}`, '선택/라이브러리 후보 팩터 수'],
-      ['Effective', `${summary.effective_factor_count ?? '—'} / ${summary.tested_factor_count ?? '—'}`, '유효 / 테스트된 팩터 수'],
-      ['Holdout rank', summary.best_factor_holdout_rank ? `#${summary.best_factor_holdout_rank}` : '—', '최근 tail 기간 보조 검증 순위'],
-      ['Holdings', summary.holding_count, '최신 최고 팩터 편입 종목 수'],
-      ['Effective holdings', fmtNumber(implementation.effectiveHoldings, 1), '비중 집중도를 반영한 실질 보유 종목 수'],
-      ['10% ADV capacity', fmtUsd(implementation.capacity10), '최신 비중을 10% ADV 참여율로 맞추는 거친 용량 추정'],
+      ['Factor zoo', `${summary.selected_factor_count ?? summary.tested_factor_count ?? '—'} / ${summary.factor_library_size ?? '—'}`, '선택 / 라이브러리 후보'],
+      ['Effective', `${summary.effective_factor_count ?? '—'} / ${summary.tested_factor_count ?? '—'}`, '유효 / 테스트 팩터'],
+      ['Holdout rank', summary.best_factor_holdout_rank ? `#${summary.best_factor_holdout_rank}` : '—', '최근 구간 보조 순위'],
+      ['Holdings', summary.holding_count, '최신 편입 종목 수'],
+      ['Effective holdings', fmtNumber(implementation.effectiveHoldings, 1), '집중도 반영 보유 수'],
+      ['10% ADV capacity', fmtUsd(implementation.capacity10), '10% ADV 기준 용량 추정'],
       ['Data end', summary.data_end_date || payload.data_scope, '가격 데이터 기준일'],
     ];
     const nodes = cards.map(([label, value, help], index) => card(label, value, help, index === 0 ? '탐색적 · out-of-sample 아님' : ''));
@@ -188,9 +315,9 @@
     const scheduleList = q('#update-schedule-list');
     if (scheduleList) {
       scheduleList.replaceChildren(
-        scheduleItem('07:00 KST Tue-Sat', '예상되는 직전 미국 정규장 종료분을 기준으로 live-data 백테스트와 Pages 배포를 실행합니다.'),
-        scheduleItem('09/11/13 KST fallback', '공개 JSON이 stale, 누락, 파손 상태일 때만 재실행해 rate-limit와 불필요한 중복 run을 줄입니다.'),
-        scheduleItem('검토 후 수동 재실행', 'provider 장애 복구나 산출물 점검 후 workflow_dispatch로 동일한 검증·갱신·배포 경로를 실행합니다.')
+        scheduleItem('07:00 KST Tue-Sat', '직전 미국 정규장 기준 live-data run.'),
+        scheduleItem('09/11/13 KST fallback', 'JSON stale/missing/broken일 때만 재실행.'),
+        scheduleItem('검토 후 수동 재실행', 'workflow_dispatch로 동일 검증 경로 실행.')
       );
     }
     setText('#update-status', `${updateScheduleText(payload)} · 수동 재실행은 GitHub Actions workflow_dispatch 권한이 필요합니다.`);
@@ -219,17 +346,17 @@
         ['팩터 설명', meta.description || '카탈로그 설명 없음'],
         ['신호 종류', meta.kind || 'unknown'],
       ]),
-      analysisCard('성과와 위험의 균형', '단순 수익률보다 Sharpe·Sortino·Calmar·MDD를 함께 본 종합 점수 기준입니다. 높은 CAGR이라도 MDD나 변동성이 크면 랭킹에서 불리합니다.', [
+      analysisCard('성과와 위험의 균형', '종합 점수는 수익률과 위험조정 지표를 함께 봅니다.', [
         ['CAGR', fmtPct(metrics.cagr)],
         ['Sharpe / Sortino', `${fmtNumber(metrics.sharpe, 2)} / ${fmtNumber(metrics.sortino, 2)}`],
         ['Calmar / MDD', `${fmtNumber(metrics.calmar, 2)} / ${fmtPct(metrics.max_drawdown)}`],
       ]),
-      analysisCard('견고성 체크', '최근 tail holdout은 완전한 untouched OOS가 아니라 후보 팩터의 최근 구간 재검산입니다. 그래도 전체 기간 1위가 최근 구간에서도 완전히 붕괴했는지 확인하는 보조 안전장치입니다.', [
+      analysisCard('견고성 체크', '최근 tail holdout은 보조 검증입니다.', [
         ['Holdout', holdout],
         ['Coverage', fmtPct(metrics.coverage)],
         ['Turnover', fmtPct(metrics.turnover)],
       ]),
-      analysisCard('실행 전 점검', '표시 비중은 연구용 close-to-close 모델 포트폴리오입니다. 실제 운용 전 다음 세션 체결, 슬리피지, 세금, 집중도, 섹터 편중, 유동성 한도를 별도로 검증해야 합니다.', [
+      analysisCard('실행 전 점검', '실제 운용 전 체결, 비용, 집중도, 유동성을 별도 확인해야 합니다.', [
         ['보유 종목 수', holdings.length],
         ['유효 보유 종목 수', fmtNumber(implementation.effectiveHoldings, 1)],
         ['최대 / Top5 비중', `${fmtPct(topWeight)} / ${fmtPct(implementation.top5Weight)}`],
@@ -339,7 +466,7 @@
       if (!catalogByCategory.has(category)) catalogByCategory.set(category, []);
       catalogByCategory.get(category).push(item);
     });
-    setText('#factor-scope-meta', `${summary.selected_factor_count ?? families.reduce((total, item) => total + (Number(item.count) || 0), 0)}개 후보 · ${families.length}개 팩터군 · 산식은 조정가격/거래량/선택적 PIT 재무 원자료 기준`);
+    setText('#factor-scope-meta', `${summary.selected_factor_count ?? families.reduce((total, item) => total + (Number(item.count) || 0), 0)}개 후보 · ${families.length}개 팩터군`);
     const root = q('#factor-family-grid');
     if (!root) return;
     if (!families.length) {
@@ -640,7 +767,7 @@
     const title = document.createElement('h4');
     title.textContent = '기간별 성과 지표 비교';
     const note = document.createElement('p');
-    note.textContent = '각 기간별로 최고 팩터·선택 팩터·나스닥 지수의 누적 수익률, 위험조정 지표, MDD를 같은 표에서 비교합니다. 월간/주간 리밸런싱 산출물 기준이며 나스닥 지수는 편입·랭킹에 사용되지 않는 비교 기준입니다.';
+    note.textContent = '기간별 누적 수익률, 위험조정 지표, MDD를 비교합니다.';
     titleBox.append(title, note);
     heading.appendChild(titleBox);
     root.appendChild(heading);
