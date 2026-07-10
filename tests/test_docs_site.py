@@ -70,6 +70,13 @@ class DocsSiteTest(unittest.TestCase):
             {
                 "https://github.com/sonchanggi/best-factor/actions/workflows/update-dashboard.yml",
                 "https://sonchanggi.github.io/quant-dashboard/",
+                "https://sonchanggi.github.io/momentum-factor-lab/",
+                "https://sonchanggi.github.io/dram-price/",
+                "https://sonchanggi.github.io/etf-tracking/",
+                "https://sonchanggi.github.io/sox/",
+                "https://sonchanggi.github.io/quant-dashboard/risk-score/",
+                "https://sonchanggi.github.io/port/",
+                "https://sonchanggi.github.io/valuation/",
             },
         )
 
@@ -89,7 +96,10 @@ class DocsSiteTest(unittest.TestCase):
         short_repo_paths = re.findall(r"SonChangGi/([A-Za-z0-9_.-]+)", haystack)
         self.assertTrue(page_paths)
         self.assertTrue(repo_paths)
-        self.assertTrue(all(path in {"best-factor", "quant-dashboard"} for path in page_paths))
+        self.assertTrue(all(path in {
+            "best-factor", "quant-dashboard", "momentum-factor-lab", "dram-price",
+            "etf-tracking", "sox", "port", "valuation",
+        } for path in page_paths))
         self.assertTrue(all(path == "best-factor" for path in repo_paths))
         self.assertTrue(all(path == "best-factor" for path in short_repo_paths))
 

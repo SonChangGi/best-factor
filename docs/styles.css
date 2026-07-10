@@ -1337,16 +1337,15 @@ footer {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 58px;
-  min-height: 38px;
-  padding: 8px 10px;
+  width: 40px;
+  height: 40px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   color: var(--ink-strong);
   background: color-mix(in srgb, var(--panel-elevated), transparent 6%);
   box-shadow: var(--shadow-soft);
   text-decoration: none;
-  font-size: .8rem;
+  font-size: 1rem;
   font-weight: 900;
   backdrop-filter: blur(12px);
 }
@@ -1541,9 +1540,8 @@ footer {
   }
 
   .page-jump-nav a {
-    min-width: 48px;
-    min-height: 34px;
-    padding: 7px 9px;
-    font-size: .74rem;
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
   }
 }
