@@ -7,7 +7,14 @@
   const WORKFLOW_FILE = 'update-dashboard.yml';
   const WORKFLOW_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE}`;
   const WORKFLOW_COMMAND = `gh workflow run ${WORKFLOW_FILE} --repo ${REPO_OWNER}/${REPO_NAME} --ref main`;
-  const THEME_STORAGE_KEY = 'best-factor-theme';
+  const THEME_STORAGE_KEY = 'quant-research-theme';
+  const LEGACY_THEME_STORAGE_KEYS = [
+    'best-factor-theme',
+    'quant-dashboard-theme',
+    'quant-calm-theme',
+    'dram-price-theme',
+    'momentum-factor-theme',
+  ];
   const UPDATE_AUTOMATION_DEFAULT = {
     timezone: 'Asia/Seoul',
     primary_refresh_kst: '07:00 Tue-Sat',
@@ -36,7 +43,19 @@
     { key: 'maxDrawdown', label: 'MDD', formatter: fmtPct },
     { key: 'volatility', label: '변동성', formatter: fmtPct },
   ];
-  const state = { payload: null, sortMetric: 'composite_score', topN: RANKING_DEFAULT_TOP, filter: '', selectedFactors: new Set() };
+  const state = {
+    payload: null,
+    sortMetric: 'composite_score',
+    topN: RANKING_DEFAULT_TOP,
+    filter: '',
+    selectedFactors: new Set(),
+    comparisonChart: {
+      pinnedSeriesKey: 'best',
+      previewSeriesKey: null,
+      pinnedDate: null,
+      previewDate: null,
+    },
+  };
 
   const q = (selector) => document.querySelector(selector);
 
@@ -48,9 +67,34 @@
 
   function storedTheme() {
     try {
-      return window.localStorage?.getItem(THEME_STORAGE_KEY);
+      const canonical = window.localStorage?.getItem(THEME_STORAGE_KEY);
+      if (canonical === 'light' || canonical === 'dark') return canonical;
+      for (const key of LEGACY_THEME_STORAGE_KEYS) {
+        const legacy = window.localStorage?.getItem(key);
+        if (legacy !== 'light' && legacy !== 'dark') continue;
+        window.localStorage?.setItem(THEME_STORAGE_KEY, legacy);
+        return legacy;
+      }
+      return null;
     } catch (_) {
       return null;
+    }
+  }
+
+  function requestedTheme() {
+    try {
+      const theme = new URLSearchParams(window.location?.search || '').get('theme');
+      return theme === 'light' || theme === 'dark' ? theme : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function systemTheme() {
+    try {
+      return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } catch (_) {
+      return 'light';
     }
   }
 
@@ -79,6 +123,7 @@
     } else if (root?.setAttribute) {
       root.setAttribute('data-theme', normalized);
     }
+    if (root?.style) root.style.colorScheme = normalized;
     const button = document.querySelector('#theme-toggle');
     if (!button) return;
     const isDark = normalized === 'dark';
@@ -89,7 +134,7 @@
   }
 
   function bindThemeToggle() {
-    applyTheme(storedTheme() || 'light');
+    applyTheme(requestedTheme() || storedTheme() || systemTheme());
     const button = document.querySelector('#theme-toggle');
     if (!button || typeof button.addEventListener !== 'function') return;
     button.addEventListener('click', () => {
@@ -196,7 +241,6 @@
     renderComparisonPanel(payload);
     renderCompareControls(payload);
     renderRankings(payload);
-    renderHoldings(payload);
     renderMetrics(payload);
     renderMetadata(payload);
     renderCaveats(payload);
@@ -276,13 +320,12 @@
 
   function renderStatus(payload) {
     const summary = payload.summary || {};
+    const holdout = summary.best_factor_holdout_rank ? `#${summary.best_factor_holdout_rank}` : '—';
     const lines = [
-      statusLine('상태', '정적 JSON 로드 완료'),
-      statusLine('생성', payload.generated_at),
+      statusLine('현재 1위', summary.best_factor),
       statusLine('데이터 기준', summary.data_end_date || payload.data_scope),
-      statusLine('갱신', updateScheduleText(payload)),
-      statusLine('최고 팩터', summary.best_factor),
-      statusLine('주의', summary.static_data_warning)
+      statusLine('Holdout', holdout),
+      statusLine('생성', fmtKst(payload.generated_at)),
     ];
     if (payload.data_scope === 'fixture_sample') {
       lines.push(statusLine('샘플', '체크인된 fixture 예시 데이터입니다. 최신 시장 데이터는 Actions 업데이트 후 확인하세요.'));
@@ -294,19 +337,16 @@
 
   function renderSummary(payload) {
     const summary = payload.summary || {};
-    const implementation = portfolioDiagnostics(payload);
+    const bestMetrics = metricForFactor(payload, summary.best_factor) || (payload.rankings || [])[0] || {};
     const cards = [
-      ['Best factor', summary.best_factor, '종합 점수 기준 1위 · 탐색적 결과'],
-      ['Composite', fmtNumber(summary.best_composite_score, 4), '성과/위험 지표를 합산한 비교 점수'],
-      ['Factor zoo', `${summary.selected_factor_count ?? summary.tested_factor_count ?? '—'} / ${summary.factor_library_size ?? '—'}`, '선택 / 라이브러리 후보'],
-      ['Effective', `${summary.effective_factor_count ?? '—'} / ${summary.tested_factor_count ?? '—'}`, '유효 / 테스트 팩터'],
-      ['Holdout rank', summary.best_factor_holdout_rank ? `#${summary.best_factor_holdout_rank}` : '—', '최근 구간 보조 순위'],
-      ['Holdings', summary.holding_count, '최신 편입 종목 수'],
-      ['Effective holdings', fmtNumber(implementation.effectiveHoldings, 1), '집중도 반영 보유 수'],
-      ['10% ADV capacity', fmtUsd(implementation.capacity10), '10% ADV 기준 용량 추정'],
-      ['Data end', summary.data_end_date || payload.data_scope, '가격 데이터 기준일'],
+      ['현재 1위 팩터', summary.best_factor, '공식 종합 점수 기준'],
+      ['종합 점수', fmtNumber(summary.best_composite_score, 4), '성과·위험 합산'],
+      ['CAGR', fmtPct(bestMetrics.cagr), '전체 평가기간'],
+      ['Sharpe', fmtNumber(bestMetrics.sharpe, 2), '위험조정 성과'],
+      ['MDD', fmtPct(bestMetrics.max_drawdown), '최대 낙폭'],
     ];
-    const nodes = cards.map(([label, value, help], index) => card(label, value, help, index === 0 ? '탐색적 · out-of-sample 아님' : ''));
+    const nodes = cards.map(([label, value, help], index) => card(label, value, help, index === 0 ? '현재 1위' : ''));
+    if (nodes[0]) nodes[0].classList.add('result-card-primary');
     q('#summary-cards').replaceChildren(...nodes);
   }
 
@@ -517,6 +557,7 @@
 
   function renderFactorReturnChart(payload) {
     const rows = visibleRankings(payload).slice(0, 8);
+    const officialBest = String((payload.summary || {}).best_factor || '');
     setText('#factor-chart-meta', `${metricLabel('cagr')} · ${rows.length}개 표시`);
     const root = q('#factor-return-chart');
     if (!rows.length) {
@@ -529,7 +570,8 @@
       value: fmtPct(row.cagr),
       width: (Math.abs(Number(row.cagr) || 0) / maxAbs) * 100,
       negative: Number(row.cagr) < 0,
-      best: row.rank === 1,
+      best: String(row.factor || '') === officialBest,
+      selected: state.selectedFactors.has(String(row.factor || '')),
     })));
   }
 
@@ -706,15 +748,14 @@
     const maxValue = Math.max(...ticks) + 1;
     const width = 820;
     const height = 300;
-    const plot = { left: 72, right: 24, top: 22, bottom: 58 };
+    const plot = { left: 86, right: 24, top: 22, bottom: 58 };
     const plotWidth = width - plot.left - plot.right;
     const plotHeight = height - plot.top - plot.bottom;
     const xFor = (date) => plot.left + (allDates.length <= 1 ? 0 : (dateToIndex.get(date) || 0) / (allDates.length - 1) * plotWidth);
     const yFor = (equity) => height - plot.bottom - ((equity - minValue) / Math.max(0.000001, maxValue - minValue)) * plotHeight;
     const svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', '최고 팩터, 선택 팩터, 나스닥 지수의 누적 성과 비교');
+    svg.setAttribute('aria-hidden', 'true');
 
     ticks.forEach((tick) => {
       const y = yFor(tick + 1);
@@ -736,28 +777,257 @@
       appendSvgText(svg, tick.label, x, height - plot.bottom + 21, 'axis-label');
     });
     appendSvgText(svg, '기간', plot.left + plotWidth / 2, height - 8, 'axis-title');
-    const yTitle = appendSvgText(svg, '누적 성과', 14, plot.top + plotHeight / 2, 'axis-title');
-    yTitle.setAttribute('transform', `rotate(-90 14 ${plot.top + plotHeight / 2})`);
+    appendSvgText(svg, '누적 수익률', plot.left, 14, 'axis-title', 'start');
 
+    const paths = [];
     seriesList.forEach((series) => {
       const points = series.points.map((point) => `${xFor(point.date).toFixed(1)},${yFor(point.equity).toFixed(1)}`).join(' ');
       if (!points) return;
       const polyline = document.createElementNS(SVG_NS, 'polyline');
       polyline.setAttribute('points', points);
       polyline.setAttribute('class', `comparison-line ${series.key}`);
+      polyline.setAttribute('data-series-key', series.key);
       svg.appendChild(polyline);
+      paths.push(polyline);
     });
-    root.appendChild(svg);
 
-    const legend = el('div', 'line-legend');
-    seriesList.forEach((series) => {
-      const item = document.createElement('span');
-      const dot = el('span', `legend-dot ${series.key}`);
-      const last = series.points[series.points.length - 1] || {};
-      item.append(dot, `${series.label}: ${fmtPct((Number(last.equity) || 1) - 1)} · MDD ${fmtPct(maxDrawdownFromPoints(series.points))}`);
-      legend.appendChild(item);
+    const dateGuide = document.createElementNS(SVG_NS, 'line');
+    dateGuide.setAttribute('y1', String(plot.top));
+    dateGuide.setAttribute('y2', String(height - plot.bottom));
+    dateGuide.setAttribute('class', 'chart-date-guide');
+    svg.appendChild(dateGuide);
+
+    const activePoint = document.createElementNS(SVG_NS, 'circle');
+    activePoint.setAttribute('r', '5.5');
+    activePoint.setAttribute('class', 'chart-active-point best');
+    svg.appendChild(activePoint);
+
+    const hitTarget = document.createElementNS(SVG_NS, 'rect');
+    hitTarget.setAttribute('x', String(plot.left));
+    hitTarget.setAttribute('y', String(plot.top));
+    hitTarget.setAttribute('width', String(plotWidth));
+    hitTarget.setAttribute('height', String(plotHeight));
+    hitTarget.setAttribute('class', 'chart-hit-target');
+    svg.appendChild(hitTarget);
+
+    const readout = el('div', 'chart-active-readout');
+    const readoutDate = span('—', 'chart-readout-date');
+    const readoutSeries = span('—', 'chart-readout-series');
+    const readoutValue = strong('—');
+    const readoutContext = small('누적 수익률');
+    readout.append(readoutDate, readoutSeries, readoutValue, readoutContext);
+    root.append(svg, readout);
+
+    const chartState = state.comparisonChart;
+    const seriesKeys = seriesList.map((series) => series.key);
+    if (!seriesKeys.includes(chartState.pinnedSeriesKey)) chartState.pinnedSeriesKey = seriesKeys[0];
+    chartState.pinnedDate = nearestChartDate(allDates, chartState.pinnedDate || allDates.at(-1));
+    chartState.previewSeriesKey = seriesKeys.includes(chartState.previewSeriesKey) ? chartState.previewSeriesKey : null;
+    chartState.previewDate = chartState.previewDate ? nearestChartDate(allDates, chartState.previewDate) : null;
+
+    const seriesControls = q('#comparison-series-controls');
+    const seriesButtons = [];
+    if (seriesControls) {
+      seriesControls.replaceChildren(...seriesList.map((series) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `chart-series-button ${series.key}`;
+        button.setAttribute('data-series-key', series.key);
+        button.setAttribute('aria-pressed', String(series.key === chartState.pinnedSeriesKey));
+        const key = el('span', `series-key ${series.key}`);
+        const copy = el('span', 'series-button-copy');
+        copy.append(strong(shortSeriesLabel(series)), small(series.sourceName || series.label));
+        button.append(key, copy);
+        button.title = series.label;
+        button.addEventListener('pointerenter', () => {
+          chartState.previewSeriesKey = series.key;
+          updateActiveState();
+        });
+        button.addEventListener('pointerleave', () => {
+          chartState.previewSeriesKey = null;
+          updateActiveState();
+        });
+        button.addEventListener('focus', () => {
+          chartState.previewSeriesKey = series.key;
+          updateActiveState();
+        });
+        button.addEventListener('blur', () => {
+          chartState.previewSeriesKey = null;
+          updateActiveState();
+        });
+        button.addEventListener('click', () => {
+          chartState.pinnedSeriesKey = series.key;
+          chartState.previewSeriesKey = null;
+          updateActiveState();
+        });
+        seriesButtons.push(button);
+        return button;
+      }));
+    }
+
+    const dateInput = q('#comparison-date-input');
+    const latestButton = q('#comparison-latest-date');
+    if (dateInput) {
+      dateInput.min = allDates[0] || '';
+      dateInput.max = allDates.at(-1) || '';
+      dateInput.value = chartState.pinnedDate || '';
+      dateInput.oninput = () => {
+        chartState.previewDate = nearestChartDate(allDates, dateInput.value);
+        updateActiveState();
+      };
+      dateInput.onchange = () => {
+        chartState.pinnedDate = nearestChartDate(allDates, dateInput.value);
+        chartState.previewDate = null;
+        dateInput.value = chartState.pinnedDate || '';
+        updateActiveState();
+        ensureActiveDateVisible(chartState.pinnedDate);
+      };
+      dateInput.onblur = () => {
+        chartState.previewDate = null;
+        dateInput.value = chartState.pinnedDate || '';
+        updateActiveState();
+      };
+    }
+    if (latestButton) {
+      latestButton.onclick = () => {
+        chartState.pinnedDate = allDates.at(-1) || null;
+        chartState.previewDate = null;
+        if (dateInput) dateInput.value = chartState.pinnedDate || '';
+        updateActiveState();
+        ensureActiveDateVisible(chartState.pinnedDate);
+      };
+    }
+
+    function updateActiveState() {
+      const activeSeriesKey = seriesKeys.includes(chartState.previewSeriesKey)
+        ? chartState.previewSeriesKey
+        : chartState.pinnedSeriesKey;
+      const activeDate = nearestChartDate(allDates, chartState.previewDate || chartState.pinnedDate || allDates.at(-1));
+      const activeSeries = seriesList.find((series) => series.key === activeSeriesKey) || seriesList[0];
+      const point = chartPointAtDate(activeSeries.points, activeDate);
+      const guideX = xFor(activeDate);
+
+      paths.forEach((path) => {
+        const active = path.getAttribute('data-series-key') === activeSeries.key;
+        path.classList.toggle('is-active', active);
+        path.classList.toggle('is-muted', !active);
+      });
+      seriesButtons.forEach((button) => {
+        const key = button.getAttribute('data-series-key');
+        button.setAttribute('aria-pressed', String(key === chartState.pinnedSeriesKey));
+        button.classList.toggle('is-preview', key === chartState.previewSeriesKey);
+      });
+
+      dateGuide.setAttribute('x1', String(guideX));
+      dateGuide.setAttribute('x2', String(guideX));
+      if (point) {
+        activePoint.removeAttribute('hidden');
+        activePoint.setAttribute('cx', String(xFor(point.date)));
+        activePoint.setAttribute('cy', String(yFor(point.equity)));
+        activePoint.setAttribute('class', `chart-active-point ${activeSeries.key}`);
+      } else {
+        activePoint.setAttribute('hidden', '');
+      }
+
+      readoutDate.textContent = activeDate || '—';
+      readoutSeries.textContent = activeSeries.label;
+      readoutValue.textContent = point ? fmtPct(Number(point.equity) - 1) : '관측 없음';
+      readoutContext.textContent = `평가 시작 대비 누적 수익률 · 전체 MDD ${fmtPct(maxDrawdownFromPoints(activeSeries.points))}`;
+      root.setAttribute('aria-label', `${activeDate || '선택일 없음'} ${activeSeries.label} ${point ? fmtPct(Number(point.equity) - 1) : '관측 없음'}`);
+      renderComparisonValueCards(seriesList, activeDate, activeSeries.key);
+    }
+
+    function dateForClientX(clientX) {
+      const rect = svg.getBoundingClientRect();
+      const svgX = rect.width > 0 ? (clientX - rect.left) * (width / rect.width) : plot.left;
+      const ratio = Math.max(0, Math.min(1, (svgX - plot.left) / plotWidth));
+      return allDates[Math.round(ratio * Math.max(0, allDates.length - 1))] || allDates.at(-1);
+    }
+
+    hitTarget.addEventListener('pointermove', (event) => {
+      chartState.previewDate = dateForClientX(event.clientX);
+      updateActiveState();
     });
-    root.appendChild(legend);
+    hitTarget.addEventListener('pointerleave', () => {
+      chartState.previewDate = null;
+      updateActiveState();
+    });
+    hitTarget.addEventListener('click', (event) => {
+      chartState.pinnedDate = dateForClientX(event.clientX);
+      chartState.previewDate = null;
+      if (dateInput) dateInput.value = chartState.pinnedDate || '';
+      updateActiveState();
+      ensureActiveDateVisible(chartState.pinnedDate);
+    });
+
+    root.onkeydown = (event) => {
+      const currentIndex = Math.max(0, allDates.indexOf(chartState.pinnedDate));
+      let nextIndex = currentIndex;
+      if (event.key === 'ArrowLeft') nextIndex = Math.max(0, currentIndex - 1);
+      else if (event.key === 'ArrowRight') nextIndex = Math.min(allDates.length - 1, currentIndex + 1);
+      else if (event.key === 'Home') nextIndex = 0;
+      else if (event.key === 'End') nextIndex = allDates.length - 1;
+      else if (event.key === 'Escape') {
+        chartState.previewDate = null;
+        chartState.previewSeriesKey = null;
+        updateActiveState();
+        return;
+      } else return;
+      event.preventDefault();
+      chartState.pinnedDate = allDates[nextIndex];
+      chartState.previewDate = null;
+      if (dateInput) dateInput.value = chartState.pinnedDate || '';
+      updateActiveState();
+      ensureActiveDateVisible(chartState.pinnedDate);
+    };
+
+    updateActiveState();
+    ensureActiveDateVisible(chartState.pinnedDate);
+
+    function ensureActiveDateVisible(date) {
+      if (!date || root.scrollWidth <= root.clientWidth) return;
+      const renderedWidth = svg.getBoundingClientRect().width || width;
+      const targetX = (xFor(date) / width) * renderedWidth;
+      const padding = 48;
+      if (targetX >= root.scrollLeft + padding && targetX <= root.scrollLeft + root.clientWidth - padding) return;
+      root.scrollLeft = Math.max(0, Math.min(root.scrollWidth - root.clientWidth, targetX - root.clientWidth / 2));
+    }
+  }
+
+  function nearestChartDate(dates, requestedDate) {
+    if (!dates.length) return null;
+    if (!requestedDate) return dates.at(-1);
+    if (dates.includes(requestedDate)) return requestedDate;
+    const target = Date.parse(requestedDate);
+    if (!Number.isFinite(target)) return dates.at(-1);
+    return dates.reduce((nearest, date) => {
+      const distance = Math.abs(Date.parse(date) - target);
+      const nearestDistance = Math.abs(Date.parse(nearest) - target);
+      return distance < nearestDistance ? date : nearest;
+    }, dates[0]);
+  }
+
+  function chartPointAtDate(points, date) {
+    if (!points.length || !date) return null;
+    const exact = points.find((point) => point.date === date);
+    if (exact) return exact;
+    const previous = points.filter((point) => String(point.date) <= String(date)).at(-1);
+    return previous || points[0] || null;
+  }
+
+  function renderComparisonValueCards(seriesList, date, activeSeriesKey) {
+    const root = q('#comparison-value-grid');
+    if (!root) return;
+    root.replaceChildren(...seriesList.map((series) => {
+      const point = chartPointAtDate(series.points, date);
+      const article = el('article', `chart-value-card ${series.key}${series.key === activeSeriesKey ? ' is-active' : ''}`);
+      article.append(
+        span(shortSeriesLabel(series)),
+        strong(point ? fmtPct(Number(point.equity) - 1) : '관측 없음'),
+        small(`${series.sourceName || series.label} · ${point?.date || date || '—'}`)
+      );
+      return article;
+    }));
   }
 
   function renderComparisonMetrics(payload, root, seriesList) {
@@ -1033,12 +1303,15 @@
     select.replaceChildren(...options);
     select.value = options.some((node) => node.value === previous) ? previous : '';
     if (!state.selectedFactors.size) {
-      chips.replaceChildren(empty('추가 비교 팩터를 선택하면 Top 20 아래에 함께 표시됩니다.'));
+      chips.replaceChildren(empty('비교 팩터를 고르지 않으면 2위 팩터가 차트 비교선으로 표시됩니다.'));
       return;
     }
+    const bestFactor = String((payload.summary || {}).best_factor || '');
+    const chartComparison = selectedComparisonFactor(payload, bestFactor);
     chips.replaceChildren(...Array.from(state.selectedFactors).sort().map((name) => {
       const chip = el('span', 'selected-chip');
-      chip.append(span(name));
+      if (name === chartComparison) chip.classList.add('is-chart-comparison');
+      chip.append(span(name), small(name === chartComparison ? '차트 적용' : '랭킹 추가'));
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = '제거';
@@ -1586,8 +1859,11 @@
     return wrap;
   }
 
-  function barRow({ label, value, width, negative, best }) {
-    const row = el('div', best ? 'bar-row is-best' : 'bar-row');
+  function barRow({ label, value, width, negative, best, selected = false }) {
+    const classNames = ['bar-row'];
+    if (best) classNames.push('is-best');
+    if (selected) classNames.push('is-selected');
+    const row = el('div', classNames.join(' '));
     row.append(span(label, 'bar-label'), barTrack(width, negative), span(value, 'bar-value'));
     return row;
   }
@@ -1740,7 +2016,9 @@
       comparisonMetricsForTest: comparisonMetrics,
       benchmarkLabelForTest: benchmarkLabel,
       portfolioDiagnosticsForTest: portfolioDiagnostics,
-      fmtUsdForTest: fmtUsd
+      fmtUsdForTest: fmtUsd,
+      nearestChartDateForTest: nearestChartDate,
+      chartPointAtDateForTest: chartPointAtDate,
     };
   }
 })();
