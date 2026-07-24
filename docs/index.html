@@ -6,40 +6,42 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="description" content="미국 주식 팩터 랭킹과 최고 팩터 포트폴리오를 비교하는 Best Factor Lab 대시보드" />
   <title>Best Factor Lab Dashboard</title>
-  <link rel="stylesheet" href="styles.css?v=20260723-common-v1" />
-  <script src="app.js?v=20260723-common-v1" defer></script>
+  <link rel="stylesheet" href="styles.css?v=20260724-web-design-v2" />
+  <script src="app.js?v=20260724-web-design-v2" defer></script>
 </head>
 <body id="top">
   <a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
   <nav class="site-nav" aria-label="연결 프로젝트 바로가기">
-    <a class="site-nav-brand" href="https://sonchanggi.github.io/quant-dashboard/" aria-label="Quant Research Hub로 이동">Quant Research Hub</a>
-    <div class="site-nav-links" aria-label="프로젝트 목록">
-      <a href="https://sonchanggi.github.io/quant-dashboard/">Hub</a>
-      <a href="https://sonchanggi.github.io/fearNgreed/">Fear &amp; Greed</a>
-      <a href="https://sonchanggi.github.io/momentum-factor-lab/">Momentum</a>
-      <a href="https://sonchanggi.github.io/dram-price/">DRAM</a>
-      <a class="is-active" href="#top" aria-current="page">Best Factor</a>
-      <a href="https://sonchanggi.github.io/etf-tracking/">ETF</a>
-      <a href="https://sonchanggi.github.io/sox/">SOX</a>
-      <a href="https://sonchanggi.github.io/quant-dashboard/risk-score/">Risk Score</a>
-      <a href="https://sonchanggi.github.io/port/">Port</a>
-      <a href="https://sonchanggi.github.io/valuation/">Valuation</a>
+    <div class="site-nav-inner">
+      <a class="site-nav-brand" href="https://sonchanggi.github.io/quant-dashboard/" aria-label="Quant Research Hub로 이동">Quant Research Hub</a>
+      <div class="site-nav-links" aria-label="프로젝트 목록">
+        <a href="https://sonchanggi.github.io/quant-dashboard/">Hub</a>
+        <a href="https://sonchanggi.github.io/fearNgreed/">Fear &amp; Greed</a>
+        <a href="https://sonchanggi.github.io/momentum-factor-lab/">Momentum</a>
+        <a href="https://sonchanggi.github.io/dram-price/">DRAM</a>
+        <a class="is-active" href="https://sonchanggi.github.io/best-factor/" aria-current="page">Best Factor</a>
+        <a href="https://sonchanggi.github.io/etf-tracking/">ETF</a>
+        <a href="https://sonchanggi.github.io/sox/">SOX</a>
+        <a href="https://sonchanggi.github.io/quant-dashboard/risk-score/">Risk Score</a>
+        <a href="https://sonchanggi.github.io/port/">Port</a>
+        <a href="https://sonchanggi.github.io/valuation/">Valuation</a>
+        <a href="https://sonchanggi.github.io/kelly/">Kelly</a>
+      </div>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="다크 모드로 전환">
+        <span class="theme-toggle-icon" aria-hidden="true"></span>
+        <span class="theme-toggle-text">다크 모드</span>
+      </button>
     </div>
-    <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="다크 모드로 전환">
-      <span class="theme-toggle-icon" aria-hidden="true"></span>
-      <span class="theme-toggle-text">다크 모드</span>
-    </button>
   </nav>
 
   <header class="hero" aria-labelledby="page-title">
     <div class="hero-copy">
       <p class="eyebrow">Best Factor Lab · US Equity</p>
-      <h1 id="page-title">미국 주식 팩터 랭킹 대시보드</h1>
+      <h1 id="page-title">미국 주식 팩터 랭킹 <span class="hero-title-word">대시보드</span></h1>
       <p class="hero-summary">현재 1위 팩터의 성과, 비교 팩터, 보유 종목을 먼저 보여줍니다.</p>
       <div class="hero-actions" aria-label="핵심 화면 이동">
         <a class="button hero-link" href="#visual-dashboard">누적 성과 보기</a>
-        <a class="button secondary hero-link" href="#current-output-title">보유 종목 보기</a>
-        <a class="button secondary hero-link" href="https://sonchanggi.github.io/quant-dashboard/">통합 대시보드로 돌아가기</a>
+        <a id="hero-holdings-link" class="button secondary hero-link" href="#current-output-title">보유 종목 보기</a>
       </div>
     </div>
     <aside class="status-card" id="run-status" aria-live="polite">데이터를 불러오는 중...</aside>
@@ -54,45 +56,18 @@
   <main id="main-content">
     <section class="cards result-cards" id="summary-cards" aria-label="핵심 결과"></section>
 
-    <details class="controls controls-enhanced" aria-label="대시보드 입력값">
-      <summary class="controls-summary">
-        <span>
-          <span class="eyebrow">View controls</span>
-          <strong>화면 비교 설정</strong>
-        </span>
-        <small>정렬·검색·표시·비교만 바꾸며 Python 분석 결과는 다시 계산하지 않습니다.</small>
-      </summary>
-      <div class="controls-body">
-        <div class="controls-grid">
-        <label>랭킹 정렬
-          <select id="sort-select">
-            <option value="composite_score">종합 점수</option>
-            <option value="sharpe">샤프</option>
-            <option value="sortino">소르티노</option>
-            <option value="calmar">칼마</option>
-            <option value="cagr">CAGR</option>
-            <option value="max_drawdown">MDD</option>
-          </select>
-        </label>
-        <label>보유 종목 표시
-          <input id="topn-input" type="number" min="1" max="50" value="20" inputmode="numeric" />
-        </label>
-        <label>팩터 찾기
-          <input id="factor-filter" type="search" placeholder="예: momentum" />
-        </label>
-        <label>비교 팩터
-          <select id="factor-compare-select">
-            <option value="">데이터 로드 후 선택</option>
-          </select>
-        </label>
-        <div class="compare-actions" aria-label="팩터 비교 선택">
-          <button id="add-factor-compare" type="button">비교에 추가</button>
-          <button id="clear-factor-compare" type="button" class="secondary">선택 초기화</button>
+    <section class="panel analysis-settings-panel" aria-label="현재 결과에 적용된 분석 설정">
+      <div class="applied-config">
+        <div class="applied-config-heading">
+          <strong id="applied-config-title">분석 설정 확인 중</strong>
+          <span class="applied-config-state">
+            <span id="applied-config-status" class="analysis-binding-status" role="status">설정 연결 확인 중</span>
+            <span id="applied-config-date">-</span>
+          </span>
         </div>
-        </div>
-        <div id="selected-factor-chips" class="selected-factor-chips" aria-live="polite"></div>
+        <div id="applied-config-summary" class="applied-config-summary" aria-live="polite"></div>
       </div>
-    </details>
+    </section>
 
     <section class="panel visual-panel" id="visual-dashboard" aria-labelledby="visual-title">
       <div class="panel-heading">
@@ -100,10 +75,49 @@
           <p class="eyebrow">Primary result</p>
           <h2 id="visual-title">팩터 성과와 보유 결과</h2>
         </div>
-        <p>기본 화면은 공식 1위 팩터를 유지하고 선택 팩터는 비교선으로만 표시합니다.</p>
       </div>
 
       <div class="viz-grid">
+        <details class="controls controls-enhanced viz-controls" aria-label="화면 표시 설정" open>
+          <summary class="controls-summary">
+            <span>
+              <span class="eyebrow">Display only</span>
+              <strong>화면 표시 설정</strong>
+            </span>
+          </summary>
+          <div class="controls-body">
+            <div class="controls-grid">
+              <label>화면 정렬 기준
+                <select id="sort-select">
+                  <option value="composite_score">종합 점수 (공식)</option>
+                  <option value="sharpe">샤프</option>
+                  <option value="sortino">소르티노</option>
+                  <option value="calmar">칼마</option>
+                  <option value="cagr">CAGR</option>
+                  <option value="max_drawdown">MDD</option>
+                </select>
+              </label>
+              <label>보유 종목 표시 행
+                <input id="topn-input" type="number" min="1" max="20" value="20" inputmode="numeric" aria-describedby="holding-display-help" />
+                <small id="holding-display-help">저장된 결과 중 최대 20행</small>
+              </label>
+              <label>랭킹 이름 찾기
+                <input id="factor-filter" type="search" placeholder="예: momentum" />
+              </label>
+              <label>차트 비교 팩터
+                <select id="factor-compare-select">
+                  <option value="">데이터 로드 후 선택</option>
+                </select>
+              </label>
+              <div class="compare-actions" aria-label="차트 비교 팩터 선택">
+                <button id="add-factor-compare" type="button">차트에 적용</button>
+                <button id="clear-factor-compare" type="button" class="secondary">자동 비교로</button>
+              </div>
+            </div>
+            <div id="selected-factor-chips" class="selected-factor-chips" aria-live="polite"></div>
+          </div>
+        </details>
+
         <article class="viz-card wide primary-chart-card">
           <div class="viz-card-heading">
             <div>
@@ -112,12 +126,13 @@
             </div>
             <span id="comparison-chart-meta" class="chart-meta">-</span>
           </div>
-          <p class="chart-help">그래프 이름을 누르면 강조선이 고정됩니다. 차트를 가리키거나 날짜를 선택하면 해당 시점 값을 확인할 수 있습니다.</p>
+          <div id="comparison-value-grid" class="chart-value-grid" aria-live="polite"></div>
           <div class="chart-toolbar">
             <div id="comparison-series-controls" class="chart-series-controls" aria-label="강조할 그래프 선택"></div>
             <div class="chart-date-controls">
-              <label for="comparison-date-input">선택일
+              <label for="comparison-date-input">차트 관찰일
                 <input id="comparison-date-input" type="date" />
+                <small id="comparison-date-observation">저장된 관측일 기준</small>
               </label>
               <button id="comparison-latest-date" class="secondary" type="button">최신일</button>
             </div>
@@ -129,14 +144,108 @@
             aria-label="최고 팩터, 선택 팩터, 나스닥 지수 누적 성과 비교"
             tabindex="0"
           ></div>
-          <div id="comparison-value-grid" class="chart-value-grid" aria-live="polite"></div>
           <details class="chart-metrics-disclosure">
             <summary>기간별 성과 지표 보기</summary>
             <div id="comparison-period-table" class="performance-metrics"></div>
           </details>
         </article>
 
-        <article class="viz-card wide">
+        <details class="analysis-settings-disclosure analysis-rerun-disclosure" id="analysis-settings">
+          <summary>
+            <span>
+              <span class="eyebrow">Analysis rerun</span>
+              <strong id="analysis-settings-title">분석 입력값 변경</strong>
+              <small>공식 결과를 다시 계산하는 설정</small>
+            </span>
+            <span class="analysis-mode-badge">재실행 시 결과 변경</span>
+          </summary>
+          <form id="analysis-settings-form" class="analysis-settings-form">
+            <fieldset>
+              <legend>분석 범위</legend>
+              <div class="analysis-input-grid">
+                <label for="analysis-period">분석 기간
+                  <select id="analysis-period" name="period" required>
+                    <option value="2y">2년</option>
+                    <option value="5y">5년</option>
+                    <option value="10y">10년</option>
+                  </select>
+                </label>
+                <label for="analysis-rebalance">리밸런싱
+                  <select id="analysis-rebalance" name="rebalance" required>
+                    <option value="M">월간</option>
+                    <option value="W">주간</option>
+                  </select>
+                </label>
+                <label for="analysis-factor-preset">팩터 범위
+                  <select id="analysis-factor-preset" name="factor_preset" required>
+                    <option value="zoo">Zoo 전체</option>
+                    <option value="core">Core</option>
+                  </select>
+                </label>
+                <label class="analysis-input-wide" for="analysis-factor-allowlist">직접 선택 팩터 <small>선택 입력 · 쉼표 구분 · 입력 시 팩터 범위보다 우선</small>
+                  <input id="analysis-factor-allowlist" name="factor_allowlist" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="예: momentum_6m,low_volatility" />
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>포트폴리오</legend>
+              <div class="analysis-input-grid">
+                <label for="analysis-top-n">분석 편입 상한
+                  <input id="analysis-top-n" name="top_n" type="number" min="1" max="100" step="1" inputmode="numeric" required />
+                </label>
+                <label for="analysis-weighting">가중 방식
+                  <select id="analysis-weighting" name="weighting" required>
+                    <option value="score">점수가중</option>
+                    <option value="equal">동일가중</option>
+                  </select>
+                </label>
+                <label for="analysis-min-market-cap">최소 시가총액 (USD)
+                  <input id="analysis-min-market-cap" name="min_market_cap" type="number" min="0" step="100000000" inputmode="numeric" required />
+                </label>
+                <label for="analysis-min-dollar-volume">최소 일평균 거래대금 (USD)
+                  <input id="analysis-min-dollar-volume" name="min_dollar_volume" type="number" min="0" step="1000000" inputmode="numeric" required />
+                </label>
+                <label for="analysis-adv-window">ADV 관찰일
+                  <input id="analysis-adv-window" name="eligibility_adv_window" type="number" min="5" max="252" step="1" inputmode="numeric" required />
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>거래비용</legend>
+              <div class="analysis-input-grid">
+                <label for="analysis-transaction-cost">거래비용 (bps)
+                  <input id="analysis-transaction-cost" name="transaction_cost_bps" type="number" min="0" max="1000" step="0.1" inputmode="decimal" required />
+                </label>
+                <label for="analysis-cost-model">비용 계산 방식
+                  <select id="analysis-cost-model" name="transaction_cost_model" required>
+                    <option value="one_way_notional">편도 매매금액</option>
+                    <option value="portfolio_turnover">포트폴리오 회전율</option>
+                  </select>
+                </label>
+              </div>
+            </fieldset>
+
+            <div class="analysis-command-card">
+              <span>GitHub CLI 명령</span>
+              <code id="analysis-workflow-command" tabindex="0">데이터 로드 후 생성됩니다.</code>
+              <div class="analysis-command-actions">
+                <button id="copy-analysis-command" type="button">명령 복사</button>
+                <button id="reset-analysis-settings" class="secondary" type="button">현재 설정으로 초기화</button>
+                <a id="analysis-workflow-link" class="button secondary" href="https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml" target="_blank" rel="noopener noreferrer">Actions 열기</a>
+              </div>
+              <p id="analysis-command-status" class="helper" role="status" aria-live="polite">실행이 완료되면 공개 분석과 다음 자동 갱신에 적용됩니다.</p>
+            </div>
+          </form>
+        </details>
+
+        <details class="secondary-results" id="secondary-results">
+          <summary>
+            <span><strong>상세 차트·보유 종목</strong><small>CAGR·위험 조정·비중·랭킹</small></span>
+          </summary>
+          <div class="secondary-viz-grid">
+            <article class="viz-card wide">
           <div class="viz-card-heading">
             <div>
               <p class="eyebrow">팩터 랭킹</p>
@@ -145,9 +254,9 @@
             <span id="factor-chart-meta" class="chart-meta">-</span>
           </div>
           <div id="factor-return-chart" class="bar-chart" aria-live="polite"></div>
-        </article>
+            </article>
 
-        <article class="viz-card">
+            <article class="viz-card">
           <div class="viz-card-heading">
             <div>
               <p class="eyebrow">위험 조정</p>
@@ -156,9 +265,9 @@
             <span id="risk-chart-meta" class="chart-meta">-</span>
           </div>
           <div id="risk-chart" class="mini-metric-grid" aria-live="polite"></div>
-        </article>
+            </article>
 
-        <article class="viz-card">
+            <article class="viz-card">
           <div class="viz-card-heading">
             <div>
               <p class="eyebrow">포트폴리오 비중</p>
@@ -167,9 +276,9 @@
             <span id="weight-chart-meta" class="chart-meta">-</span>
           </div>
           <div id="weight-chart" class="bar-chart compact-bars" aria-live="polite"></div>
-        </article>
+            </article>
 
-        <article class="viz-card wide" id="holdings-table" aria-labelledby="current-output-title">
+            <article class="viz-card wide" id="holdings-table" aria-labelledby="current-output-title">
           <div class="viz-card-heading">
             <div>
               <p class="eyebrow">현재 포트폴리오</p>
@@ -198,9 +307,9 @@
               <tbody></tbody>
             </table>
           </div>
-        </article>
+            </article>
 
-        <article class="viz-card wide">
+            <article class="viz-card wide">
           <div class="viz-card-heading">
             <div>
               <p class="eyebrow">랭킹 상세</p>
@@ -215,7 +324,9 @@
             aria-label="정렬 기준별 팩터 순위 목록. 내부에서 스크롤해 전체 항목 보기"
             tabindex="0"
           ></div>
-        </article>
+            </article>
+          </div>
+        </details>
       </div>
     </section>
 
@@ -270,7 +381,7 @@
 
     <details class="detail-disclosure">
       <summary>
-        <span><strong>데이터 품질과 실행 정보</strong><small>최신성·커버리지·재현 메타데이터</small></span>
+        <span><strong>데이터 · 출처 · 운영 상세</strong><small>품질·메타데이터·업데이트</small></span>
       </summary>
       <div class="disclosure-stack">
         <section class="panel diagnostics-panel" aria-labelledby="diagnostics-title">
@@ -314,14 +425,8 @@
           </div>
           <ul id="caveats-list"></ul>
         </section>
-      </div>
-    </details>
 
-    <details class="detail-disclosure">
-      <summary>
-        <span><strong>업데이트</strong><small>자동 갱신 일정과 수동 재실행</small></span>
-      </summary>
-      <section class="panel update-panel disclosure-panel" aria-labelledby="update-title">
+        <section class="panel update-panel disclosure-panel" aria-labelledby="update-title">
         <div class="panel-heading">
           <div>
             <p class="eyebrow">Update automation</p>
@@ -348,17 +453,14 @@
             <button id="copy-command" type="button">명령 복사</button>
           </div>
         </div>
-      </section>
+        </section>
+      </div>
     </details>
-
-    <section class="notice moved-notice compact-notice" aria-label="research notice">
-      <strong>연구용 정적 스냅샷</strong> · 투자 조언이나 매매 지시가 아닙니다.
-    </section>
   </main>
 
   <footer>
     <span>Best Factor Lab</span>
-    <span id="generated-at"></span>
+    <span id="generated-at" hidden></span>
   </footer>
   <nav class="page-jump-nav" aria-label="페이지 빠른 이동">
     <a href="#top" aria-label="맨 위로 이동" title="맨 위로">↑</a>

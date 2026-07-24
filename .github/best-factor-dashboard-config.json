@@ -1,0 +1,17 @@
+{
+  "config": {
+    "eligibility_adv_window": 63,
+    "factor_allowlist": [],
+    "factor_preset": "zoo",
+    "min_dollar_volume": 50000000.0,
+    "min_market_cap": 10000000000.0,
+    "period": "5y",
+    "rebalance": "M",
+    "top_n": 20,
+    "transaction_cost_bps": 5.0,
+    "transaction_cost_model": "one_way_notional",
+    "weighting": "score"
+  },
+  "config_hash": "082b5dbbe2c6cdf08d669733f9eacbc1518b0c88693d091f27574c8bc2f50750",
+  "schema_version": 1
+}

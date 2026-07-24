@@ -15,14 +15,22 @@ DOCS = ROOT / "docs"
 
 class DocsSiteTest(unittest.TestCase):
     def test_docs_site_files_and_sections_exist(self):
-        for relative in ["index.html", "styles.css", "app.js", "data/latest-results.json", "data/summary.json"]:
+        for relative in [
+            "index.html",
+            "styles.css",
+            "app.js",
+            "data/latest-results.json",
+            "data/summary.json",
+            "data/dashboard-config.json",
+        ]:
             self.assertTrue((DOCS / relative).exists(), relative)
         html = (DOCS / "index.html").read_text(encoding="utf-8")
         for marker in [
-            "미국 주식 팩터 랭킹 대시보드",
+            "미국 주식 팩터 랭킹",
+            "hero-title-word",
             "run-status",
-            "통합 대시보드로 돌아가기",
             "https://sonchanggi.github.io/quant-dashboard/",
+            "https://sonchanggi.github.io/kelly/",
             "summary-cards",
             "visual-dashboard",
             "factor-return-chart",
@@ -43,6 +51,7 @@ class DocsSiteTest(unittest.TestCase):
             "diagnostics-title",
             "metadata-title",
             "caveats-title",
+            "데이터 · 출처 · 운영 상세",
             "update-title",
             "수동 업데이트 실행 화면 열기",
             "워크플로 상태 보기",
@@ -69,6 +78,7 @@ class DocsSiteTest(unittest.TestCase):
             set(hrefs),
             {
                 "https://github.com/sonchanggi/best-factor/actions/workflows/update-dashboard.yml",
+                "https://sonchanggi.github.io/best-factor/",
                 "https://sonchanggi.github.io/quant-dashboard/",
                 "https://sonchanggi.github.io/fearngreed/",
                 "https://sonchanggi.github.io/momentum-factor-lab/",
@@ -78,6 +88,7 @@ class DocsSiteTest(unittest.TestCase):
                 "https://sonchanggi.github.io/quant-dashboard/risk-score/",
                 "https://sonchanggi.github.io/port/",
                 "https://sonchanggi.github.io/valuation/",
+                "https://sonchanggi.github.io/kelly/",
             },
         )
 
@@ -99,7 +110,7 @@ class DocsSiteTest(unittest.TestCase):
         self.assertTrue(repo_paths)
         self.assertTrue(all(path in {
             "best-factor", "quant-dashboard", "momentum-factor-lab", "dram-price",
-            "etf-tracking", "sox", "port", "valuation", "fearNgreed", "fearngreed",
+            "etf-tracking", "sox", "port", "valuation", "kelly", "fearNgreed", "fearngreed",
         } for path in page_paths))
         self.assertTrue(all(path == "best-factor" for path in repo_paths))
         self.assertTrue(all(path == "best-factor" for path in short_repo_paths))
