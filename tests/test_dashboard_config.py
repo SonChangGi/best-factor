@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -101,6 +102,32 @@ class DashboardConfigTest(unittest.TestCase):
         payload["config"]["top_n"] = 21
         with self.assertRaisesRegex(ValueError, "config_hash"):
             dashboard_config.validate_envelope(payload)
+
+    def test_every_public_analysis_input_changes_the_python_config_binding(self):
+        variants = {
+            "period": "2y",
+            "rebalance": "W",
+            "top_n": 21,
+            "weighting": "equal",
+            "factor_preset": "core",
+            "factor_allowlist": ["momentum_6m"],
+            "min_market_cap": 0,
+            "min_dollar_volume": 0,
+            "eligibility_adv_window": 21,
+            "transaction_cost_bps": 10,
+            "transaction_cost_model": "portfolio_turnover",
+        }
+        baseline = dashboard_config.make_envelope(dashboard_config.DEFAULT_CONFIG)
+        self.assertEqual(tuple(variants), dashboard_config.CONFIG_KEYS)
+        for key, value in variants.items():
+            with self.subTest(key=key):
+                changed = dashboard_config.resolve_config(
+                    dashboard_config.DEFAULT_CONFIG,
+                    {key: value},
+                )
+                envelope = dashboard_config.make_envelope(changed)
+                self.assertEqual(envelope["config"][key], value)
+                self.assertNotEqual(envelope["config_hash"], baseline["config_hash"])
 
     def test_result_binding_rejects_missing_or_malformed_result_fields(self):
         valid = {
@@ -202,7 +229,20 @@ class DashboardConfigTest(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "update-dashboard.yml").read_text(encoding="utf-8")
         dispatch_block = workflow.split("    inputs:\n", 1)[1].split("  schedule:\n", 1)[0]
         dispatch_ids = re.findall(r"^      ([a-z][a-z0-9_]*):$", dispatch_block, flags=re.MULTILINE)
-        self.assertEqual(tuple(dispatch_ids), dashboard_config.CONFIG_KEYS)
+        operational_inputs = {
+            "allow_fallback",
+            "control_run_id",
+            "control_input_schema_version",
+            "control_input_schema_hash",
+            "control_config_hash_algorithm",
+            "control_config_hash",
+        }
+        self.assertEqual(
+            tuple(key for key in dispatch_ids if key not in operational_inputs),
+            dashboard_config.CONFIG_KEYS,
+        )
+        for name in operational_inputs:
+            self.assertEqual(dispatch_ids.count(name), 1)
         for index, key in enumerate(dashboard_config.CONFIG_KEYS):
             self.assertIn(f"INPUT_{key.upper()}", workflow)
             self.assertIn(f'{key.upper()}="${{CONFIG_VALUES[{index}]}}"', workflow)
@@ -221,6 +261,7 @@ class DashboardConfigTest(unittest.TestCase):
         ):
             self.assertIn(cli_mapping, workflow)
         self.assertIn("python .github/scripts/dashboard_config.py", workflow)
+        self.assertIn("node --test tests/common_design_v1.test.mjs tests/control_api.test.mjs", workflow)
         self.assertIn("--mode publish", workflow)
         self.assertIn("--result-file docs/data/latest-results.json", workflow)
         self.assertIn("--public-output docs/data/dashboard-config.json", workflow)
@@ -242,6 +283,106 @@ class DashboardConfigTest(unittest.TestCase):
         )
         self.assertIn("docs/data/dashboard-config.json", workflow)
         self.assertIn(".github/best-factor-dashboard-config.json", workflow)
+
+    def test_manual_fallback_is_explicit_and_fail_closed(self):
+        workflow = (ROOT / ".github" / "workflows" / "update-dashboard.yml").read_text(encoding="utf-8")
+        dispatch_block = workflow.split("    inputs:\n", 1)[1].split("  schedule:\n", 1)[0]
+        fallback_block = dispatch_block.split("      allow_fallback:\n", 1)[1]
+        self.assertIn("default: false", fallback_block)
+        self.assertIn("type: boolean", fallback_block)
+        self.assertIn(
+            "ALLOW_FALLBACK: ${{ github.event_name == 'schedule' || inputs.allow_fallback }}",
+            workflow,
+        )
+        self.assertIn(
+            'echo "fallback policy: event=${EVENT_NAME} allow_fallback=${ALLOW_FALLBACK}"',
+            workflow,
+        )
+        self.assertIn('if [[ "${ALLOW_FALLBACK}" != "true" ]]; then', workflow)
+        self.assertIn("fallback is disabled, so no result will be published", workflow)
+        self.assertLess(
+            workflow.index('if [[ "${ALLOW_FALLBACK}" != "true" ]]; then'),
+            workflow.index("--filter-fallback-reason market_cap_metadata_insufficient_preflight"),
+        )
+        self.assertIn("control=${{ inputs.control_run_id || 'direct' }}", workflow)
+        self.assertIn("CONTROL_RUN_ID: ${{ inputs.control_run_id }}", workflow)
+        self.assertIn("control correlation: control_run_id=${CONTROL_RUN_ID:-direct} github_run_id=${GITHUB_RUN_ID}", workflow)
+        self.assertIn('CONTROL_CONFIG_HASH_ALGORITHM}" != "best-factor-python-json-v1"', workflow)
+        self.assertIn("Control API dispatch must provide every analytical input explicitly.", workflow)
+        self.assertIn('CONTROL_ANALYSIS_FACTOR_ALLOWLIST: ${{ inputs.factor_allowlist }}', workflow)
+
+    def test_control_callback_uses_exact_immutable_artifact_and_bounded_binding(self):
+        workflow = (ROOT / ".github" / "workflows" / "update-dashboard.yml").read_text(encoding="utf-8")
+        deploy_index = workflow.index("- name: Deploy to GitHub Pages")
+        readback_index = workflow.index("- name: Verify immutable control-run artifact")
+        callback_index = workflow.index("- name: Publish control-run result manifest")
+        self.assertLess(deploy_index, readback_index)
+        self.assertLess(readback_index, callback_index)
+        self.assertIn("id: data_commit", workflow)
+        self.assertIn(
+            'PUBLIC_RESULT_URL="https://raw.githubusercontent.com/SonChangGi/best-factor/${DATA_COMMIT_SHA}/docs/data/latest-results.json"',
+            workflow,
+        )
+        self.assertIn("cmp --silent docs/data/latest-results.json /tmp/best-factor-public-latest-results.json", workflow)
+        self.assertIn("QUANT_CONTROL_CALLBACK_URL: ${{ secrets.QUANT_CONTROL_CALLBACK_URL }}", workflow)
+        self.assertIn(
+            "QUANT_CONTROL_WORKER_CALLBACK_TOKEN: ${{ secrets.QUANT_CONTROL_WORKER_CALLBACK_TOKEN }}",
+            workflow,
+        )
+        self.assertIn(
+            '--header "Authorization: Bearer ${QUANT_CONTROL_WORKER_CALLBACK_TOKEN}"',
+            workflow,
+        )
+        self.assertIn(
+            'CALLBACK_ENDPOINT="${QUANT_CONTROL_CALLBACK_URL%/}/v1/internal/runs/${CONTROL_RUN_ID}/result-manifest"',
+            workflow,
+        )
+        for field in (
+            '"binding": {',
+            '"projectId": "best-factor"',
+            '"requestedInputs": config_envelope["config"]',
+            '"normalizedInputs": config_envelope["config"]',
+            '"effectiveConfigHash": effective_config_hash',
+            '"effectiveInputs": config_envelope["config"]',
+            '"ignoredInputs": []',
+            '"fallbacks": []',
+            '"fallbackUsed": False',
+            '"fallbackReason": None',
+            '"dataIdentity": {',
+            '"artifact": {',
+            '"sha256": hashlib.sha256(result_bytes).hexdigest()',
+            '"byteSize": len(result_bytes)',
+            '"contractVersion": "best-factor/latest-results/v1"',
+            '"payload": bounded_payload',
+        ):
+            self.assertIn(field, workflow)
+        self.assertIn("summary_allowlist = (", workflow)
+        self.assertIn('"best_factor"', workflow)
+        self.assertIn("if len(bounded_bytes) > 64 * 1024:", workflow)
+        self.assertEqual(
+            workflow.count(
+                "Control callback URL must be an HTTPS base without credentials, query, or fragment"
+            ),
+            2,
+        )
+        self.assertIn("/v1/internal/runs/${CONTROL_RUN_ID}/failure", workflow)
+        self.assertIn('"providerRunId": f"github-actions:{os.environ[\'CONTROL_RUN_ID\']}"', workflow)
+        self.assertIn('"errorCode": "worker_workflow_failed"', workflow)
+        self.assertIn('source_hash = summary.get("source_hash") or metadata.get("source_hash")', workflow)
+        self.assertIn("8 <= len(source_hash) <= 128", workflow)
+        self.assertNotIn("source_hash.ljust", workflow)
+        self.assertNotIn("source_hash.rjust", workflow)
+        callback_step = workflow.split("- name: Publish control-run result manifest", 1)[1].split(
+            "- name: Report controlled-run failure",
+            1,
+        )[0]
+        failure_step = workflow.split("- name: Report controlled-run failure", 1)[1]
+        for filename, step in (
+            ("best-factor-control-result-callback", callback_step),
+            ("best-factor-control-failure-callback", failure_step),
+        ):
+            callback_python = step.split("          python - <<'PY'\n", 1)[1].split("          PY\n", 1)[0]
+            compile(textwrap.dedent(callback_python), filename, "exec")
 
     def test_existing_cli_same_inputs_are_deterministic_and_true_top_n_changes_results(self):
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second, tempfile.TemporaryDirectory() as top_one:

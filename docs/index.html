@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
   <meta name="description" content="미국 주식 팩터 랭킹과 최고 팩터 포트폴리오를 비교하는 Best Factor Lab 대시보드" />
+  <meta name="quant-run-api-base" content="" />
   <title>Best Factor Lab Dashboard</title>
-  <link rel="stylesheet" href="styles.css?v=20260724-web-design-v2" />
-  <script src="app.js?v=20260724-web-design-v2" defer></script>
+  <link rel="stylesheet" href="styles.css?v=20260724-control-api-v1" />
+  <script src="app.js?v=20260724-control-api-v1" defer></script>
 </head>
 <body id="top">
   <a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
@@ -38,7 +39,6 @@
     <div class="hero-copy">
       <p class="eyebrow">Best Factor Lab · US Equity</p>
       <h1 id="page-title">미국 주식 팩터 랭킹 <span class="hero-title-word">대시보드</span></h1>
-      <p class="hero-summary">현재 1위 팩터의 성과, 비교 팩터, 보유 종목을 먼저 보여줍니다.</p>
       <div class="hero-actions" aria-label="핵심 화면 이동">
         <a class="button hero-link" href="#visual-dashboard">누적 성과 보기</a>
         <a id="hero-holdings-link" class="button secondary hero-link" href="#current-output-title">보유 종목 보기</a>
@@ -98,8 +98,7 @@
                 </select>
               </label>
               <label>보유 종목 표시 행
-                <input id="topn-input" type="number" min="1" max="20" value="20" inputmode="numeric" aria-describedby="holding-display-help" />
-                <small id="holding-display-help">저장된 결과 중 최대 20행</small>
+                <input id="topn-input" type="number" min="1" max="20" value="20" inputmode="numeric" />
               </label>
               <label>랭킹 이름 찾기
                 <input id="factor-filter" type="search" placeholder="예: momentum" />
@@ -137,11 +136,14 @@
               <button id="comparison-latest-date" class="secondary" type="button">최신일</button>
             </div>
           </div>
+          <p id="comparison-chart-help" class="sr-only">차트는 포인터, 클릭, 좌우 화살표, Home, End 키로 탐색할 수 있습니다.</p>
           <div
             id="comparison-line-chart"
             class="line-chart interactive-line-chart"
             aria-live="polite"
             aria-label="최고 팩터, 선택 팩터, 나스닥 지수 누적 성과 비교"
+            aria-describedby="comparison-chart-help"
+            aria-keyshortcuts="ArrowLeft ArrowRight Home End"
             tabindex="0"
           ></div>
           <details class="chart-metrics-disclosure">
@@ -155,9 +157,8 @@
             <span>
               <span class="eyebrow">Analysis rerun</span>
               <strong id="analysis-settings-title">분석 입력값 변경</strong>
-              <small>공식 결과를 다시 계산하는 설정</small>
             </span>
-            <span class="analysis-mode-badge">재실행 시 결과 변경</span>
+            <span id="analysis-draft-status" class="analysis-mode-badge" data-state="applied">현재 결과와 동일</span>
           </summary>
           <form id="analysis-settings-form" class="analysis-settings-form">
             <fieldset>
@@ -227,22 +228,66 @@
               </div>
             </fieldset>
 
+            <section class="analysis-api-card" aria-labelledby="analysis-api-title">
+              <div class="analysis-api-heading">
+                <span>
+                  <strong id="analysis-api-title">API 실행 연결</strong>
+                  <small>선택 설정 · 액세스 토큰은 이 탭의 메모리에만 유지</small>
+                </span>
+                <span id="analysis-api-mode" class="analysis-mode-badge">연결 안 됨</span>
+              </div>
+              <div class="analysis-api-connection">
+                <label for="analysis-api-base">API 주소
+                  <input
+                    id="analysis-api-base"
+                    type="url"
+                    inputmode="url"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="예: https://api.example.com"
+                  />
+                </label>
+                <label for="analysis-api-token">세션 액세스 토큰
+                  <input
+                    id="analysis-api-token"
+                    type="password"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="저장하지 않음"
+                  />
+                </label>
+              </div>
+              <div class="analysis-command-actions">
+                <button id="request-analysis-run" type="button" disabled>API 실행 요청</button>
+                <button id="stop-analysis-poll" class="secondary" type="button" hidden>상태 확인 중지</button>
+              </div>
+              <p id="analysis-run-status" class="helper" role="status" aria-live="polite">
+                API 연결 대기
+              </p>
+              <dl id="analysis-run-identity" class="analysis-run-identity" hidden>
+                <div><dt>실행</dt><dd id="analysis-run-id">-</dd></div>
+                <div><dt>상태</dt><dd id="analysis-run-state">-</dd></div>
+                <div><dt>설정</dt><dd id="analysis-run-config-hash">-</dd></div>
+                <div><dt>결과</dt><dd id="analysis-run-result-binding">검증 전</dd></div>
+              </dl>
+            </section>
+
             <div class="analysis-command-card">
-              <span>GitHub CLI 명령</span>
+              <span>로컬·GitHub Actions 실행 명령</span>
               <code id="analysis-workflow-command" tabindex="0">데이터 로드 후 생성됩니다.</code>
               <div class="analysis-command-actions">
                 <button id="copy-analysis-command" type="button">명령 복사</button>
                 <button id="reset-analysis-settings" class="secondary" type="button">현재 설정으로 초기화</button>
                 <a id="analysis-workflow-link" class="button secondary" href="https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml" target="_blank" rel="noopener noreferrer">Actions 열기</a>
               </div>
-              <p id="analysis-command-status" class="helper" role="status" aria-live="polite">실행이 완료되면 공개 분석과 다음 자동 갱신에 적용됩니다.</p>
+              <p id="analysis-command-status" class="helper" role="status" aria-live="polite">대체 실행 경로</p>
             </div>
           </form>
         </details>
 
         <details class="secondary-results" id="secondary-results">
           <summary>
-            <span><strong>상세 차트·보유 종목</strong><small>CAGR·위험 조정·비중·랭킹</small></span>
+            <span><strong>상세 차트·보유 종목</strong></span>
           </summary>
           <div class="secondary-viz-grid">
             <article class="viz-card wide">
@@ -347,7 +392,7 @@
 
     <details class="detail-disclosure">
       <summary>
-        <span><strong>팩터 해석과 계산법</strong><small>팩터군·경제적 해석·세부 산식</small></span>
+        <span><strong>팩터 해석과 계산법</strong></span>
       </summary>
       <div class="disclosure-stack">
         <section class="panel economic-panel" aria-labelledby="economic-analysis-title">
@@ -381,7 +426,7 @@
 
     <details class="detail-disclosure">
       <summary>
-        <span><strong>데이터 · 출처 · 운영 상세</strong><small>품질·메타데이터·업데이트</small></span>
+        <span><strong>데이터 · 출처 · 운영 상세</strong></span>
       </summary>
       <div class="disclosure-stack">
         <section class="panel diagnostics-panel" aria-labelledby="diagnostics-title">
@@ -444,8 +489,7 @@
               <li><strong>09/11/13 KST fallback</strong> JSON stale/missing/broken일 때만 재실행.</li>
               <li><strong>검토 후 수동 재실행</strong> workflow_dispatch로 동일 경로 실행.</li>
             </ul>
-            <p id="update-status" class="helper" role="status" aria-live="polite">저장소 권한 필요 · 실행 완료 후 생성 시각과 데이터 기준일을 확인하세요.</p>
-            <p id="freshness-detail" class="helper">공개 JSON의 generated_at과 data_end_date로 최신성을 확인합니다.</p>
+            <p id="update-status" class="helper" role="status" aria-live="polite">저장소 권한 필요</p>
           </div>
           <div class="command-card" aria-label="CLI workflow dispatch command">
             <span>CLI 실행 예시</span>

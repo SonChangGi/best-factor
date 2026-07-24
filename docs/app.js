@@ -8,6 +8,43 @@
   const WORKFLOW_FILE = 'update-dashboard.yml';
   const WORKFLOW_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE}`;
   const WORKFLOW_COMMAND = `gh workflow run ${WORKFLOW_FILE} --repo ${REPO_OWNER}/${REPO_NAME} --ref main`;
+  const RUN_API_PROJECT_ID = 'best-factor';
+  const RUN_INPUT_SCHEMA_VERSION = 'best-factor/v1';
+  const RUN_ARTIFACT_CONTRACT_VERSION = 'best-factor/latest-results/v1';
+  const RUN_CONFIG_HASH_ALGORITHM = 'best-factor-python-json-v1';
+  const RUN_API_POLL_INTERVAL_MS = 5_000;
+  const RUN_API_MAX_POLLS = 1_440;
+  const RUN_ARTIFACT_MAX_BYTES = 15 * 1024 * 1024;
+  const RUN_RESULT_SUMMARY_MAX_BYTES = 64 * 1024;
+  const RUN_RESULT_SUMMARY_FIELDS = Object.freeze([
+    'best_composite_score',
+    'best_factor',
+    'best_factor_holdout_cagr',
+    'best_factor_holdout_rank',
+    'best_factor_holdout_sharpe',
+    'data_end_date',
+    'effective_factor_count',
+    'factor_library_size',
+    'factor_preset',
+    'fetched_at',
+    'holding_count',
+    'interpretation_label',
+    'provider',
+    'ranking_count',
+    'selected_factor_count',
+    'source_hash',
+    'tested_factor_count',
+    'universe_as_of_date',
+  ]);
+  const RUN_ACTIVE_STATES = new Set(['queued', 'dispatched', 'running', 'validating']);
+  const RUN_TERMINAL_STATES = new Set(['published', 'failed', 'cancelled']);
+  const RUN_STATUS_ORDER = Object.freeze({
+    queued: 0,
+    dispatched: 1,
+    running: 2,
+    validating: 3,
+    published: 4,
+  });
   const ANALYSIS_INPUTS = [
     { key: 'period', selector: '#analysis-period', type: 'enum', allowed: ['2y', '5y', '10y'], fallback: '5y' },
     { key: 'rebalance', selector: '#analysis-rebalance', type: 'enum', allowed: ['M', 'W'], fallback: 'M' },
@@ -72,6 +109,9 @@
     analysisConfigSource: 'bootstrap',
     analysisConfigHash: '',
     analysisConfigBindingStatus: 'checking',
+    analysisDraft: null,
+    pendingRun: null,
+    runPollController: null,
     comparisonChart: {
       pinnedSeriesKey: 'best',
       previewSeriesKey: null,
@@ -193,6 +233,10 @@
     const analysisCopyButton = q('#copy-analysis-command');
     const analysisResetButton = q('#reset-analysis-settings');
     const analysisWorkflowLink = q('#analysis-workflow-link');
+    const analysisApiBase = q('#analysis-api-base');
+    const analysisApiToken = q('#analysis-api-token');
+    const analysisRunButton = q('#request-analysis-run');
+    const analysisStopButton = q('#stop-analysis-poll');
     const heroHoldingsLink = q('#hero-holdings-link');
 
     if (sortSelect) {
@@ -233,12 +277,24 @@
     if (copyButton) copyButton.addEventListener('click', copyWorkflowCommand);
     if (analysisWorkflowLink) analysisWorkflowLink.href = WORKFLOW_URL;
     if (analysisForm) {
-      analysisForm.addEventListener('input', updateAnalysisWorkflowCommand);
-      analysisForm.addEventListener('change', updateAnalysisWorkflowCommand);
+      analysisForm.addEventListener('input', syncAnalysisDraftState);
+      analysisForm.addEventListener('change', syncAnalysisDraftState);
       analysisForm.addEventListener('submit', (event) => event.preventDefault());
     }
     if (analysisCopyButton) analysisCopyButton.addEventListener('click', copyAnalysisWorkflowCommand);
     if (analysisResetButton) analysisResetButton.addEventListener('click', resetAnalysisSettings);
+    if (analysisApiBase) {
+      analysisApiBase.value = configuredRunApiBase();
+      analysisApiBase.addEventListener('input', syncRunApiAvailability);
+      analysisApiBase.addEventListener('change', syncRunApiAvailability);
+    }
+    if (analysisApiToken) {
+      analysisApiToken.value = '';
+      analysisApiToken.addEventListener('input', syncRunApiAvailability);
+    }
+    if (analysisRunButton) analysisRunButton.addEventListener('click', requestAnalysisRun);
+    if (analysisStopButton) analysisStopButton.addEventListener('click', stopAnalysisRunPolling);
+    syncRunApiAvailability();
     if (heroHoldingsLink) {
       heroHoldingsLink.addEventListener('click', (event) => {
         const disclosure = q('#secondary-results');
@@ -414,6 +470,720 @@
     return [WORKFLOW_COMMAND, ...fields].join(' ');
   }
 
+  function canonicalRunInputs(rawConfig) {
+    const config = normalizeAnalysisConfig(rawConfig);
+    return Object.fromEntries(ANALYSIS_INPUTS.map(({ key }) => [
+      key,
+      key === 'factor_allowlist'
+        ? String(config[key] || '').split(',').map((name) => name.trim()).filter(Boolean)
+        : config[key],
+    ]));
+  }
+
+  function normalizeServerRunInputs(rawInputs) {
+    if (!rawInputs || typeof rawInputs !== 'object' || Array.isArray(rawInputs)) {
+      throw new Error('API 응답의 inputs가 올바르지 않습니다.');
+    }
+    const expectedKeys = ANALYSIS_INPUTS.map(({ key }) => key);
+    const actualKeys = Object.keys(rawInputs);
+    const missing = expectedKeys.filter((key) => !actualKeys.includes(key));
+    const unknown = actualKeys.filter((key) => !expectedKeys.includes(key));
+    if (missing.length || unknown.length) {
+      throw new Error(`API 입력 계약 불일치 (누락 ${missing.join(',') || '없음'} · 알 수 없음 ${unknown.join(',') || '없음'})`);
+    }
+    const factorAllowlist = rawInputs.factor_allowlist;
+    if (!Array.isArray(factorAllowlist) || factorAllowlist.some((name) => typeof name !== 'string')) {
+      throw new Error('API 응답의 factor_allowlist는 문자열 배열이어야 합니다.');
+    }
+    return canonicalRunInputs({
+      ...rawInputs,
+      factor_allowlist: factorAllowlist.join(','),
+    });
+  }
+
+  function runInputsMatch(left, right) {
+    try {
+      return JSON.stringify(normalizeServerRunInputs(left)) === JSON.stringify(normalizeServerRunInputs(right));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function runInputsToAnalysisConfig(inputs) {
+    const normalized = normalizeServerRunInputs(inputs);
+    return normalizeAnalysisConfig({
+      ...normalized,
+      factor_allowlist: normalized.factor_allowlist.join(','),
+    });
+  }
+
+  function configuredRunApiBase() {
+    const configured = q('meta[name="quant-run-api-base"]')?.content || '';
+    if (!String(configured).trim()) return '';
+    try {
+      return normalizeRunApiBase(configured);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function normalizeRunApiBase(rawValue) {
+    const raw = String(rawValue || '').trim();
+    if (!raw) throw new Error('API 주소가 설정되지 않았습니다.');
+    let url;
+    try {
+      url = new URL(raw);
+    } catch (_) {
+      throw new Error('API 주소 형식을 확인하세요.');
+    }
+    const localhost = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (url.protocol !== 'https:' && !(localhost && url.protocol === 'http:')) {
+      throw new Error('API 주소는 HTTPS를 사용해야 합니다. 로컬 개발 주소만 HTTP를 허용합니다.');
+    }
+    if (url.username || url.password || url.search || url.hash) {
+      throw new Error('API 주소에 인증정보, 쿼리, 해시를 포함할 수 없습니다.');
+    }
+    return url.toString().replace(/\/+$/, '');
+  }
+
+  function readRunApiConnection() {
+    const baseUrl = normalizeRunApiBase(q('#analysis-api-base')?.value || '');
+    const token = String(q('#analysis-api-token')?.value || '').trim();
+    if (!token) throw new Error('세션 액세스 토큰을 입력하세요.');
+    return { baseUrl, token };
+  }
+
+  function buildRunRequest(rawConfig) {
+    return {
+      inputSchemaVersion: RUN_INPUT_SCHEMA_VERSION,
+      inputs: canonicalRunInputs(rawConfig),
+      allowFallback: false,
+    };
+  }
+
+  function createRunIdempotencyKey() {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+      return `best-factor-${globalThis.crypto.randomUUID()}`;
+    }
+    if (typeof globalThis.crypto?.getRandomValues !== 'function') {
+      throw new Error('이 브라우저에서는 안전한 실행 식별자를 만들 수 없습니다.');
+    }
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    return `best-factor-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  function normalizeRunEnvelope(rawEnvelope, expected = {}) {
+    if (!rawEnvelope || typeof rawEnvelope !== 'object' || Array.isArray(rawEnvelope)) {
+      throw new Error('API 실행 응답이 JSON 객체가 아닙니다.');
+    }
+    const runId = String(rawEnvelope.runId || '');
+    const projectId = String(rawEnvelope.projectId || '');
+    const inputSchemaVersion = String(rawEnvelope.inputSchemaVersion || '');
+    const inputSchemaHash = String(rawEnvelope.inputSchemaHash || '').toLowerCase();
+    const configHashAlgorithm = String(rawEnvelope.configHashAlgorithm || '');
+    const configHash = String(rawEnvelope.configHash || '').toLowerCase();
+    const effectiveConfigHash = String(rawEnvelope.effectiveConfigHash || '').toLowerCase();
+    const status = String(rawEnvelope.status || '').toLowerCase();
+    const createdAt = String(rawEnvelope.createdAt || '');
+    if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{7,199}$/.test(runId)) throw new Error('API runId가 올바르지 않습니다.');
+    if (projectId !== RUN_API_PROJECT_ID) throw new Error('API projectId가 Best Factor와 일치하지 않습니다.');
+    if (inputSchemaVersion !== RUN_INPUT_SCHEMA_VERSION) throw new Error('API inputSchemaVersion이 일치하지 않습니다.');
+    if (!/^[a-f0-9]{64}$/.test(inputSchemaHash)) throw new Error('API inputSchemaHash가 SHA-256 형식이 아닙니다.');
+    if (configHashAlgorithm !== RUN_CONFIG_HASH_ALGORITHM) throw new Error('API configHashAlgorithm이 Best Factor 계약과 일치하지 않습니다.');
+    if (!/^[a-f0-9]{64}$/.test(configHash)) throw new Error('API configHash가 SHA-256 형식이 아닙니다.');
+    if (!/^[a-f0-9]{64}$/.test(effectiveConfigHash)) throw new Error('API effectiveConfigHash가 SHA-256 형식이 아닙니다.');
+    if (effectiveConfigHash !== configHash) throw new Error('fallback을 허용하지 않은 실행의 effectiveConfigHash가 configHash와 일치하지 않습니다.');
+    if (![...RUN_ACTIVE_STATES, ...RUN_TERMINAL_STATES].includes(status)) throw new Error(`지원하지 않는 실행 상태: ${status || '없음'}`);
+    if (!validIsoTimestamp(createdAt)) throw new Error('API createdAt이 올바른 ISO-8601 시각이 아닙니다.');
+    const requestedInputs = normalizeServerRunInputs(rawEnvelope.requestedInputs);
+    const normalizedInputs = normalizeServerRunInputs(rawEnvelope.normalizedInputs);
+    const effectiveInputs = normalizeServerRunInputs(rawEnvelope.effectiveInputs);
+    const ignoredInputs = rawEnvelope.ignoredInputs;
+    const fallbacks = rawEnvelope.fallbacks;
+    const fallbackUsed = rawEnvelope.fallbackUsed;
+    const fallbackReason = rawEnvelope.fallbackReason ?? null;
+    if (!Array.isArray(ignoredInputs) || ignoredInputs.some((key) => typeof key !== 'string')) {
+      throw new Error('API ignoredInputs 계약이 올바르지 않습니다.');
+    }
+    if (!Array.isArray(fallbacks)) throw new Error('API fallbacks 계약이 올바르지 않습니다.');
+    if (fallbackUsed !== false || fallbackReason !== null) throw new Error('API fallback 상태 계약이 올바르지 않습니다.');
+    if (ignoredInputs.length || fallbacks.length) {
+      throw new Error('fallback을 허용하지 않은 실행에 ignoredInputs 또는 fallbacks가 포함되었습니다.');
+    }
+    const normalized = {
+      runId,
+      projectId,
+      inputSchemaVersion,
+      inputSchemaHash,
+      configHashAlgorithm,
+      configHash,
+      effectiveConfigHash,
+      status,
+      createdAt,
+      requestedInputs,
+      normalizedInputs,
+      effectiveInputs,
+      ignoredInputs,
+      fallbacks,
+      fallbackUsed,
+      fallbackReason,
+      error: String(rawEnvelope.errorMessage || rawEnvelope.error || rawEnvelope.message || ''),
+      ...(status === 'published' ? normalizePublishedBinding(rawEnvelope) : {}),
+    };
+    assertRunIdentity(normalized, expected);
+    return normalized;
+  }
+
+  function assertRunIdentity(actual, expected = {}) {
+    if (expected.status) {
+      if (RUN_TERMINAL_STATES.has(expected.status) && actual.status !== expected.status) {
+        throw new Error('종료된 실행 상태가 다른 상태로 변경되었습니다.');
+      }
+      const expectedOrder = RUN_STATUS_ORDER[expected.status];
+      const actualOrder = RUN_STATUS_ORDER[actual.status];
+      if (
+        Number.isInteger(expectedOrder)
+        && Number.isInteger(actualOrder)
+        && actualOrder < expectedOrder
+      ) {
+        throw new Error('실행 상태가 이전 단계로 되돌아갔습니다.');
+      }
+    }
+    if (expected.runId && actual.runId !== expected.runId) throw new Error('실행 식별자가 요청과 일치하지 않습니다.');
+    if (expected.inputSchemaHash && actual.inputSchemaHash !== expected.inputSchemaHash) throw new Error('실행 inputSchemaHash가 최초 응답과 일치하지 않습니다.');
+    if (expected.configHashAlgorithm && actual.configHashAlgorithm !== expected.configHashAlgorithm) throw new Error('실행 configHashAlgorithm이 최초 응답과 일치하지 않습니다.');
+    if (expected.configHash && actual.configHash !== expected.configHash) throw new Error('실행 configHash가 최초 응답과 일치하지 않습니다.');
+    if (expected.effectiveConfigHash && actual.effectiveConfigHash !== expected.effectiveConfigHash) throw new Error('실행 effectiveConfigHash가 최초 응답과 일치하지 않습니다.');
+    if (expected.createdAt && actual.createdAt !== expected.createdAt) throw new Error('실행 생성 시각이 최초 응답과 일치하지 않습니다.');
+    if (expected.inputs && !runInputsMatch(actual.requestedInputs, expected.inputs)) throw new Error('API requestedInputs 11개가 요청과 일치하지 않습니다.');
+    if (expected.inputs && !runInputsMatch(actual.normalizedInputs, expected.inputs)) throw new Error('API normalizedInputs 11개가 요청과 일치하지 않습니다.');
+    if (expected.inputs && !runInputsMatch(actual.effectiveInputs, expected.inputs)) throw new Error('API effectiveInputs 11개가 요청과 일치하지 않습니다.');
+    if (expected.requestedInputs && !runInputsMatch(actual.requestedInputs, expected.requestedInputs)) throw new Error('실행 requestedInputs가 최초 응답과 일치하지 않습니다.');
+    if (expected.normalizedInputs && !runInputsMatch(actual.normalizedInputs, expected.normalizedInputs)) throw new Error('실행 normalizedInputs가 최초 응답과 일치하지 않습니다.');
+    if (expected.effectiveInputs && !runInputsMatch(actual.effectiveInputs, expected.effectiveInputs)) throw new Error('실행 effectiveInputs가 최초 응답과 일치하지 않습니다.');
+    if (expected.dataIdentity && JSON.stringify(actual.dataIdentity) !== JSON.stringify(expected.dataIdentity)) {
+      throw new Error('결과 dataIdentity가 게시 상태와 일치하지 않습니다.');
+    }
+    if (expected.artifact && JSON.stringify(actual.artifact) !== JSON.stringify(expected.artifact)) {
+      throw new Error('결과 artifact identity가 게시 상태와 일치하지 않습니다.');
+    }
+    for (const key of ['dataAsOf', 'calculatedAt', 'codeVersion']) {
+      if (expected[key] && actual[key] !== expected[key]) throw new Error(`결과 ${key}가 게시 상태와 일치하지 않습니다.`);
+    }
+  }
+
+  function normalizePublishedBinding(rawEnvelope) {
+    const dataAsOf = String(rawEnvelope.dataAsOf || '');
+    const calculatedAt = String(rawEnvelope.calculatedAt || '');
+    const codeVersion = String(rawEnvelope.codeVersion || '');
+    const dataIdentity = rawEnvelope.dataIdentity;
+    const artifact = rawEnvelope.artifact;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dataAsOf)) throw new Error('결과 dataAsOf가 ISO 날짜가 아닙니다.');
+    if (!validIsoTimestamp(calculatedAt)) throw new Error('결과 calculatedAt이 올바른 ISO-8601 시각이 아닙니다.');
+    if (!/^[a-f0-9]{40}$/.test(codeVersion)) throw new Error('결과 codeVersion이 40자 commit SHA가 아닙니다.');
+    if (!dataIdentity || typeof dataIdentity !== 'object' || Array.isArray(dataIdentity)) throw new Error('결과 dataIdentity가 없습니다.');
+    const dataSource = String(dataIdentity.source || '');
+    const dataSourceHash = String(dataIdentity.sourceHash || '').toLowerCase();
+    const identityDataAsOf = String(dataIdentity.dataAsOf || '');
+    if (!dataSource || dataSource.length > 500) throw new Error('결과 dataIdentity.source가 없습니다.');
+    if (!/^[a-fA-F0-9]{8,128}$/.test(dataSourceHash)) throw new Error('결과 dataIdentity.sourceHash가 8~128자 16진수 형식이 아닙니다.');
+    if (identityDataAsOf !== dataAsOf) throw new Error('결과 dataIdentity.dataAsOf가 dataAsOf와 일치하지 않습니다.');
+    if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) throw new Error('결과 artifact 정보가 없습니다.');
+    const artifactUrl = String(artifact.url || '');
+    const artifactSha256 = String(artifact.sha256 || '').toLowerCase();
+    const artifactByteSize = Number(artifact.byteSize);
+    const artifactContractVersion = String(artifact.contractVersion || '');
+    let parsedArtifactUrl;
+    try {
+      parsedArtifactUrl = new URL(artifactUrl);
+    } catch (_) {
+      throw new Error('결과 artifact URL이 올바르지 않습니다.');
+    }
+    if (
+      parsedArtifactUrl.protocol !== 'https:'
+      || parsedArtifactUrl.hostname !== 'raw.githubusercontent.com'
+      || parsedArtifactUrl.username
+      || parsedArtifactUrl.password
+      || parsedArtifactUrl.port
+      || parsedArtifactUrl.search
+      || parsedArtifactUrl.hash
+      || !/^\/SonChangGi\/best-factor\/[a-f0-9]{40}\/docs\/data\/latest-results\.json$/.test(parsedArtifactUrl.pathname)
+    ) {
+      throw new Error('결과 artifact URL이 immutable Best Factor commit 경로가 아닙니다.');
+    }
+    if (!/^[a-f0-9]{64}$/.test(artifactSha256)) throw new Error('결과 artifact SHA-256이 올바르지 않습니다.');
+    if (!Number.isSafeInteger(artifactByteSize) || artifactByteSize <= 0 || artifactByteSize > RUN_ARTIFACT_MAX_BYTES) {
+      throw new Error('결과 artifact byteSize가 올바르지 않습니다.');
+    }
+    if (artifactContractVersion !== RUN_ARTIFACT_CONTRACT_VERSION) {
+      throw new Error(`결과 artifact contractVersion이 ${RUN_ARTIFACT_CONTRACT_VERSION}과 일치하지 않습니다.`);
+    }
+    return {
+      dataAsOf,
+      calculatedAt,
+      codeVersion,
+      dataIdentity: {
+        source: dataSource,
+        sourceHash: dataSourceHash,
+        dataAsOf: identityDataAsOf,
+      },
+      artifact: {
+        url: artifactUrl,
+        sha256: artifactSha256,
+        byteSize: artifactByteSize,
+        contractVersion: artifactContractVersion,
+      },
+    };
+  }
+
+  function normalizeRunResultEnvelope(rawEnvelope, expected) {
+    const run = normalizeRunEnvelope({ ...rawEnvelope, status: rawEnvelope?.status || 'published' }, expected);
+    if (run.status !== 'published') throw new Error(`공개되지 않은 실행 결과입니다: ${run.status}`);
+    if (Date.parse(run.calculatedAt) < Date.parse(run.createdAt)) throw new Error('결과가 실행 요청보다 오래된 stale 결과입니다.');
+    const payload = boundedControlResultPayload(rawEnvelope.payload, true);
+    return { ...run, payload };
+  }
+
+  function validIsoTimestamp(value) {
+    if (typeof value !== 'string' || !value.includes('T')) return false;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) && /(?:Z|[+-]\d{2}:\d{2})$/.test(value);
+  }
+
+  async function authenticatedRunRequest(connection, path, init = {}, signal) {
+    const response = await fetch(`${connection.baseUrl}${path}`, {
+      ...init,
+      cache: 'no-store',
+      signal,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${connection.token}`,
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init.headers || {}),
+      },
+    });
+    const contentType = String(response.headers?.get?.('content-type') || '');
+    if (!response.ok) {
+      let detail = '';
+      if (contentType.includes('application/json')) {
+        try {
+          const problem = await response.json();
+          detail = String(problem.error?.message || problem.detail || problem.message || '');
+        } catch (_) {
+          detail = '';
+        }
+      }
+      throw new Error(`API 요청 실패 HTTP ${response.status}${detail ? ` · ${detail}` : ''}`);
+    }
+    if (!contentType.includes('application/json')) throw new Error('API가 JSON이 아닌 응답을 반환했습니다.');
+    return response.json();
+  }
+
+  async function fetchAndVerifyRunArtifact(connection, resultEnvelope, signal) {
+    let artifactUrl;
+    try {
+      artifactUrl = new URL(resultEnvelope.artifact.url, `${connection.baseUrl}/`);
+    } catch (_) {
+      throw new Error('결과 artifact URL 형식이 올바르지 않습니다.');
+    }
+    if (!['https:', 'http:'].includes(artifactUrl.protocol)) throw new Error('결과 artifact URL 프로토콜을 허용할 수 없습니다.');
+    if (artifactUrl.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(artifactUrl.hostname)) {
+      throw new Error('결과 artifact는 HTTPS로 제공되어야 합니다.');
+    }
+    const headers = { Accept: 'application/json' };
+    const response = await fetch(artifactUrl.toString(), {
+      cache: 'no-store',
+      credentials: 'omit',
+      headers,
+      referrerPolicy: 'no-referrer',
+      signal,
+    });
+    if (!response.ok) throw new Error(`결과 artifact 요청 실패 HTTP ${response.status}`);
+    const declaredSize = Number(response.headers?.get?.('content-length') || 0);
+    if (Number.isFinite(declaredSize) && declaredSize > RUN_ARTIFACT_MAX_BYTES) throw new Error('결과 artifact가 허용 크기를 초과합니다.');
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength > RUN_ARTIFACT_MAX_BYTES) throw new Error('결과 artifact가 허용 크기를 초과합니다.');
+    if (bytes.byteLength !== resultEnvelope.artifact.byteSize) throw new Error('결과 artifact byteSize가 API binding과 일치하지 않습니다.');
+    const actualHash = await sha256Hex(bytes);
+    if (actualHash !== resultEnvelope.artifact.sha256) throw new Error('결과 artifact SHA-256이 API binding과 일치하지 않습니다.');
+    let payload;
+    try {
+      payload = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    } catch (_) {
+      throw new Error('결과 artifact가 유효한 UTF-8 JSON이 아닙니다.');
+    }
+    if (!jsonSemanticallyEqual(boundedControlResultPayload(payload), resultEnvelope.payload)) {
+      throw new Error('다운로드한 artifact 요약이 API result payload binding과 일치하지 않습니다.');
+    }
+    validateAdoptableArtifact(payload, resultEnvelope);
+    return payload;
+  }
+
+  function boundedControlResultPayload(value, requireExactShape = false) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('결과 payload가 JSON 객체가 아닙니다.');
+    }
+    const summary = value.summary;
+    if (!summary || typeof summary !== 'object' || Array.isArray(summary)) {
+      throw new Error('결과 payload summary가 JSON 객체가 아닙니다.');
+    }
+    const bounded = {
+      schema_version: value.schema_version,
+      generated_at: value.generated_at,
+      summary: Object.fromEntries(
+        RUN_RESULT_SUMMARY_FIELDS
+          .filter((key) => Object.hasOwn(summary, key))
+          .map((key) => [key, summary[key]])
+      ),
+    };
+    if (bounded.schema_version !== 1) throw new Error('결과 payload schema_version이 일치하지 않습니다.');
+    if (!validIsoTimestamp(bounded.generated_at)) throw new Error('결과 payload generated_at이 올바르지 않습니다.');
+    if (requireExactShape && !jsonSemanticallyEqual(value, bounded)) {
+      throw new Error('API result payload는 허용된 bounded summary 필드만 포함해야 합니다.');
+    }
+    let encoded;
+    try {
+      encoded = new TextEncoder().encode(JSON.stringify(canonicalJsonValue(bounded)));
+    } catch (_) {
+      throw new Error('결과 payload를 strict JSON으로 직렬화할 수 없습니다.');
+    }
+    if (encoded.byteLength > RUN_RESULT_SUMMARY_MAX_BYTES) {
+      throw new Error('결과 payload bounded summary가 허용 크기를 초과합니다.');
+    }
+    return bounded;
+  }
+
+  function jsonSemanticallyEqual(left, right) {
+    try {
+      return JSON.stringify(canonicalJsonValue(left)) === JSON.stringify(canonicalJsonValue(right));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function canonicalJsonValue(value) {
+    if (Array.isArray(value)) return value.map(canonicalJsonValue);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.keys(value).sort().map((key) => [key, canonicalJsonValue(value[key])])
+      );
+    }
+    return value;
+  }
+
+  async function sha256Hex(bytes) {
+    const subtle = globalThis.crypto?.subtle;
+    if (!subtle) throw new Error('이 브라우저에서는 artifact SHA-256을 검증할 수 없습니다.');
+    const digest = await subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  function validateAdoptableArtifact(payload, resultEnvelope, currentPayload = state.payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('결과 artifact JSON 객체가 아닙니다.');
+    if (payload.schema_version !== 1) throw new Error('결과 artifact dashboard schema_version이 일치하지 않습니다.');
+    const generatedAt = String(payload.generated_at || '');
+    const dataEndDate = String(payload.summary?.data_end_date || payload.metadata?.data_end_date || '');
+    const sourceHash = String(payload.summary?.source_hash || payload.metadata?.source_hash || '').toLowerCase();
+    if (generatedAt !== resultEnvelope.calculatedAt) throw new Error('artifact 생성 시각이 결과 binding과 일치하지 않습니다.');
+    if (dataEndDate !== resultEnvelope.dataAsOf) throw new Error('artifact 데이터 기준일이 결과 binding과 일치하지 않습니다.');
+    if (sourceHash !== resultEnvelope.dataIdentity.sourceHash) throw new Error('artifact source hash가 dataIdentity binding과 일치하지 않습니다.');
+    const currentGeneratedAt = String(currentPayload?.generated_at || '');
+    if (validIsoTimestamp(currentGeneratedAt) && Date.parse(generatedAt) <= Date.parse(currentGeneratedAt)) {
+      throw new Error('현재 화면보다 오래되거나 같은 stale artifact이므로 결과를 교체하지 않습니다.');
+    }
+    return true;
+  }
+
+  function delay(milliseconds, signal) {
+    return new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(resolve, milliseconds);
+      if (!signal) return;
+      signal.addEventListener('abort', () => {
+        window.clearTimeout(timeout);
+        const error = new Error('상태 확인이 중지되었습니다.');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+    });
+  }
+
+  async function requestAnalysisRun() {
+    if (state.runPollController) return;
+    let connection;
+    let request;
+    try {
+      connection = readRunApiConnection();
+      request = buildRunRequest(readAnalysisSettingsForm());
+    } catch (error) {
+      renderRunClientError(error.message);
+      syncRunApiAvailability();
+      return;
+    }
+    let idempotencyKey;
+    try {
+      idempotencyKey = createRunIdempotencyKey();
+    } catch (error) {
+      renderRunClientError(error.message);
+      return;
+    }
+    const controller = new AbortController();
+    state.runPollController = controller;
+    state.pendingRun = {
+      status: 'submitting',
+      inputs: request.inputs,
+      runId: '',
+      configHash: '',
+      createdAt: '',
+      resultBinding: '검증 전',
+    };
+    renderPendingRun();
+    syncRunApiAvailability();
+    try {
+      const createdRaw = await authenticatedRunRequest(
+        connection,
+        `/v1/projects/${RUN_API_PROJECT_ID}/runs`,
+        {
+          method: 'POST',
+          body: JSON.stringify(request),
+          headers: { 'Idempotency-Key': idempotencyKey },
+        },
+        controller.signal,
+      );
+      const created = normalizeRunEnvelope(createdRaw, { inputs: request.inputs });
+      state.pendingRun = { ...created, resultBinding: '검증 전' };
+      renderPendingRun();
+      let current = created;
+      for (let pollCount = 0; pollCount <= RUN_API_MAX_POLLS; pollCount += 1) {
+        if (current.status === 'published') {
+          const resultRaw = await authenticatedRunRequest(
+            connection,
+            `/v1/runs/${encodeURIComponent(current.runId)}/result`,
+            { method: 'GET' },
+            controller.signal,
+          );
+          const result = normalizeRunResultEnvelope(resultRaw, current);
+          state.pendingRun = { ...result, resultBinding: 'artifact 검증 중' };
+          renderPendingRun();
+          const payload = await fetchAndVerifyRunArtifact(connection, result, controller.signal);
+          adoptVerifiedRun(payload, result);
+          return;
+        }
+        if (current.status === 'failed' || current.status === 'cancelled') {
+          state.pendingRun = { ...current, resultBinding: '현재 결과 유지' };
+          renderPendingRun();
+          return;
+        }
+        if (pollCount === RUN_API_MAX_POLLS) throw new Error('실행 상태 확인 시간이 초과되었습니다.');
+        await delay(RUN_API_POLL_INTERVAL_MS, controller.signal);
+        const statusRaw = await authenticatedRunRequest(
+          connection,
+          `/v1/runs/${encodeURIComponent(current.runId)}`,
+          { method: 'GET' },
+          controller.signal,
+        );
+        current = normalizeRunEnvelope(statusRaw, current);
+        state.pendingRun = { ...current, resultBinding: '검증 전' };
+        renderPendingRun();
+      }
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        if (state.pendingRun) state.pendingRun = { ...state.pendingRun, status: 'polling_stopped', resultBinding: '현재 결과 유지' };
+        renderPendingRun();
+      } else {
+        const localStatus = String(error?.message || '').includes('stale') ? 'stale' : 'client_error';
+        if (state.pendingRun) state.pendingRun = { ...state.pendingRun, status: localStatus, error: error.message, resultBinding: '현재 결과 유지' };
+        renderRunClientError(error.message);
+        renderPendingRun();
+      }
+    } finally {
+      if (state.runPollController === controller) state.runPollController = null;
+      syncRunApiAvailability();
+    }
+  }
+
+  function adoptVerifiedRun(payload, result) {
+    let draftInputs = null;
+    try {
+      draftInputs = canonicalRunInputs(readAnalysisSettingsForm());
+    } catch (_) {
+      draftInputs = null;
+    }
+    const preserveDraft = Boolean(draftInputs && !runInputsMatch(draftInputs, result.effectiveInputs));
+    state.payload = payload;
+    state.analysisDefaults = runInputsToAnalysisConfig(result.effectiveInputs);
+    state.analysisConfigSource = 'run-api';
+    state.analysisConfigHash = result.configHash;
+    state.analysisConfigBindingStatus = 'bound';
+    state.pendingRun = { ...result, status: 'bound', resultBinding: '검증 완료', draftPreserved: preserveDraft };
+    if (preserveDraft) {
+      state.analysisDraft = runInputsToAnalysisConfig(draftInputs);
+      updateAnalysisWorkflowCommand();
+      syncRunApiAvailability();
+    } else {
+      state.analysisDraft = { ...state.analysisDefaults };
+      writeAnalysisSettingsForm(state.analysisDefaults);
+    }
+    q('#run-status')?.classList.remove('error');
+    renderAll();
+    renderPendingRun();
+  }
+
+  function stopAnalysisRunPolling() {
+    state.runPollController?.abort();
+  }
+
+  function syncAnalysisDraftState() {
+    try {
+      state.analysisDraft = readAnalysisSettingsForm();
+    } catch (_) {
+      state.analysisDraft = null;
+    }
+    updateAnalysisWorkflowCommand();
+    renderAnalysisDraftState();
+    syncRunApiAvailability();
+  }
+
+  function analysisConfigsMatch(left, right) {
+    if (!left || !right) return false;
+    try {
+      return JSON.stringify(canonicalRunInputs(left)) === JSON.stringify(canonicalRunInputs(right));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function renderAnalysisDraftState() {
+    const badge = q('#analysis-draft-status');
+    const status = q('#analysis-command-status');
+    const draft = state.analysisDraft;
+    const applied = state.analysisDefaults;
+    const valid = Boolean(draft);
+    const dirty = valid && !analysisConfigsMatch(draft, applied);
+    if (badge) {
+      badge.dataset.state = valid ? (dirty ? 'draft' : 'applied') : 'invalid';
+      badge.textContent = valid ? (dirty ? '미적용 변경' : '현재 결과와 동일') : '입력 확인 필요';
+    }
+    if (!status) return;
+    if (!valid) {
+      status.textContent = '입력 확인 필요 · 현재 결과는 변경되지 않았습니다.';
+      return;
+    }
+    if (dirty) {
+      status.textContent = `미적용 변경 · 현재 결과는 ${state.analysisDefaults?.period || '저장 설정'} 기준`;
+      return;
+    }
+    status.textContent = state.analysisConfigBindingStatus === 'bound'
+      ? '현재 결과에 적용된 설정과 동일'
+      : '확인용 기본 설정과 동일';
+  }
+
+  function syncRunApiAvailability() {
+    const button = q('#request-analysis-run');
+    const stopButton = q('#stop-analysis-poll');
+    const mode = q('#analysis-api-mode');
+    let baseValid = false;
+    let hasToken = false;
+    let draftValid = false;
+    const baseRaw = String(q('#analysis-api-base')?.value || '').trim();
+    try {
+      if (baseRaw) {
+        normalizeRunApiBase(baseRaw);
+        baseValid = true;
+      }
+    } catch (_) {
+      baseValid = false;
+    }
+    hasToken = Boolean(String(q('#analysis-api-token')?.value || '').trim());
+    try {
+      canonicalRunInputs(readAnalysisSettingsForm());
+      draftValid = true;
+    } catch (_) {
+      draftValid = false;
+    }
+    const busy = Boolean(state.runPollController);
+    if (button) button.disabled = busy || !baseValid || !hasToken || !draftValid;
+    if (stopButton) stopButton.hidden = !busy;
+    if (mode) {
+      mode.textContent = busy
+        ? '실행 확인 중'
+        : baseValid && hasToken
+          ? 'API 준비됨'
+          : baseRaw && !baseValid
+            ? '주소 확인 필요'
+            : baseValid
+              ? '토큰 필요'
+              : '실행 연결 필요';
+    }
+    const status = q('#analysis-run-status');
+    if (status && !state.pendingRun && !busy) {
+      status.textContent = baseValid && hasToken
+        ? 'API 실행 준비됨 · 요청 버튼을 눌러야 결과가 변경됩니다.'
+        : '실행 연결 필요 · 정적 미리보기는 현재 결과를 유지합니다.';
+    }
+  }
+
+  function renderPendingRun() {
+    const pending = state.pendingRun;
+    const identity = q('#analysis-run-identity');
+    if (!pending || !identity) return;
+    identity.hidden = false;
+    setText('#analysis-run-id', pending.runId || '요청 중');
+    setText('#analysis-run-state', runStatusLabel(pending.status));
+    setText('#analysis-run-config-hash', pending.configHash ? pending.configHash.slice(0, 12) : '서버 확인 중');
+    setText('#analysis-run-result-binding', pending.resultBinding || '검증 전');
+    const status = q('#analysis-run-status');
+    if (!status) return;
+    status.classList.toggle('is-error', ['failed', 'client_error'].includes(pending.status));
+    status.classList.toggle('is-warning', ['cancelled', 'stale', 'polling_stopped'].includes(pending.status));
+    status.textContent = runStatusMessage(pending);
+  }
+
+  function renderRunClientError(message) {
+    const status = q('#analysis-run-status');
+    if (!status) return;
+    status.classList.add('is-error');
+    status.classList.remove('is-warning');
+    status.textContent = `실행 실패 · ${message}`;
+  }
+
+  function runStatusLabel(status) {
+    const labels = {
+      submitting: '요청 중',
+      queued: '대기',
+      dispatched: '작업 전달',
+      running: '분석 중',
+      validating: '결과 검증 중',
+      published: '결과 게시',
+      failed: '실패',
+      cancelled: '취소',
+      stale: '오래된 결과',
+      polling_stopped: '확인 중지',
+      client_error: '검증 실패',
+      bound: '현재 결과에 연결',
+    };
+    return labels[status] || String(status || '확인 필요');
+  }
+
+  function runStatusMessage(pending) {
+    const detail = pending.error ? ` · ${pending.error}` : '';
+    if (pending.status === 'bound') {
+      const draftNote = pending.draftPreserved ? ' 실행 중 추가로 편집한 초안은 입력란에 그대로 유지했습니다.' : '';
+      return `실행 ${pending.runId} 결과를 적용했습니다.${draftNote}`;
+    }
+    if (pending.status === 'queued') return `실행 ${pending.runId} · 대기 중`;
+    if (pending.status === 'dispatched') return `실행 ${pending.runId} · 작업 전달`;
+    if (pending.status === 'running') return `실행 ${pending.runId} · 분석 중`;
+    if (pending.status === 'validating') return `실행 ${pending.runId} · 결과 검증 중`;
+    if (pending.status === 'failed') return `실행 실패${detail}`;
+    if (pending.status === 'cancelled') return `실행 취소${detail}`;
+    if (pending.status === 'stale') return `오래된 결과 · 미적용${detail}`;
+    if (pending.status === 'polling_stopped') return '상태 확인 중지 · 서버 실행 계속';
+    if (pending.status === 'client_error') return `결과 검증 실패${detail}`;
+    if (pending.status === 'published') return '게시 결과 확인 중';
+    return '실행 요청 중';
+  }
+
   function readAnalysisSettingsForm() {
     const values = {};
     ANALYSIS_INPUTS.forEach(({ key, selector }) => {
@@ -429,9 +1199,12 @@
       const input = q(selector);
       if (input) input.value = String(config[key]);
     });
+    state.analysisDraft = { ...config };
     const factorInput = q('#analysis-factor-allowlist');
     if (factorInput) factorInput.setCustomValidity('');
     updateAnalysisWorkflowCommand();
+    renderAnalysisDraftState();
+    syncRunApiAvailability();
   }
 
   function updateAnalysisWorkflowCommand() {
@@ -445,7 +1218,7 @@
       if (commandNode) commandNode.textContent = command;
       if (copyButton) copyButton.disabled = false;
       if (factorInput) factorInput.setCustomValidity('');
-      if (status) status.textContent = 'Actions 실행이 성공하면 이 값이 공개 분석과 다음 자동 갱신에 적용됩니다.';
+      if (status) status.textContent = '대체 실행 경로';
     } catch (error) {
       if (commandNode) commandNode.textContent = '입력값을 확인하면 명령이 생성됩니다.';
       if (copyButton) copyButton.disabled = true;
@@ -686,7 +1459,6 @@
   }
 
   function renderUpdatePanel(payload) {
-    const automation = automationConfig(payload);
     const scheduleList = q('#update-schedule-list');
     if (scheduleList) {
       scheduleList.replaceChildren(
@@ -696,8 +1468,6 @@
       );
     }
     setText('#update-status', `${updateScheduleText(payload)} · 수동 재실행은 GitHub Actions workflow_dispatch 권한이 필요합니다.`);
-    const detail = `마지막 생성 ${fmtKst(payload.generated_at)} · 데이터 기준 ${fmtText((payload.summary || {}).data_end_date || (payload.metadata || {}).data_end_date)} · 판정 정책: ${automation.fallback_policy || UPDATE_AUTOMATION_DEFAULT.fallback_policy}`;
-    setText('#freshness-detail', detail);
   }
 
   function renderEconomicAnalysis(payload) {
@@ -946,7 +1716,6 @@
       input.max = String(available);
       input.value = String(state.topN);
     }
-    setText('#holding-display-help', `저장된 결과 중 최대 ${available}행 · 화면에만 적용`);
   }
 
   function renderWeightChart(payload) {
@@ -1290,15 +2059,24 @@
       renderComparisonValueCards(seriesList, activeDate, activeSeries.key);
     }
 
-    function dateForClientX(clientX) {
-      const rect = svg.getBoundingClientRect();
-      const svgX = rect.width > 0 ? (clientX - rect.left) * (width / rect.width) : plot.left;
-      const ratio = Math.max(0, Math.min(1, (svgX - plot.left) / plotWidth));
-      return allDates[Math.round(ratio * Math.max(0, allDates.length - 1))] || allDates.at(-1);
+    function dateForClientX(clientX, clientY) {
+      const hitBounds = hitTarget.getBoundingClientRect();
+      const point = clientPointToSvg(svg, clientX, clientY);
+      const svgX = point?.x ?? plot.left;
+      const index = chartIndexForPointer({
+        svgX,
+        plotLeft: plot.left,
+        plotWidth,
+        count: allDates.length,
+        clientX,
+        hitLeft: hitBounds.left,
+        hitRight: hitBounds.right,
+      });
+      return allDates[index] || allDates.at(-1);
     }
 
     hitTarget.addEventListener('pointermove', (event) => {
-      chartState.previewDate = dateForClientX(event.clientX);
+      chartState.previewDate = dateForClientX(event.clientX, event.clientY);
       updateActiveState();
     });
     hitTarget.addEventListener('pointerleave', () => {
@@ -1306,7 +2084,7 @@
       updateActiveState();
     });
     hitTarget.addEventListener('click', (event) => {
-      chartState.pinnedDate = dateForClientX(event.clientX);
+      chartState.pinnedDate = dateForClientX(event.clientX, event.clientY);
       chartState.previewDate = null;
       if (dateInput) dateInput.value = chartState.pinnedDate || '';
       updateActiveState();
@@ -1339,12 +2117,85 @@
 
     function ensureActiveDateVisible(date) {
       if (!date || root.scrollWidth <= root.clientWidth) return;
-      const renderedWidth = svg.getBoundingClientRect().width || width;
-      const targetX = (xFor(date) / width) * renderedWidth;
-      const padding = 48;
-      if (targetX >= root.scrollLeft + padding && targetX <= root.scrollLeft + root.clientWidth - padding) return;
-      root.scrollLeft = Math.max(0, Math.min(root.scrollWidth - root.clientWidth, targetX - root.clientWidth / 2));
+      const screenPoint = svgPointToClient(svg, xFor(date), height / 2);
+      if (!screenPoint) return;
+      const rootRect = root.getBoundingClientRect();
+      const targetX = root.scrollLeft + screenPoint.x - rootRect.left;
+      root.scrollLeft = scrollLeftToReveal({
+        scrollLeft: root.scrollLeft,
+        clientWidth: root.clientWidth,
+        scrollWidth: root.scrollWidth,
+        targetX,
+      });
     }
+  }
+
+  function clientPointToSvg(svg, clientX, clientY = 0) {
+    const point = svg?.createSVGPoint?.();
+    const ctm = svg?.getScreenCTM?.();
+    if (!point || !ctm || typeof ctm.inverse !== 'function') return null;
+    try {
+      point.x = Number(clientX);
+      point.y = Number(clientY);
+      const transformed = point.matrixTransform(ctm.inverse());
+      return Number.isFinite(transformed?.x) && Number.isFinite(transformed?.y)
+        ? { x: transformed.x, y: transformed.y }
+        : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function svgPointToClient(svg, svgX, svgY = 0) {
+    const point = svg?.createSVGPoint?.();
+    const ctm = svg?.getScreenCTM?.();
+    if (!point || !ctm) return null;
+    try {
+      point.x = Number(svgX);
+      point.y = Number(svgY);
+      const transformed = point.matrixTransform(ctm);
+      return Number.isFinite(transformed?.x) && Number.isFinite(transformed?.y)
+        ? { x: transformed.x, y: transformed.y }
+        : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function scrollLeftToReveal({
+    scrollLeft,
+    clientWidth,
+    scrollWidth,
+    targetX,
+    padding = 48,
+  }) {
+    const current = Math.max(0, Number(scrollLeft) || 0);
+    const viewport = Math.max(0, Number(clientWidth) || 0);
+    const content = Math.max(viewport, Number(scrollWidth) || 0);
+    const target = Number(targetX);
+    if (!Number.isFinite(target) || (target >= current + padding && target <= current + viewport - padding)) {
+      return current;
+    }
+    return Math.max(0, Math.min(content - viewport, target - viewport / 2));
+  }
+
+  function chartIndexForPointer({
+    svgX,
+    plotLeft,
+    plotWidth,
+    count,
+    clientX,
+    hitLeft,
+    hitRight,
+  }) {
+    const lastIndex = Math.max(0, Number(count) - 1);
+    if (!Number.isInteger(lastIndex) || lastIndex <= 0) return 0;
+    const hitWidth = Math.max(0, Number(hitRight) - Number(hitLeft));
+    const edgeTolerance = Math.min(12, hitWidth / 4);
+    if (Number(clientX) <= Number(hitLeft) + edgeTolerance) return 0;
+    if (Number(clientX) >= Number(hitRight) - edgeTolerance) return lastIndex;
+    const ratio = Math.max(0, Math.min(1, (Number(svgX) - Number(plotLeft)) / Math.max(Number(plotWidth), 1)));
+    return Math.round(ratio * lastIndex);
   }
 
   function nearestChartDate(dates, requestedDate) {
@@ -1362,10 +2213,7 @@
 
   function chartPointAtDate(points, date) {
     if (!points.length || !date) return null;
-    const exact = points.find((point) => point.date === date);
-    if (exact) return exact;
-    const previous = points.filter((point) => String(point.date) <= String(date)).at(-1);
-    return previous || points[0] || null;
+    return points.find((point) => point.date === date) || null;
   }
 
   function renderComparisonValueCards(seriesList, date, activeSeriesKey) {
@@ -1389,9 +2237,7 @@
     const titleBox = document.createElement('div');
     const title = document.createElement('h4');
     title.textContent = '기간별 성과 지표 비교';
-    const note = document.createElement('p');
-    note.textContent = '기간별 누적 수익률, 위험조정 지표, MDD를 비교합니다.';
-    titleBox.append(title, note);
+    titleBox.append(title);
     heading.appendChild(titleBox);
     root.appendChild(heading);
 
@@ -1600,7 +2446,7 @@
     const selectedExtraCount = rankings.filter((row) => state.selectedFactors.has(String(row.factor)) && !allVisible.slice(0, RANKING_DEFAULT_TOP).some((top) => top.factor === row.factor)).length;
     setText(
       '#ranking-list-meta',
-      `배지는 공식 종합점수 순위 · 화면 정렬 ${metricLabel(state.sortMetric)} · ${allVisible.length}개 검색${selectedExtraCount ? ` · 비교 1개 포함` : ''}`
+      `${metricLabel(state.sortMetric)} 정렬 · ${allVisible.length}개${selectedExtraCount ? ' · 비교 1개 포함' : ''}`
     );
     if (!rankings.length) {
       root.replaceChildren(empty('표시할 팩터가 없습니다.'));
@@ -1619,12 +2465,8 @@
       article.append(head, bar(percentForMetric(row[state.sortMetric], state.sortMetric), `정렬 지표 ${state.sortMetric}`));
       if (meta) {
         const detail = el('div', 'rank-detail');
-        const method = factorMethodDetails(meta);
         detail.append(
-          span(`${familyTitle(meta.category)} · ${fmtText(meta.kind)}`, 'badge'),
-          small(meta.description),
-          small(`산식: ${method.formula}`),
-          small(`해석: ${method.method}`)
+          span(`${familyTitle(meta.category)} · ${fmtText(meta.kind)}`, 'badge')
         );
         if ((meta.requires_fundamentals || []).length) {
           detail.append(span(`PIT fundamentals: ${meta.requires_fundamentals.join(', ')}`, 'badge warn-badge'));
@@ -1710,7 +2552,7 @@
       return;
     }
     root.replaceChildren(table(
-      `Top ${RANKING_DEFAULT_TOP} 및 선택 비교 팩터의 성과와 위험 지표. 숫자가 공식 결과입니다.`,
+      `Top ${RANKING_DEFAULT_TOP} 및 선택 비교 팩터 성과·위험 지표`,
       ['Factor', 'Composite', 'CAGR', 'Sharpe', 'Sortino', 'Calmar', 'MDD', 'Volatility', 'Turnover', 'Coverage'],
       rows.map((row) => [
         fmtText(row.factor),
@@ -2380,9 +3222,28 @@
       analysisConfigFromPayloadForTest: analysisConfigFromPayload,
       normalizeAnalysisConfigForTest: normalizeAnalysisConfig,
       buildAnalysisWorkflowCommandForTest: buildAnalysisWorkflowCommand,
+      canonicalRunInputsForTest: canonicalRunInputs,
+      normalizeServerRunInputsForTest: normalizeServerRunInputs,
+      runInputsMatchForTest: runInputsMatch,
+      buildRunRequestForTest: buildRunRequest,
+      createRunIdempotencyKeyForTest: createRunIdempotencyKey,
+      normalizeRunApiBaseForTest: normalizeRunApiBase,
+      normalizeRunEnvelopeForTest: normalizeRunEnvelope,
+      normalizeRunResultEnvelopeForTest: normalizeRunResultEnvelope,
+      fetchAndVerifyRunArtifactForTest: fetchAndVerifyRunArtifact,
+      boundedControlResultPayloadForTest: boundedControlResultPayload,
+      validateAdoptableArtifactForTest: validateAdoptableArtifact,
+      jsonSemanticallyEqualForTest: jsonSemanticallyEqual,
+      runStatusLabelForTest: runStatusLabel,
+      runStatusMessageForTest: runStatusMessage,
       validateResultBindingForTest: validateResultBinding,
       marketCapDisplayForTest: marketCapDisplay,
       bindingStatusTextForTest: bindingStatusText,
+      analysisConfigsMatchForTest: analysisConfigsMatch,
+      clientPointToSvgForTest: clientPointToSvg,
+      svgPointToClientForTest: svgPointToClient,
+      scrollLeftToRevealForTest: scrollLeftToReveal,
+      chartIndexForPointerForTest: chartIndexForPointer,
     };
   }
 })();

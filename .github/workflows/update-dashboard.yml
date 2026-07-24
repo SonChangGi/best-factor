@@ -1,4 +1,6 @@
 name: Update Best Factor Dashboard
+run-name: >-
+  Best Factor · ${{ github.event_name }} · control=${{ inputs.control_run_id || 'direct' }}
 
 on:
   workflow_dispatch:
@@ -63,6 +65,36 @@ on:
         default: keep
         type: choice
         options: [keep, one_way_notional, portfolio_turnover]
+      allow_fallback:
+        description: "Explicitly allow the liquidity-only fallback when market-cap metadata is insufficient"
+        required: true
+        default: false
+        type: boolean
+      control_run_id:
+        description: "Optional control API run identifier for exact correlation; blank for direct/manual runs"
+        required: false
+        default: ""
+        type: string
+      control_input_schema_version:
+        description: "Control API input schema version; required with control_run_id"
+        required: false
+        default: ""
+        type: string
+      control_input_schema_hash:
+        description: "Control API input schema SHA-256; required with control_run_id"
+        required: false
+        default: ""
+        type: string
+      control_config_hash_algorithm:
+        description: "Control API canonical configuration hash algorithm; required with control_run_id"
+        required: false
+        default: ""
+        type: string
+      control_config_hash:
+        description: "Control API requested configuration hash; required with control_run_id"
+        required: false
+        default: ""
+        type: string
   schedule:
     # 07:00 KST Tue-Sat: staggered primary refresh after the prior US regular session.
     - cron: "0 22 * * 1-5"
@@ -138,6 +170,18 @@ jobs:
       - name: Checkout isolated best-factor repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
+      - name: Record control run correlation
+        env:
+          CONTROL_RUN_ID: ${{ inputs.control_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${CONTROL_RUN_ID}" && ! "${CONTROL_RUN_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9_.:-]{7,199}$ ]]; then
+            echo "control_run_id has an invalid format." >&2
+            exit 1
+          fi
+          echo "control correlation: control_run_id=${CONTROL_RUN_ID:-direct} github_run_id=${GITHUB_RUN_ID}"
+
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
@@ -158,6 +202,10 @@ jobs:
       - name: Run network-free regression tests
         if: steps.freshness.outputs.should_update == 'true'
         run: PYTHONPATH=src python -m unittest discover -s tests
+
+      - name: Run frontend control contract tests
+        if: steps.freshness.outputs.should_update == 'true'
+        run: node --test tests/common_design_v1.test.mjs tests/control_api.test.mjs
 
       - name: Run syntax/static import checks
         if: steps.freshness.outputs.should_update == 'true'
@@ -185,6 +233,75 @@ jobs:
             --envelope-output /tmp/best-factor-effective-config.json \
             --values-output /tmp/best-factor-effective-config.values
 
+      - name: Validate control API run binding
+        if: steps.freshness.outputs.should_update == 'true' && inputs.control_run_id != ''
+        env:
+          CONTROL_RUN_ID: ${{ inputs.control_run_id }}
+          CONTROL_INPUT_SCHEMA_VERSION: ${{ inputs.control_input_schema_version }}
+          CONTROL_INPUT_SCHEMA_HASH: ${{ inputs.control_input_schema_hash }}
+          CONTROL_CONFIG_HASH_ALGORITHM: ${{ inputs.control_config_hash_algorithm }}
+          CONTROL_CONFIG_HASH: ${{ inputs.control_config_hash }}
+          ALLOW_FALLBACK: ${{ inputs.allow_fallback }}
+          CONTROL_ANALYSIS_PERIOD: ${{ inputs.period }}
+          CONTROL_ANALYSIS_REBALANCE: ${{ inputs.rebalance }}
+          CONTROL_ANALYSIS_TOP_N: ${{ inputs.top_n }}
+          CONTROL_ANALYSIS_WEIGHTING: ${{ inputs.weighting }}
+          CONTROL_ANALYSIS_FACTOR_PRESET: ${{ inputs.factor_preset }}
+          CONTROL_ANALYSIS_FACTOR_ALLOWLIST: ${{ inputs.factor_allowlist }}
+          CONTROL_ANALYSIS_MIN_MARKET_CAP: ${{ inputs.min_market_cap }}
+          CONTROL_ANALYSIS_MIN_DOLLAR_VOLUME: ${{ inputs.min_dollar_volume }}
+          CONTROL_ANALYSIS_ELIGIBILITY_ADV_WINDOW: ${{ inputs.eligibility_adv_window }}
+          CONTROL_ANALYSIS_TRANSACTION_COST_BPS: ${{ inputs.transaction_cost_bps }}
+          CONTROL_ANALYSIS_TRANSACTION_COST_MODEL: ${{ inputs.transaction_cost_model }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${ALLOW_FALLBACK}" == "true" ]]; then
+            echo "Control API runs must keep allow_fallback=false." >&2
+            exit 1
+          fi
+          if [[ "${CONTROL_INPUT_SCHEMA_VERSION}" != "best-factor/v1" ]]; then
+            echo "Control API input schema version mismatch." >&2
+            exit 1
+          fi
+          if [[ ! "${CONTROL_INPUT_SCHEMA_HASH}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Control API input schema hash must be a lowercase SHA-256." >&2
+            exit 1
+          fi
+          if [[ "${CONTROL_CONFIG_HASH_ALGORITHM}" != "best-factor-python-json-v1" ]]; then
+            echo "Control API config hash algorithm mismatch." >&2
+            exit 1
+          fi
+          if [[ ! "${CONTROL_CONFIG_HASH}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Control API config hash must be a lowercase SHA-256." >&2
+            exit 1
+          fi
+          CONTROL_ANALYSIS_VALUES=(
+            "${CONTROL_ANALYSIS_PERIOD}"
+            "${CONTROL_ANALYSIS_REBALANCE}"
+            "${CONTROL_ANALYSIS_TOP_N}"
+            "${CONTROL_ANALYSIS_WEIGHTING}"
+            "${CONTROL_ANALYSIS_FACTOR_PRESET}"
+            "${CONTROL_ANALYSIS_FACTOR_ALLOWLIST}"
+            "${CONTROL_ANALYSIS_MIN_MARKET_CAP}"
+            "${CONTROL_ANALYSIS_MIN_DOLLAR_VOLUME}"
+            "${CONTROL_ANALYSIS_ELIGIBILITY_ADV_WINDOW}"
+            "${CONTROL_ANALYSIS_TRANSACTION_COST_BPS}"
+            "${CONTROL_ANALYSIS_TRANSACTION_COST_MODEL}"
+          )
+          for value in "${CONTROL_ANALYSIS_VALUES[@]}"; do
+            if [[ -z "${value}" || "${value}" == "keep" ]]; then
+              echo "Control API dispatch must provide every analytical input explicitly." >&2
+              exit 1
+            fi
+          done
+          EFFECTIVE_CONFIG_HASH="$(python -c 'import json; print(json.load(open("/tmp/best-factor-effective-config.json", encoding="utf-8"))["config_hash"])')"
+          if [[ "${EFFECTIVE_CONFIG_HASH}" != "${CONTROL_CONFIG_HASH}" ]]; then
+            echo "Control API config hash does not match the effective 11-input configuration." >&2
+            exit 1
+          fi
+          echo "control binding validated: control_run_id=${CONTROL_RUN_ID} input_schema_version=${CONTROL_INPUT_SCHEMA_VERSION} config_hash_algorithm=${CONTROL_CONFIG_HASH_ALGORITHM}"
+
       - name: Build validated Nasdaq Trader stock universe
         if: steps.freshness.outputs.should_update == 'true'
         run: python .github/scripts/build_live_universe.py .github/best-factor-dashboard-tickers.txt /tmp/best-factor-universe.csv --metadata-json /tmp/best-factor-universe-metadata.json --min-symbols 1700
@@ -192,8 +309,12 @@ jobs:
       - name: Generate latest dashboard JSON
         if: steps.freshness.outputs.should_update == 'true'
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ALLOW_FALLBACK: ${{ github.event_name == 'schedule' || inputs.allow_fallback }}
         run: |
           set -euo pipefail
+          echo "fallback policy: event=${EVENT_NAME} allow_fallback=${ALLOW_FALLBACK}"
           mapfile -d '' -t CONFIG_VALUES < /tmp/best-factor-effective-config.values
           if (( ${#CONFIG_VALUES[@]} != 11 )); then
             echo "Expected 11 normalized analysis settings, received ${#CONFIG_VALUES[@]}." >&2
@@ -280,8 +401,12 @@ jobs:
             DATA_SCOPE=live_resilient_current_market_cap_and_liquidity_screen_actions
             python -m best_factor.cli run "${COMMON_ARGS[@]}" --min-market-cap "${MIN_MARKET_CAP}"
           else
+            if [[ "${ALLOW_FALLBACK}" != "true" ]]; then
+              echo "Market-cap metadata preflight found only ${MARKET_CAP_ELIGIBLE_COUNT} eligible names; fallback is disabled, so no result will be published." >&2
+              exit 1
+            fi
             DATA_SCOPE=live_resilient_current_common_stock_liquidity_screen_actions
-            echo "Market-cap metadata preflight found only ${MARKET_CAP_ELIGIBLE_COUNT} eligible names; running liquidity-only fallback." >&2
+            echo "Market-cap metadata preflight found only ${MARKET_CAP_ELIGIBLE_COUNT} eligible names; explicitly allowed liquidity-only fallback is running." >&2
             rm -rf /tmp/best-factor-live-run
             python -m best_factor.cli run "${COMMON_ARGS[@]}" \
               --market-cap-filter-attempted \
@@ -300,11 +425,13 @@ jobs:
 
       - name: Commit refreshed dashboard data
         if: steps.freshness.outputs.should_update == 'true'
+        id: data_commit
         shell: bash
         run: |
           set -euo pipefail
           if git diff --quiet -- docs/data/latest-results.json docs/data/summary.json docs/data/dashboard-config.json .github/best-factor-dashboard-config.json; then
             echo "No dashboard data or analysis-setting changes to commit."
+            echo "commit_sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
           git config user.name "github-actions[bot]"
@@ -325,6 +452,7 @@ jobs:
           MSG
           git commit -F /tmp/best-factor-refresh-commit.txt
           git push origin HEAD:main
+          echo "commit_sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
       - name: Archive generated run artifacts
         if: steps.freshness.outputs.should_update == 'true'
@@ -359,3 +487,271 @@ jobs:
         env:
           NODE_OPTIONS: --no-deprecation
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+
+      - name: Verify immutable control-run artifact
+        if: steps.freshness.outputs.should_update == 'true' && inputs.control_run_id != ''
+        id: control_readback
+        env:
+          DATA_COMMIT_SHA: ${{ steps.data_commit.outputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${DATA_COMMIT_SHA}" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "Data commit SHA is missing or invalid." >&2
+            exit 1
+          fi
+          PUBLIC_RESULT_URL="https://raw.githubusercontent.com/SonChangGi/best-factor/${DATA_COMMIT_SHA}/docs/data/latest-results.json"
+          MATCHED=false
+          for attempt in {1..12}; do
+            if curl \
+              --fail \
+              --silent \
+              --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --output /tmp/best-factor-public-latest-results.json \
+              "${PUBLIC_RESULT_URL}" \
+              && cmp --silent docs/data/latest-results.json /tmp/best-factor-public-latest-results.json; then
+              MATCHED=true
+              break
+            fi
+            echo "immutable result readback is not byte-identical yet (attempt ${attempt}/12)"
+            sleep 5
+          done
+          if [[ "${MATCHED}" != "true" ]]; then
+            echo "Immutable committed latest-results.json did not become byte-identical to the generated artifact." >&2
+            exit 1
+          fi
+          echo "artifact_url=${PUBLIC_RESULT_URL}" >> "${GITHUB_OUTPUT}"
+          echo "immutable control artifact readback verified"
+
+      - name: Publish control-run result manifest
+        if: steps.freshness.outputs.should_update == 'true' && inputs.control_run_id != ''
+        env:
+          CONTROL_RUN_ID: ${{ inputs.control_run_id }}
+          CONTROL_INPUT_SCHEMA_VERSION: ${{ inputs.control_input_schema_version }}
+          CONTROL_INPUT_SCHEMA_HASH: ${{ inputs.control_input_schema_hash }}
+          CONTROL_CONFIG_HASH_ALGORITHM: ${{ inputs.control_config_hash_algorithm }}
+          CONTROL_CONFIG_HASH: ${{ inputs.control_config_hash }}
+          ARTIFACT_URL: ${{ steps.control_readback.outputs.artifact_url }}
+          CODE_VERSION: ${{ github.sha }}
+          QUANT_CONTROL_CALLBACK_URL: ${{ secrets.QUANT_CONTROL_CALLBACK_URL }}
+          QUANT_CONTROL_WORKER_CALLBACK_TOKEN: ${{ secrets.QUANT_CONTROL_WORKER_CALLBACK_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${QUANT_CONTROL_CALLBACK_URL}" || -z "${QUANT_CONTROL_WORKER_CALLBACK_TOKEN}" ]]; then
+            echo "Control callback secrets are required for a control_run_id execution." >&2
+            exit 1
+          fi
+          if [[ ! "${QUANT_CONTROL_CALLBACK_URL}" =~ ^https:// ]]; then
+            echo "Control callback URL must use HTTPS." >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          callback_base = urlsplit(os.environ["QUANT_CONTROL_CALLBACK_URL"])
+          if (
+              callback_base.scheme != "https"
+              or not callback_base.hostname
+              or callback_base.username
+              or callback_base.password
+              or callback_base.query
+              or callback_base.fragment
+          ):
+              raise SystemExit("Control callback URL must be an HTTPS base without credentials, query, or fragment")
+          result_path = Path("/tmp/best-factor-public-latest-results.json")
+          result_bytes = result_path.read_bytes()
+          payload = json.loads(result_bytes)
+          config_envelope = json.loads(Path("/tmp/best-factor-effective-config.json").read_text(encoding="utf-8"))
+          summary = payload.get("summary")
+          metadata = payload.get("metadata")
+          if not isinstance(summary, dict):
+              raise SystemExit("latest-results summary must be an object")
+          if not isinstance(metadata, dict):
+              metadata = {}
+          summary_allowlist = (
+              "best_composite_score",
+              "best_factor",
+              "best_factor_holdout_cagr",
+              "best_factor_holdout_rank",
+              "best_factor_holdout_sharpe",
+              "data_end_date",
+              "effective_factor_count",
+              "factor_library_size",
+              "factor_preset",
+              "fetched_at",
+              "holding_count",
+              "interpretation_label",
+              "provider",
+              "ranking_count",
+              "selected_factor_count",
+              "source_hash",
+              "tested_factor_count",
+              "universe_as_of_date",
+          )
+          bounded_payload = {
+              "schema_version": payload.get("schema_version"),
+              "generated_at": payload.get("generated_at"),
+              "summary": {
+                  key: summary[key]
+                  for key in summary_allowlist
+                  if key in summary
+              },
+          }
+          bounded_bytes = json.dumps(
+              bounded_payload,
+              ensure_ascii=False,
+              allow_nan=False,
+              separators=(",", ":"),
+              sort_keys=True,
+          ).encode("utf-8")
+          if len(bounded_bytes) > 64 * 1024:
+              raise SystemExit("Best Factor control summary exceeds 64 KiB")
+          source = payload.get("data_scope")
+          source_hash = summary.get("source_hash") or metadata.get("source_hash")
+          data_as_of = summary.get("data_end_date") or metadata.get("data_end_date")
+          calculated_at = payload.get("generated_at")
+          if not isinstance(source, str) or not source:
+              raise SystemExit("latest-results data_scope is required")
+          if not isinstance(source_hash, str) or not (8 <= len(source_hash) <= 128) or any(
+              char not in "0123456789abcdefABCDEF" for char in source_hash
+          ):
+              raise SystemExit("latest-results source hash must be an 8-128 character hexadecimal digest")
+          if not isinstance(data_as_of, str) or not data_as_of:
+              raise SystemExit("latest-results data end date is required")
+          if not isinstance(calculated_at, str) or not calculated_at:
+              raise SystemExit("latest-results generated_at is required")
+          effective_config_hash = config_envelope.get("config_hash")
+          if effective_config_hash != os.environ["CONTROL_CONFIG_HASH"]:
+              raise SystemExit("effective config hash drifted after control binding validation")
+          manifest = {
+              "binding": {
+                  "projectId": "best-factor",
+                  "runId": os.environ["CONTROL_RUN_ID"],
+                  "inputSchemaVersion": os.environ["CONTROL_INPUT_SCHEMA_VERSION"],
+                  "inputSchemaHash": os.environ["CONTROL_INPUT_SCHEMA_HASH"],
+                  "configHashAlgorithm": os.environ["CONTROL_CONFIG_HASH_ALGORITHM"],
+                  "configHash": os.environ["CONTROL_CONFIG_HASH"],
+              },
+              "requestedInputs": config_envelope["config"],
+              "normalizedInputs": config_envelope["config"],
+              "effectiveConfigHash": effective_config_hash,
+              "effectiveInputs": config_envelope["config"],
+              "ignoredInputs": [],
+              "fallbacks": [],
+              "fallbackUsed": False,
+              "fallbackReason": None,
+              "dataAsOf": data_as_of,
+              "calculatedAt": calculated_at,
+              "codeVersion": os.environ["CODE_VERSION"],
+              "dataIdentity": {
+                  "source": source,
+                  "sourceHash": source_hash,
+                  "dataAsOf": data_as_of,
+              },
+              "artifact": {
+                  "url": os.environ["ARTIFACT_URL"],
+                  "sha256": hashlib.sha256(result_bytes).hexdigest(),
+                  "byteSize": len(result_bytes),
+                  "contractVersion": "best-factor/latest-results/v1",
+              },
+              "payload": bounded_payload,
+          }
+          Path("/tmp/best-factor-control-result-manifest.json").write_text(
+              json.dumps(manifest, ensure_ascii=False, separators=(",", ":")),
+              encoding="utf-8",
+          )
+          PY
+          CALLBACK_ENDPOINT="${QUANT_CONTROL_CALLBACK_URL%/}/v1/internal/runs/${CONTROL_RUN_ID}/result-manifest"
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --request POST \
+            --header "Authorization: Bearer ${QUANT_CONTROL_WORKER_CALLBACK_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data-binary @/tmp/best-factor-control-result-manifest.json \
+            --output /tmp/best-factor-control-callback-response.txt \
+            "${CALLBACK_ENDPOINT}"
+          echo "control result manifest accepted"
+
+      - name: Report controlled-run failure
+        if: ${{ always() && failure() && inputs.control_run_id != '' }}
+        continue-on-error: true
+        env:
+          CONTROL_RUN_ID: ${{ inputs.control_run_id }}
+          CONTROL_INPUT_SCHEMA_VERSION: ${{ inputs.control_input_schema_version }}
+          CONTROL_INPUT_SCHEMA_HASH: ${{ inputs.control_input_schema_hash }}
+          CONTROL_CONFIG_HASH_ALGORITHM: ${{ inputs.control_config_hash_algorithm }}
+          CONTROL_CONFIG_HASH: ${{ inputs.control_config_hash }}
+          QUANT_CONTROL_CALLBACK_URL: ${{ secrets.QUANT_CONTROL_CALLBACK_URL }}
+          QUANT_CONTROL_WORKER_CALLBACK_TOKEN: ${{ secrets.QUANT_CONTROL_WORKER_CALLBACK_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${QUANT_CONTROL_CALLBACK_URL}" || -z "${QUANT_CONTROL_WORKER_CALLBACK_TOKEN}" ]]; then
+            echo "Control callback secrets are unavailable; the API timeout reaper will close this run." >&2
+            exit 1
+          fi
+          if [[ ! "${QUANT_CONTROL_CALLBACK_URL}" =~ ^https:// ]]; then
+            echo "Control callback URL must use HTTPS." >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          callback_base = urlsplit(os.environ["QUANT_CONTROL_CALLBACK_URL"])
+          if (
+              callback_base.scheme != "https"
+              or not callback_base.hostname
+              or callback_base.username
+              or callback_base.password
+              or callback_base.query
+              or callback_base.fragment
+          ):
+              raise SystemExit("Control callback URL must be an HTTPS base without credentials, query, or fragment")
+          payload = {
+              "binding": {
+                  "projectId": "best-factor",
+                  "runId": os.environ["CONTROL_RUN_ID"],
+                  "inputSchemaVersion": os.environ["CONTROL_INPUT_SCHEMA_VERSION"],
+                  "inputSchemaHash": os.environ["CONTROL_INPUT_SCHEMA_HASH"],
+                  "configHashAlgorithm": os.environ["CONTROL_CONFIG_HASH_ALGORITHM"],
+                  "configHash": os.environ["CONTROL_CONFIG_HASH"],
+              },
+              "errorCode": "worker_workflow_failed",
+              "errorMessage": "Best Factor controlled GitHub Actions job failed before a verified result was published.",
+              "providerRunId": f"github-actions:{os.environ['CONTROL_RUN_ID']}",
+              "occurredAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+          }
+          Path("/tmp/best-factor-control-failure.json").write_text(
+              json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+              encoding="utf-8",
+          )
+          PY
+          CALLBACK_ENDPOINT="${QUANT_CONTROL_CALLBACK_URL%/}/v1/internal/runs/${CONTROL_RUN_ID}/failure"
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --request POST \
+            --header "Authorization: Bearer ${QUANT_CONTROL_WORKER_CALLBACK_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data-binary @/tmp/best-factor-control-failure.json \
+            --output /tmp/best-factor-control-failure-response.txt \
+            "${CALLBACK_ENDPOINT}"
+          echo "control failure manifest accepted"
