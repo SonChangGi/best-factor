@@ -48,12 +48,16 @@ test('web design v2 keeps results and the primary chart ahead of rerun inputs an
   assert.ok(diagnostics > secondaryResults);
   assert.match(html, /class="controls controls-enhanced viz-controls"[^>]*\sopen>/);
   assert.match(html, /<span class="eyebrow">Display only<\/span>/);
+  assert.doesNotMatch(html, /현재 1위 팩터의 성과, 비교 팩터, 보유 종목을 먼저 보여줍니다/);
   assert.doesNotMatch(html, /class="analysis-settings-disclosure analysis-rerun-disclosure"[^>]*\sopen>/);
   assert.match(html, /class="skip-link"/);
   assert.match(html, /id="comparison-series-controls"/);
   assert.match(html, /id="comparison-date-input"/);
   assert.match(html, /id="comparison-date-observation"/);
   assert.match(html, /id="comparison-value-grid"/);
+  assert.match(html, /id="comparison-chart-help" class="sr-only"/);
+  assert.match(html, /id="comparison-line-chart"[\s\S]*aria-describedby="comparison-chart-help"/);
+  assert.match(html, /id="comparison-line-chart"[\s\S]*aria-keyshortcuts="ArrowLeft ArrowRight Home End"/);
   assert.match(css, /\.controls-grid\s*\{[\s\S]*?align-items:\s*start;/);
   assert.match(css, /\.controls-grid input,\s*\.controls-grid select\s*\{[\s\S]*?height:\s*42px;[\s\S]*?min-height:\s*42px;/);
   assert.match(css, /\.controls-grid \.compare-actions button\s*\{[\s\S]*?height:\s*42px;[\s\S]*?min-height:\s*42px;/);
@@ -81,7 +85,8 @@ test('analysis rerun form exposes canonical inputs while display controls remain
   assert.doesNotMatch(html, /<option value="(?:1y|3y|max)">/);
   assert.match(html, /분석 편입 상한[\s\S]*?id="analysis-top-n"/);
   assert.match(html, /보유 종목 표시 행[\s\S]*?id="topn-input"/);
-  assert.match(app, /저장된 결과 중 최대 \$\{available\}행 · 화면에만 적용/);
+  assert.doesNotMatch(app, /저장된 결과 중 최대 \$\{available\}행 · 화면에만 적용/);
+  assert.doesNotMatch(html, /id="holding-display-help"/);
   assert.match(html, /id="analysis-workflow-command"/);
   assert.match(html, /id="copy-analysis-command"/);
   assert.match(html, /id="reset-analysis-settings"/);
@@ -133,7 +138,7 @@ test('chart date navigation snaps to observations without changing analysis data
   assert.equal(helpers.nearestChartDateForTest(dates, '2025-02-10'), '2025-01-31');
 });
 
-test('chart readout uses the exact or latest prior observation', () => {
+test('chart readout uses only an exact observation and never silently carries values forward', () => {
   const helpers = dashboardHelpers();
   const points = [
     { date: '2025-01-31', equity: 1.0 },
@@ -143,10 +148,76 @@ test('chart readout uses the exact or latest prior observation', () => {
     { ...helpers.chartPointAtDateForTest(points, '2025-02-28') },
     { date: '2025-02-28', equity: 1.1 },
   );
-  assert.deepEqual(
-    { ...helpers.chartPointAtDateForTest(points, '2025-02-15') },
-    { date: '2025-01-31', equity: 1.0 },
-  );
+  assert.equal(helpers.chartPointAtDateForTest(points, '2025-02-15'), null);
+});
+
+test('chart client coordinates use the SVG screen matrix across letterbox and responsive layouts', () => {
+  const helpers = dashboardHelpers();
+  const svg = {
+    createSVGPoint() {
+      return {
+        x: 0,
+        y: 0,
+        matrixTransform(matrix) {
+          return matrix.map(this.x, this.y);
+        },
+      };
+    },
+    getScreenCTM() {
+      return {
+        map(x, y) {
+          return { x: 300 + x * 1.5, y: 40 + y * 1.5 };
+        },
+        inverse() {
+          return {
+            map(x, y) {
+              return { x: (x - 300) / 1.5, y: (y - 40) / 1.5 };
+            },
+          };
+        },
+      };
+    },
+  };
+  for (const svgX of [86, 441, 796]) {
+    const client = helpers.svgPointToClientForTest(svg, svgX, 120);
+    const restored = helpers.clientPointToSvgForTest(svg, client.x, client.y);
+    assert.ok(Math.abs(restored.x - svgX) < 1e-9);
+    assert.ok(Math.abs(restored.y - 120) < 1e-9);
+  }
+  assert.equal(helpers.scrollLeftToRevealForTest({
+    scrollLeft: 0,
+    clientWidth: 390,
+    scrollWidth: 720,
+    targetX: 86,
+  }), 0);
+  assert.equal(helpers.scrollLeftToRevealForTest({
+    scrollLeft: 0,
+    clientWidth: 390,
+    scrollWidth: 720,
+    targetX: 696,
+  }), 330);
+  const pointer = helpers.chartIndexForPointerForTest;
+  const base = {
+    plotLeft: 86,
+    plotWidth: 710,
+    count: 121,
+    hitLeft: 500,
+    hitRight: 1210,
+  };
+  assert.equal(pointer({ ...base, clientX: 502, svgX: 88 }), 0);
+  assert.equal(pointer({ ...base, clientX: 855, svgX: 441 }), 60);
+  assert.equal(pointer({ ...base, clientX: 1208, svgX: 794 }), 120);
+});
+
+test('analysis draft and applied settings are compared without display-only state', () => {
+  const helpers = dashboardHelpers();
+  const applied = helpers.analysisConfigFromPayloadForTest({
+    summary: {},
+    latest_holdings: [],
+    metadata: {},
+  });
+  assert.equal(helpers.analysisConfigsMatchForTest(applied, { ...applied }), true);
+  assert.equal(helpers.analysisConfigsMatchForTest(applied, { ...applied, period: '2y' }), false);
 });
 
 test('analysis command uses canonical safe fields and explicit preset reset sentinel', () => {

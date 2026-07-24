@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "projectId": "best-factor",
+  "rootDir": ".",
+  "targets": [
+    {
+      "id": "rendered-shell",
+      "path": "docs/index.html",
+      "mode": "rendered-html",
+      "extensions": [".html"]
+    }
+  ],
+  "excludePaths": ["node_modules", "coverage"],
+  "roleGates": [],
+  "minDuplicateLength": 28,
+  "retainedVisibleCopy": [],
+  "additionalBannedPatterns": [
+    {
+      "id": "best-page-tour",
+      "description": "Best Factor 결과 구성을 예고하는 문구",
+      "pattern": "현재 1위 팩터의 성과|저장된 결과 중 최대.+화면에만 적용"
+    }
+  ]
+}

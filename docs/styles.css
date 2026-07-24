@@ -74,6 +74,18 @@ html[data-theme="dark"] {
   box-sizing: border-box;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 html {
   max-width: 100%;
   overflow-x: hidden;
@@ -2600,6 +2612,13 @@ footer {
   white-space: nowrap;
 }
 
+.analysis-mode-badge[data-state="draft"],
+.analysis-mode-badge[data-state="invalid"] {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn), transparent 65%);
+  background: var(--warn-soft);
+}
+
 .applied-config {
   padding: 12px;
   border: 1px solid var(--line);
@@ -2810,6 +2829,100 @@ footer {
   border-color: color-mix(in srgb, var(--danger), transparent 35%);
 }
 
+.analysis-api-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.analysis-api-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.analysis-api-heading > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.analysis-api-heading strong {
+  color: var(--ink-strong);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.analysis-api-heading small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.analysis-api-connection {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(190px, 1fr);
+  gap: 10px;
+}
+
+.analysis-api-connection label {
+  min-width: 0;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.analysis-api-card .helper {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.analysis-api-card .helper.is-warning {
+  color: var(--warn);
+}
+
+.analysis-api-card .helper.is-error {
+  color: var(--danger);
+}
+
+.analysis-run-identity {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.analysis-run-identity[hidden] {
+  display: none;
+}
+
+.analysis-run-identity > div {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.analysis-run-identity dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.analysis-run-identity dd {
+  margin: 2px 0 0;
+  color: var(--ink-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
 .analysis-command-card {
   display: grid;
   gap: 8px;
@@ -2918,6 +3031,14 @@ footer {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .analysis-api-connection {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-run-identity {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .analysis-input-wide {
     grid-column: 1 / -1;
   }
@@ -2931,6 +3052,15 @@ footer {
 
   .analysis-mode-badge {
     justify-self: start;
+  }
+
+  .analysis-api-heading {
+    display: grid;
+    gap: 8px;
+  }
+
+  .analysis-run-identity {
+    grid-template-columns: 1fr;
   }
 
   .applied-config-heading {
