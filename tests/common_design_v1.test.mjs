@@ -300,7 +300,7 @@ test('applied settings require an exact result binding and market-cap zero stays
   );
   assert.match(
     helpers.marketCapDisplayForTest({ min_market_cap: 10000000000 }, { market_cap_filter_effective: false }),
-    /요청 \$10B · 이번 실행 미적용/,
+    /^요청 \$10(?:\.0)?B · 이번 실행 미적용$/,
   );
   assert.equal(helpers.bindingStatusTextForTest('mismatch'), '설정 연결 확인 필요 · 결과 불일치');
   assert.equal(helpers.bindingStatusTextForTest('missing'), '설정 연결 확인 필요 · 설정 없음');
