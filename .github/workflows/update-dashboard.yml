@@ -2,7 +2,67 @@ name: Update Best Factor Dashboard
 
 on:
   workflow_dispatch:
-    # Manual dispatch remains available for reviewed reruns.
+    inputs:
+      period:
+        description: "Price history (keep preserves the saved setting)"
+        required: true
+        default: keep
+        type: choice
+        options: [keep, 2y, 5y, 10y]
+      rebalance:
+        description: "Portfolio rebalance frequency"
+        required: true
+        default: keep
+        type: choice
+        options: [keep, M, W]
+      top_n:
+        description: "Portfolio holding-count cap; blank keeps the saved setting"
+        required: false
+        default: ""
+        type: string
+      weighting:
+        description: "Portfolio weighting method"
+        required: true
+        default: keep
+        type: choice
+        options: [keep, equal, score]
+      factor_preset:
+        description: "Factor library preset; allowlist still overrides it"
+        required: true
+        default: keep
+        type: choice
+        options: [keep, core, zoo]
+      factor_allowlist:
+        description: "Comma/space-separated factor names; blank=keep, __preset__=clear"
+        required: false
+        default: ""
+        type: string
+      min_market_cap:
+        description: "Minimum market cap in USD; blank keeps the saved setting"
+        required: false
+        default: ""
+        type: string
+      min_dollar_volume:
+        description: "Minimum average dollar volume; blank keeps the saved setting"
+        required: false
+        default: ""
+        type: string
+      eligibility_adv_window:
+        description: "Trailing sessions for average dollar volume; blank=keep"
+        required: false
+        default: ""
+        type: string
+      transaction_cost_bps:
+        description: "Transaction cost in basis points; blank keeps the saved setting"
+        required: false
+        default: ""
+        type: string
+      transaction_cost_model:
+        description: "Transaction-cost calculation model"
+        required: true
+        default: keep
+        type: choice
+        options: [keep, one_way_notional, portfolio_turnover]
   schedule:
     # 07:00 KST Tue-Sat: staggered primary refresh after the prior US regular session.
     - cron: "0 22 * * 1-5"
@@ -18,9 +78,11 @@ on:
       - "tests/**"
       - "pyproject.toml"
       - ".github/workflows/update-dashboard.yml"
+      - ".github/best-factor-dashboard-config.json"
       - ".github/best-factor-dashboard-tickers.txt"
       - ".github/scripts/build_live_universe.py"
       - ".github/scripts/check_dashboard_freshness.py"
+      - ".github/scripts/dashboard_config.py"
       - ".github/scripts/refresh_dashboard_tickers.py"
 
 permissions:
@@ -101,6 +163,28 @@ jobs:
         if: steps.freshness.outputs.should_update == 'true'
         run: PYTHONPATH=src python -m compileall -q src tests .github/scripts
 
+      - name: Resolve and validate persisted analysis settings
+        if: steps.freshness.outputs.should_update == 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PERIOD: ${{ inputs.period }}
+          INPUT_REBALANCE: ${{ inputs.rebalance }}
+          INPUT_TOP_N: ${{ inputs.top_n }}
+          INPUT_WEIGHTING: ${{ inputs.weighting }}
+          INPUT_FACTOR_PRESET: ${{ inputs.factor_preset }}
+          INPUT_FACTOR_ALLOWLIST: ${{ inputs.factor_allowlist }}
+          INPUT_MIN_MARKET_CAP: ${{ inputs.min_market_cap }}
+          INPUT_MIN_DOLLAR_VOLUME: ${{ inputs.min_dollar_volume }}
+          INPUT_ELIGIBILITY_ADV_WINDOW: ${{ inputs.eligibility_adv_window }}
+          INPUT_TRANSACTION_COST_BPS: ${{ inputs.transaction_cost_bps }}
+          INPUT_TRANSACTION_COST_MODEL: ${{ inputs.transaction_cost_model }}
+        run: |
+          PYTHONPATH=src python .github/scripts/dashboard_config.py \
+            --persisted .github/best-factor-dashboard-config.json \
+            --event-name "${EVENT_NAME}" \
+            --envelope-output /tmp/best-factor-effective-config.json \
+            --values-output /tmp/best-factor-effective-config.values
+
       - name: Build validated Nasdaq Trader stock universe
         if: steps.freshness.outputs.should_update == 'true'
         run: python .github/scripts/build_live_universe.py .github/best-factor-dashboard-tickers.txt /tmp/best-factor-universe.csv --metadata-json /tmp/best-factor-universe-metadata.json --min-symbols 1700
@@ -110,16 +194,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TOP_N=20
-          MIN_MARKET_CAP=10000000000
+          mapfile -d '' -t CONFIG_VALUES < /tmp/best-factor-effective-config.values
+          if (( ${#CONFIG_VALUES[@]} != 11 )); then
+            echo "Expected 11 normalized analysis settings, received ${#CONFIG_VALUES[@]}." >&2
+            exit 1
+          fi
+          PERIOD="${CONFIG_VALUES[0]}"
+          REBALANCE="${CONFIG_VALUES[1]}"
+          TOP_N="${CONFIG_VALUES[2]}"
+          WEIGHTING="${CONFIG_VALUES[3]}"
+          FACTOR_PRESET="${CONFIG_VALUES[4]}"
+          FACTOR_ALLOWLIST="${CONFIG_VALUES[5]}"
+          MIN_MARKET_CAP="${CONFIG_VALUES[6]}"
+          MIN_DOLLAR_VOLUME="${CONFIG_VALUES[7]}"
+          ELIGIBILITY_ADV_WINDOW="${CONFIG_VALUES[8]}"
+          TRANSACTION_COST_BPS="${CONFIG_VALUES[9]}"
+          TRANSACTION_COST_MODEL="${CONFIG_VALUES[10]}"
           MIN_MARKET_CAP_NAMES=20
           MIN_PRICE_TICKERS=1600
           MIN_PRICE_COVERAGE_RATIO=0.90
           MIN_LATEST_DATA_COVERAGE_RATIO=0.90
           MIN_FACTOR_ELIGIBLE_TICKERS=1100
           MIN_HISTORY_OBSERVATIONS=252
-          ELIGIBILITY_ADV_WINDOW=63
           PRICE_CHUNK_SIZE=100
+          FACTOR_ARGS=(--factor-preset "${FACTOR_PRESET}")
+          if [[ -n "${FACTOR_ALLOWLIST}" ]]; then
+            IFS=',' read -r -a FACTOR_NAMES <<< "${FACTOR_ALLOWLIST}"
+            FACTOR_ARGS+=(--factors "${FACTOR_NAMES[@]}")
+          fi
           TICKERS=($(python - <<'PY'
           import csv
           with open("/tmp/best-factor-universe.csv", newline="", encoding="utf-8") as fh:
@@ -130,7 +232,7 @@ jobs:
           COMMON_ARGS=(
             --provider yfinance_yahoo_chart
             --tickers "${TICKERS[@]}"
-            --period 5y
+            --period "${PERIOD}"
             --price-chunk-size "${PRICE_CHUNK_SIZE}"
             --min-price-tickers "${MIN_PRICE_TICKERS}"
             --min-price-coverage-ratio "${MIN_PRICE_COVERAGE_RATIO}"
@@ -141,14 +243,14 @@ jobs:
             --skip-factor-scores-csv
             --universe-metadata-file /tmp/best-factor-universe-metadata.json
             --output-dir /tmp/best-factor-live-run
-            --rebalance M
+            --rebalance "${REBALANCE}"
             --top-n "${TOP_N}"
-            --weighting score
-            --factor-preset zoo
+            --weighting "${WEIGHTING}"
+            "${FACTOR_ARGS[@]}"
             --benchmark-tickers '^IXIC' ONEQ QQQ
-            --min-dollar-volume 50000000
-            --transaction-cost-bps 5
-            --transaction-cost-model one_way_notional
+            --min-dollar-volume "${MIN_DOLLAR_VOLUME}"
+            --transaction-cost-bps "${TRANSACTION_COST_BPS}"
+            --transaction-cost-model "${TRANSACTION_COST_MODEL}"
             --universe-file /tmp/best-factor-universe.csv
           )
           export MIN_MARKET_CAP
@@ -171,7 +273,10 @@ jobs:
           PY
           )"
           echo "market-cap eligible names: ${MARKET_CAP_ELIGIBLE_COUNT}/${#TICKERS[@]}"
-          if (( MARKET_CAP_ELIGIBLE_COUNT >= MIN_MARKET_CAP_NAMES )); then
+          if [[ "${MIN_MARKET_CAP}" == "0.0" ]]; then
+            DATA_SCOPE=live_resilient_current_common_stock_liquidity_screen_actions
+            python -m best_factor.cli run "${COMMON_ARGS[@]}"
+          elif (( MARKET_CAP_ELIGIBLE_COUNT >= MIN_MARKET_CAP_NAMES )); then
             DATA_SCOPE=live_resilient_current_market_cap_and_liquidity_screen_actions
             python -m best_factor.cli run "${COMMON_ARGS[@]}" --min-market-cap "${MIN_MARKET_CAP}"
           else
@@ -186,19 +291,25 @@ jobs:
             --run-dir /tmp/best-factor-live-run \
             --output-file docs/data/latest-results.json \
             --data-scope "${DATA_SCOPE}"
+          PYTHONPATH=src python .github/scripts/dashboard_config.py \
+            --mode publish \
+            --persisted /tmp/best-factor-effective-config.json \
+            --result-file docs/data/latest-results.json \
+            --public-output docs/data/dashboard-config.json
+          cp /tmp/best-factor-effective-config.json .github/best-factor-dashboard-config.json
 
       - name: Commit refreshed dashboard data
         if: steps.freshness.outputs.should_update == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- docs/data/latest-results.json docs/data/summary.json; then
-            echo "No dashboard data changes to commit."
+          if git diff --quiet -- docs/data/latest-results.json docs/data/summary.json docs/data/dashboard-config.json .github/best-factor-dashboard-config.json; then
+            echo "No dashboard data or analysis-setting changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/data/latest-results.json docs/data/summary.json
+          git add docs/data/latest-results.json docs/data/summary.json docs/data/dashboard-config.json .github/best-factor-dashboard-config.json
           cat > /tmp/best-factor-refresh-commit.txt <<'MSG'
           Keep Best Factor public data synchronized
 
@@ -229,6 +340,8 @@ jobs:
             /tmp/best-factor-universe-metadata.json
             docs/data/latest-results.json
             docs/data/summary.json
+            docs/data/dashboard-config.json
+            .github/best-factor-dashboard-config.json
 
       - name: Configure GitHub Pages
         if: steps.freshness.outputs.should_update == 'true'

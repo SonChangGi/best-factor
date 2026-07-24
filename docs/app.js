@@ -2,17 +2,36 @@
   'use strict';
 
   const DATA_URL = 'data/latest-results.json';
+  const ANALYSIS_CONFIG_URL = 'data/dashboard-config.json';
   const REPO_OWNER = 'SonChangGi';
   const REPO_NAME = 'best-factor';
   const WORKFLOW_FILE = 'update-dashboard.yml';
   const WORKFLOW_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_FILE}`;
   const WORKFLOW_COMMAND = `gh workflow run ${WORKFLOW_FILE} --repo ${REPO_OWNER}/${REPO_NAME} --ref main`;
+  const ANALYSIS_INPUTS = [
+    { key: 'period', selector: '#analysis-period', type: 'enum', allowed: ['2y', '5y', '10y'], fallback: '5y' },
+    { key: 'rebalance', selector: '#analysis-rebalance', type: 'enum', allowed: ['M', 'W'], fallback: 'M' },
+    { key: 'top_n', selector: '#analysis-top-n', type: 'integer', min: 1, max: 100, fallback: 20 },
+    { key: 'weighting', selector: '#analysis-weighting', type: 'enum', allowed: ['score', 'equal'], fallback: 'score' },
+    { key: 'factor_preset', selector: '#analysis-factor-preset', type: 'enum', allowed: ['zoo', 'core'], fallback: 'zoo' },
+    { key: 'factor_allowlist', selector: '#analysis-factor-allowlist', type: 'factor_allowlist', fallback: '' },
+    { key: 'min_market_cap', selector: '#analysis-min-market-cap', type: 'number', min: 0, max: 1e15, fallback: 10000000000 },
+    { key: 'min_dollar_volume', selector: '#analysis-min-dollar-volume', type: 'number', min: 0, max: 1e15, fallback: 50000000 },
+    { key: 'eligibility_adv_window', selector: '#analysis-adv-window', type: 'integer', min: 5, max: 252, fallback: 63 },
+    { key: 'transaction_cost_bps', selector: '#analysis-transaction-cost', type: 'number', min: 0, max: 1000, fallback: 5 },
+    { key: 'transaction_cost_model', selector: '#analysis-cost-model', type: 'enum', allowed: ['one_way_notional', 'portfolio_turnover'], fallback: 'one_way_notional' },
+  ];
+  const BOOTSTRAP_ANALYSIS_CONFIG = Object.freeze(Object.fromEntries(
+    ANALYSIS_INPUTS.map(({ key, fallback }) => [key, fallback])
+  ));
   const THEME_STORAGE_KEY = 'quant-research-theme';
   const LEGACY_THEME_STORAGE_KEYS = [
     'best-factor-theme',
     'quant-dashboard-theme',
     'quant-calm-theme',
     'dram-price-theme',
+    'etf-tracking-theme',
+    'sox-theme',
     'momentum-factor-theme',
   ];
   const UPDATE_AUTOMATION_DEFAULT = {
@@ -49,6 +68,10 @@
     topN: RANKING_DEFAULT_TOP,
     filter: '',
     selectedFactors: new Set(),
+    analysisDefaults: null,
+    analysisConfigSource: 'bootstrap',
+    analysisConfigHash: '',
+    analysisConfigBindingStatus: 'checking',
     comparisonChart: {
       pinnedSeriesKey: 'best',
       previewSeriesKey: null,
@@ -61,9 +84,20 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     bindThemeToggle();
+    revealCurrentNavItem();
     bindControls();
     loadDashboard();
   });
+
+  function revealCurrentNavItem() {
+    const active = document.querySelector('.site-nav-links [aria-current="page"]');
+    const rail = active?.closest?.('.site-nav-links');
+    if (!active || !rail) return;
+    window.requestAnimationFrame?.(() => {
+      if (rail.scrollWidth <= rail.clientWidth) return;
+      rail.scrollLeft = Math.max(0, active.offsetLeft - (rail.clientWidth - active.offsetWidth) / 2);
+    });
+  }
 
   function storedTheme() {
     try {
@@ -155,6 +189,11 @@
     const manualUpdateLink = q('#manual-update-link');
     const workflowCommand = q('#workflow-command');
     const copyButton = q('#copy-command');
+    const analysisForm = q('#analysis-settings-form');
+    const analysisCopyButton = q('#copy-analysis-command');
+    const analysisResetButton = q('#reset-analysis-settings');
+    const analysisWorkflowLink = q('#analysis-workflow-link');
+    const heroHoldingsLink = q('#hero-holdings-link');
 
     if (sortSelect) {
       sortSelect.addEventListener('change', (event) => {
@@ -164,7 +203,9 @@
     }
     if (topInput) {
       topInput.addEventListener('input', (event) => {
-        state.topN = Math.max(1, Math.min(50, Number(event.target.value) || RANKING_DEFAULT_TOP));
+        const maxRows = maxDisplayHoldings(state.payload);
+        state.topN = Math.max(1, Math.min(maxRows, Number(event.target.value) || Math.min(RANKING_DEFAULT_TOP, maxRows)));
+        event.target.value = String(state.topN);
         renderAll();
       });
     }
@@ -190,6 +231,24 @@
     if (manualUpdateLink) manualUpdateLink.href = WORKFLOW_URL;
     if (workflowCommand) workflowCommand.textContent = WORKFLOW_COMMAND;
     if (copyButton) copyButton.addEventListener('click', copyWorkflowCommand);
+    if (analysisWorkflowLink) analysisWorkflowLink.href = WORKFLOW_URL;
+    if (analysisForm) {
+      analysisForm.addEventListener('input', updateAnalysisWorkflowCommand);
+      analysisForm.addEventListener('change', updateAnalysisWorkflowCommand);
+      analysisForm.addEventListener('submit', (event) => event.preventDefault());
+    }
+    if (analysisCopyButton) analysisCopyButton.addEventListener('click', copyAnalysisWorkflowCommand);
+    if (analysisResetButton) analysisResetButton.addEventListener('click', resetAnalysisSettings);
+    if (heroHoldingsLink) {
+      heroHoldingsLink.addEventListener('click', (event) => {
+        const disclosure = q('#secondary-results');
+        const target = q('#current-output-title');
+        if (!disclosure || !target) return;
+        event.preventDefault();
+        disclosure.open = true;
+        window.requestAnimationFrame?.(() => target.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
+      });
+    }
   }
 
   async function copyWorkflowCommand() {
@@ -203,6 +262,276 @@
     }
   }
 
+  async function copyAnalysisWorkflowCommand() {
+    const status = q('#analysis-command-status');
+    try {
+      const config = readAnalysisSettingsForm();
+      const command = buildAnalysisWorkflowCommand(config);
+      if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('clipboard unavailable');
+      await navigator.clipboard.writeText(command);
+      if (status) status.textContent = '명령을 복사했습니다. 실행이 완료되면 이 설정이 다음 자동 갱신에도 사용됩니다.';
+    } catch (error) {
+      if (status) status.textContent = error.message === 'clipboard unavailable'
+        ? '브라우저에서 복사할 수 없습니다. 위 명령을 직접 선택해 복사하세요.'
+        : `입력값을 확인하세요. ${error.message}`;
+    }
+  }
+
+  async function loadAnalysisConfigSidecar(payload) {
+    let sidecar;
+    try {
+      const response = await fetch(ANALYSIS_CONFIG_URL, { cache: 'no-store' });
+      if (!response.ok) {
+        return { config: null, source: 'bootstrap', configHash: '', bindingStatus: 'missing' };
+      }
+      sidecar = await response.json();
+    } catch (_) {
+      return { config: null, source: 'bootstrap', configHash: '', bindingStatus: 'invalid' };
+    }
+    try {
+      if (sidecar.schema_version !== undefined && sidecar.schema_version !== 1) {
+        throw new Error(`unsupported config schema ${sidecar.schema_version}`);
+      }
+      const rawConfig = sidecar.config || sidecar;
+      const missing = ANALYSIS_INPUTS
+        .map(({ key }) => key)
+        .filter((key) => !Object.prototype.hasOwnProperty.call(rawConfig || {}, key));
+      if (missing.length) throw new Error(`missing fields: ${missing.join(',')}`);
+      const binding = validateResultBinding(sidecar.result_binding, payload);
+      if (!binding.valid) {
+        return { config: null, source: 'bootstrap', configHash: '', bindingStatus: binding.status };
+      }
+      return {
+        config: normalizeAnalysisConfig(canonicalAnalysisRaw(rawConfig)),
+        source: 'sidecar',
+        configHash: String(sidecar.config_hash || ''),
+        bindingStatus: 'bound',
+      };
+    } catch (_) {
+      return { config: null, source: 'bootstrap', configHash: '', bindingStatus: 'invalid' };
+    }
+  }
+
+  function validateResultBinding(resultBinding, payload) {
+    const summary = payload?.summary || {};
+    const metadata = payload?.metadata || {};
+    const expected = {
+      generated_at: payload?.generated_at,
+      source_hash: summary.source_hash || metadata.source_hash,
+      data_end_date: summary.data_end_date || metadata.data_end_date,
+    };
+    const keys = Object.keys(expected);
+    if (!resultBinding || typeof resultBinding !== 'object') return { valid: false, status: 'missing' };
+    const bindingKeys = Object.keys(resultBinding);
+    if (bindingKeys.length !== keys.length || bindingKeys.some((key) => !keys.includes(key))) {
+      return { valid: false, status: 'invalid' };
+    }
+    if (keys.some((key) => !expected[key] || !resultBinding[key])) return { valid: false, status: 'missing' };
+    const mismatch = keys.some((key) => String(resultBinding[key]) !== String(expected[key]));
+    return mismatch ? { valid: false, status: 'mismatch' } : { valid: true, status: 'bound' };
+  }
+
+  function analysisConfigFromPayload(payload) {
+    const metadata = payload.metadata || {};
+    const explicit = metadata.applied_config || metadata.applied_analysis_config || metadata.analysis_config || payload.analysis_config || {};
+    const hasCompleteExplicitConfig = ANALYSIS_INPUTS
+      .map(({ key }) => key)
+      .every((key) => Object.prototype.hasOwnProperty.call(explicit || {}, key));
+    if (!hasCompleteExplicitConfig) return normalizeAnalysisConfig(BOOTSTRAP_ANALYSIS_CONFIG, true);
+    const factorAllowlist = firstDefined(explicit.factor_allowlist, explicit.factors, '');
+    return normalizeAnalysisConfig({
+      period: explicit.period,
+      rebalance: explicit.rebalance,
+      top_n: explicit.top_n,
+      weighting: explicit.weighting,
+      factor_preset: explicit.factor_preset === 'explicit'
+        ? firstDefined(explicit.requested_factor_preset, metadata.requested_factor_preset, 'zoo')
+        : explicit.factor_preset,
+      factor_allowlist: Array.isArray(factorAllowlist) ? factorAllowlist.join(',') : factorAllowlist,
+      min_market_cap: explicit.min_market_cap,
+      min_dollar_volume: explicit.min_dollar_volume,
+      eligibility_adv_window: explicit.eligibility_adv_window,
+      transaction_cost_bps: explicit.transaction_cost_bps,
+      transaction_cost_model: explicit.transaction_cost_model,
+    });
+  }
+
+  function firstDefined(...values) {
+    return values.find((value) => value !== null && value !== undefined && value !== '');
+  }
+
+  function canonicalAnalysisRaw(rawConfig) {
+    const raw = rawConfig || {};
+    if (raw.factor_preset !== 'explicit') return raw;
+    return {
+      ...raw,
+      factor_preset: firstDefined(raw.requested_factor_preset, 'zoo'),
+    };
+  }
+
+  function normalizeAnalysisConfig(rawConfig, allowFallback = false) {
+    const raw = rawConfig || {};
+    return Object.fromEntries(ANALYSIS_INPUTS.map((spec) => [
+      spec.key,
+      normalizeAnalysisValue(spec, raw[spec.key], allowFallback),
+    ]));
+  }
+
+  function normalizeAnalysisValue(spec, rawValue, allowFallback) {
+    const blank = rawValue === null || rawValue === undefined || String(rawValue).trim() === '';
+    if (spec.type === 'factor_allowlist') {
+      if (blank) return '';
+      if (String(rawValue).trim() === '__preset__') return '';
+      const names = String(rawValue).split(',').map((name) => name.trim()).filter(Boolean);
+      if (!names.length) return '';
+      if (names.some((name) => !/^[A-Za-z0-9_]+$/.test(name))) {
+        throw new Error('직접 선택 팩터는 영문, 숫자, 밑줄과 쉼표만 사용할 수 있습니다.');
+      }
+      return Array.from(new Set(names)).join(',');
+    }
+    if (blank) {
+      if (allowFallback) return spec.fallback;
+      throw new Error(`${spec.key} 값이 비어 있습니다.`);
+    }
+    if (spec.type === 'enum') {
+      const value = String(rawValue);
+      if (!spec.allowed.includes(value)) throw new Error(`${spec.key} 값이 허용 범위를 벗어났습니다.`);
+      return value;
+    }
+    const numeric = Number(rawValue);
+    if (!Number.isFinite(numeric)) throw new Error(`${spec.key} 값은 숫자여야 합니다.`);
+    if (spec.type === 'integer' && !Number.isInteger(numeric)) throw new Error(`${spec.key} 값은 정수여야 합니다.`);
+    if (numeric < spec.min || numeric > spec.max) throw new Error(`${spec.key} 값은 ${spec.min}~${spec.max} 범위여야 합니다.`);
+    return numeric;
+  }
+
+  function buildAnalysisWorkflowCommand(rawConfig) {
+    const config = normalizeAnalysisConfig(rawConfig);
+    const fields = ANALYSIS_INPUTS.map(({ key }) => {
+      const value = key === 'factor_allowlist' && !config[key] ? '__preset__' : config[key];
+      return `--raw-field '${key}=${value}'`;
+    });
+    return [WORKFLOW_COMMAND, ...fields].join(' ');
+  }
+
+  function readAnalysisSettingsForm() {
+    const values = {};
+    ANALYSIS_INPUTS.forEach(({ key, selector }) => {
+      const input = q(selector);
+      values[key] = input ? input.value : '';
+    });
+    return normalizeAnalysisConfig(values);
+  }
+
+  function writeAnalysisSettingsForm(rawConfig) {
+    const config = normalizeAnalysisConfig(rawConfig, true);
+    ANALYSIS_INPUTS.forEach(({ key, selector }) => {
+      const input = q(selector);
+      if (input) input.value = String(config[key]);
+    });
+    const factorInput = q('#analysis-factor-allowlist');
+    if (factorInput) factorInput.setCustomValidity('');
+    updateAnalysisWorkflowCommand();
+  }
+
+  function updateAnalysisWorkflowCommand() {
+    const commandNode = q('#analysis-workflow-command');
+    const copyButton = q('#copy-analysis-command');
+    const status = q('#analysis-command-status');
+    const factorInput = q('#analysis-factor-allowlist');
+    try {
+      const config = readAnalysisSettingsForm();
+      const command = buildAnalysisWorkflowCommand(config);
+      if (commandNode) commandNode.textContent = command;
+      if (copyButton) copyButton.disabled = false;
+      if (factorInput) factorInput.setCustomValidity('');
+      if (status) status.textContent = 'Actions 실행이 성공하면 이 값이 공개 분석과 다음 자동 갱신에 적용됩니다.';
+    } catch (error) {
+      if (commandNode) commandNode.textContent = '입력값을 확인하면 명령이 생성됩니다.';
+      if (copyButton) copyButton.disabled = true;
+      if (factorInput) {
+        const factorError = String(error.message || '').includes('직접 선택 팩터') ? error.message : '';
+        factorInput.setCustomValidity(factorError);
+      }
+      if (status) status.textContent = error.message;
+    }
+  }
+
+  function resetAnalysisSettings() {
+    if (!state.analysisDefaults) return;
+    writeAnalysisSettingsForm(state.analysisDefaults);
+    const status = q('#analysis-command-status');
+    if (status) status.textContent = state.analysisConfigBindingStatus === 'bound'
+      ? '현재 공개 결과에 적용된 설정으로 되돌렸습니다.'
+      : '확인용 기본 설정으로 되돌렸습니다.';
+  }
+
+  function renderAppliedAnalysisConfig(payload) {
+    const root = q('#applied-config-summary');
+    if (!root) return;
+    const metadata = payload.metadata || {};
+    const summary = payload.summary || {};
+    const config = state.analysisDefaults || analysisConfigFromPayload(payload);
+    const factorNames = String(config.factor_allowlist || '').split(',').filter(Boolean);
+    const factorValue = factorNames.length
+      ? `직접 ${factorNames.length}개`
+      : `${String(config.factor_preset).toUpperCase()} · ${summary.selected_factor_count ?? metadata.selected_factor_count ?? '—'}개`;
+    const marketCapValue = marketCapDisplay(config, metadata);
+    const chips = [
+      ['기간', config.period],
+      ['리밸런싱', config.rebalance === 'W' ? '주간' : '월간'],
+      ['편입 상한', `${config.top_n}종목`],
+      ['가중', config.weighting === 'equal' ? '동일가중' : '점수가중'],
+      ['팩터', factorValue],
+      ['최소 시총', marketCapValue],
+      ['최소 ADV', fmtUsd(config.min_dollar_volume)],
+      ['ADV 관찰', `${config.eligibility_adv_window}일`],
+      ['거래비용', `${config.transaction_cost_bps}bps · ${costModelLabel(config.transaction_cost_model)}`],
+    ];
+    root.replaceChildren(...chips.map(([label, value]) => {
+      const item = el('span', 'applied-config-item');
+      item.append(small(label), strong(value));
+      return item;
+    }));
+    const bindingValid = state.analysisConfigBindingStatus === 'bound';
+    const status = q('#applied-config-status');
+    setText('#applied-config-title', bindingValid ? '현재 결과에 적용된 설정' : '분석 설정 기준값');
+    if (status) {
+      status.hidden = bindingValid;
+      status.textContent = bindingStatusText(state.analysisConfigBindingStatus);
+      status.classList.toggle('is-warning', !bindingValid);
+    }
+    const configHash = bindingValid && state.analysisConfigHash ? ` · 설정 ${state.analysisConfigHash.slice(0, 8)}` : '';
+    setText(
+      '#applied-config-date',
+      `결과 기준 ${summary.data_end_date || metadata.data_end_date || payload.data_scope}${configHash}`
+    );
+  }
+
+  function marketCapDisplay(config, metadata) {
+    const minimum = Number(config?.min_market_cap);
+    if (minimum === 0) return '없음';
+    if (metadata?.market_cap_filter_effective === false) {
+      return `요청 ${fmtUsd(minimum)} · 이번 실행 미적용`;
+    }
+    return Number.isFinite(minimum) && minimum > 0 ? fmtUsd(minimum) : '없음';
+  }
+
+  function bindingStatusText(status) {
+    const labels = {
+      bound: '설정 연결 완료',
+      mismatch: '설정 연결 확인 필요 · 결과 불일치',
+      missing: '설정 연결 확인 필요 · 설정 없음',
+      invalid: '설정 연결 확인 필요 · 파일 오류',
+      checking: '설정 연결 확인 중',
+    };
+    return labels[status] || labels.invalid;
+  }
+
+  function costModelLabel(model) {
+    return model === 'portfolio_turnover' ? '회전율' : '편도 매매금액';
+  }
+
   async function loadDashboard() {
     try {
       const response = await fetch(DATA_URL, { cache: 'no-store' });
@@ -211,7 +540,13 @@
       if (payload.schema_version !== 1) {
         throw new Error(`지원하지 않는 dashboard schema_version: ${payload.schema_version ?? 'missing'}`);
       }
+      const analysisConfig = await loadAnalysisConfigSidecar(payload);
       state.payload = payload;
+      state.analysisDefaults = analysisConfig.config || analysisConfigFromPayload(payload);
+      state.analysisConfigSource = analysisConfig.source;
+      state.analysisConfigHash = analysisConfig.configHash || '';
+      state.analysisConfigBindingStatus = analysisConfig.bindingStatus || 'invalid';
+      writeAnalysisSettingsForm(state.analysisDefaults);
       q('#run-status').classList.remove('error');
       renderAll();
     } catch (error) {
@@ -230,6 +565,8 @@
     if (!payload) return;
     renderStatus(payload);
     renderSummary(payload);
+    renderAppliedAnalysisConfig(payload);
+    syncDisplayControls(payload);
     renderUpdatePanel(payload);
     renderEconomicAnalysis(payload);
     renderFactorExplanations(payload);
@@ -322,10 +659,8 @@
     const summary = payload.summary || {};
     const holdout = summary.best_factor_holdout_rank ? `#${summary.best_factor_holdout_rank}` : '—';
     const lines = [
-      statusLine('현재 1위', summary.best_factor),
       statusLine('데이터 기준', summary.data_end_date || payload.data_scope),
       statusLine('Holdout', holdout),
-      statusLine('생성', fmtKst(payload.generated_at)),
     ];
     if (payload.data_scope === 'fixture_sample') {
       lines.push(statusLine('샘플', '체크인된 fixture 예시 데이터입니다. 최신 시장 데이터는 Actions 업데이트 후 확인하세요.'));
@@ -598,9 +933,25 @@
     }));
   }
 
+  function maxDisplayHoldings(payload) {
+    const available = Array.isArray(payload?.latest_holdings) ? payload.latest_holdings.length : 0;
+    return Math.max(1, available || RANKING_DEFAULT_TOP);
+  }
+
+  function syncDisplayControls(payload) {
+    const input = q('#topn-input');
+    const available = maxDisplayHoldings(payload);
+    state.topN = Math.max(1, Math.min(state.topN, available));
+    if (input) {
+      input.max = String(available);
+      input.value = String(state.topN);
+    }
+    setText('#holding-display-help', `저장된 결과 중 최대 ${available}행 · 화면에만 적용`);
+  }
+
   function renderWeightChart(payload) {
     const holdings = (payload.latest_holdings || []).slice(0, Math.min(state.topN, 12));
-    setText('#weight-chart-meta', `${holdings.length}개 종목 · 합계 ${fmtPct(sumWeights(holdings))}`);
+    setText('#weight-chart-meta', `${holdings.length}개 표시 · 표시 비중 합계 ${fmtPct(sumWeights(holdings))}`);
     const root = q('#weight-chart');
     if (!holdings.length) {
       root.replaceChildren(empty('최신 편입 종목이 없습니다.'));
@@ -617,7 +968,8 @@
 
   function renderCurrentOutput(payload) {
     const holdings = (payload.latest_holdings || []).slice(0, state.topN);
-    setText('#current-output-meta', `${holdings.length}행 · 기준 ${fmtText((payload.summary || {}).data_end_date)}`);
+    const available = (payload.latest_holdings || []).length;
+    setText('#current-output-meta', `${holdings.length}/${available}행 표시 · 기준 ${fmtText((payload.summary || {}).data_end_date)}`);
     const tbody = q('#current-output-table tbody');
     if (!tbody) return;
     if (!holdings.length) {
@@ -667,7 +1019,7 @@
     const seriesList = [bestSeries, selectedSeries, benchmarkSeries].filter((series) => series && series.points.length >= 2);
     setText(
       '#comparison-chart-meta',
-      `최고 ${bestFactor || '—'} · 선택 ${selectedFactor || '—'} · 벤치마크 ${benchmarkSeries.label}`
+      `공식 1위 ${bestFactor || '—'} · 차트 비교 ${selectedFactor || '—'} · ${benchmarkSeries.label}`
     );
     if (!seriesList.length) {
       chartRoot.replaceChildren(empty('누적 성과를 계산할 portfolio_returns 또는 benchmark_returns 데이터가 없습니다. 다음 best-factor 업데이트 run 이후 표시됩니다.'));
@@ -930,6 +1282,7 @@
       }
 
       readoutDate.textContent = activeDate || '—';
+      setText('#comparison-date-observation', `표시 ${activeDate || '—'}`);
       readoutSeries.textContent = activeSeries.label;
       readoutValue.textContent = point ? fmtPct(Number(point.equity) - 1) : '관측 없음';
       readoutContext.textContent = `평가 시작 대비 누적 수익률 · 전체 MDD ${fmtPct(maxDrawdownFromPoints(activeSeries.points))}`;
@@ -1245,7 +1598,10 @@
     const root = q('#ranking-list');
     const allVisible = visibleRankings(payload);
     const selectedExtraCount = rankings.filter((row) => state.selectedFactors.has(String(row.factor)) && !allVisible.slice(0, RANKING_DEFAULT_TOP).some((top) => top.factor === row.factor)).length;
-    setText('#ranking-list-meta', `기본 Top ${RANKING_DEFAULT_TOP} · 선택 비교 ${selectedExtraCount}개 · 검색 결과 ${allVisible.length}개`);
+    setText(
+      '#ranking-list-meta',
+      `배지는 공식 종합점수 순위 · 화면 정렬 ${metricLabel(state.sortMetric)} · ${allVisible.length}개 검색${selectedExtraCount ? ` · 비교 1개 포함` : ''}`
+    );
     if (!rankings.length) {
       root.replaceChildren(empty('표시할 팩터가 없습니다.'));
       return;
@@ -1256,9 +1612,9 @@
       if (state.selectedFactors.has(String(row.factor))) article.classList.add('is-selected');
       const head = el('div', 'rank-head');
       head.append(
-        span(`rank #${row.rank ?? '—'}`, 'rank-badge'),
+        span(`공식 #${row.rank ?? '—'}`, 'rank-badge'),
         strong(row.factor),
-        span(`${metricLabel(state.sortMetric)} ${fmtMetric(row[state.sortMetric], state.sortMetric)}`)
+        span(`화면 기준 ${metricLabel(state.sortMetric)} ${fmtMetric(row[state.sortMetric], state.sortMetric)}`)
       );
       article.append(head, bar(percentForMetric(row[state.sortMetric], state.sortMetric), `정렬 지표 ${state.sortMetric}`));
       if (meta) {
@@ -1303,15 +1659,16 @@
     select.replaceChildren(...options);
     select.value = options.some((node) => node.value === previous) ? previous : '';
     if (!state.selectedFactors.size) {
-      chips.replaceChildren(empty('비교 팩터를 고르지 않으면 2위 팩터가 차트 비교선으로 표시됩니다.'));
+      const automatic = selectedComparisonFactor(payload, String((payload.summary || {}).best_factor || ''));
+      chips.replaceChildren(small(`차트 비교: 자동${automatic ? ` · ${automatic}` : ''}`));
       return;
     }
     const bestFactor = String((payload.summary || {}).best_factor || '');
     const chartComparison = selectedComparisonFactor(payload, bestFactor);
-    chips.replaceChildren(...Array.from(state.selectedFactors).sort().map((name) => {
+    chips.replaceChildren(...Array.from(state.selectedFactors).slice(0, 1).map((name) => {
       const chip = el('span', 'selected-chip');
       if (name === chartComparison) chip.classList.add('is-chart-comparison');
-      chip.append(span(name), small(name === chartComparison ? '차트 적용' : '랭킹 추가'));
+      chip.append(span(name), small('차트 비교 적용'));
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = '제거';
@@ -1667,6 +2024,7 @@
   function addSelectedFactor(factorName) {
     const name = String(factorName || '').trim();
     if (!name) return;
+    state.selectedFactors.clear();
     state.selectedFactors.add(name);
     renderAll();
   }
@@ -2019,6 +2377,12 @@
       fmtUsdForTest: fmtUsd,
       nearestChartDateForTest: nearestChartDate,
       chartPointAtDateForTest: chartPointAtDate,
+      analysisConfigFromPayloadForTest: analysisConfigFromPayload,
+      normalizeAnalysisConfigForTest: normalizeAnalysisConfig,
+      buildAnalysisWorkflowCommandForTest: buildAnalysisWorkflowCommand,
+      validateResultBindingForTest: validateResultBinding,
+      marketCapDisplayForTest: marketCapDisplay,
+      bindingStatusTextForTest: bindingStatusText,
     };
   }
 })();

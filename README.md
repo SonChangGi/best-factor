@@ -130,19 +130,39 @@ This project must be deployed only to its own repository. The intended public UR
 - `https://sonchanggi.github.io/best-factor/`
 - GitHub repository: `SonChangGi/best-factor`
 
-It must not publish to, link to, trigger workflows in, or reuse assets from any other repository or Pages site. No other project is a deployment target for this repository.
+It must not deploy to, trigger workflows in, or reuse assets from another repository or Pages site. The shared 11-project navigation may link to sibling dashboards, but no sibling project is a deployment target for this repository.
 
-The `docs/` dashboard includes an update panel. Because GitHub Pages is static, the button does not run compute anonymously in the browser and it does not embed a token. It opens the new repository's GitHub Actions workflow; a user with repository permission can run the workflow manually:
+The `docs/` dashboard separates two kinds of controls:
+
+- **Analysis inputs** change the Python run: history period, rebalance frequency, holding-count cap, weighting, factor scope, market-cap/liquidity gates, and transaction-cost assumptions.
+- **Display settings** only change the current browser view: chart sort, visible rows, metric, and observation date.
+
+The page validates the type, range, and safe syntax of all 11 analysis inputs and prepares a complete `gh workflow run` command. The workflow then revalidates the full contract, including factor names against the Python registry, before any live run. Because GitHub Pages is static, it never stores a GitHub token or starts privileged compute anonymously. Copy the command from the page, authenticate `gh` as a repository maintainer, and run it locally:
 
 ```bash
-gh workflow run update-dashboard.yml --repo SonChangGi/best-factor --ref main
+gh workflow run update-dashboard.yml \
+  --repo SonChangGi/best-factor \
+  --ref main \
+  --raw-field 'period=5y' \
+  --raw-field 'rebalance=M' \
+  --raw-field 'top_n=20' \
+  --raw-field 'weighting=score' \
+  --raw-field 'factor_preset=zoo' \
+  --raw-field 'factor_allowlist=__preset__' \
+  --raw-field 'min_market_cap=10000000000' \
+  --raw-field 'min_dollar_volume=50000000' \
+  --raw-field 'eligibility_adv_window=63' \
+  --raw-field 'transaction_cost_bps=5' \
+  --raw-field 'transaction_cost_model=one_way_notional'
 ```
+
+`factor_allowlist=__preset__` explicitly clears a previously saved allowlist and uses the selected preset. Empty manual fields keep the previously saved value. A successful manual run saves the normalized configuration in `.github/best-factor-dashboard-config.json`, publishes a safe public copy at `docs/data/dashboard-config.json`, and binds that copy to the generated result timestamp, source hash, and data date. The next scheduled run reuses the same settings. Failed generation does not replace the saved configuration or public result.
 
 The workflow installs the live-data extra, runs network-free tests plus syntax/static import checks before live generation, archives each generated run artifact, and uses GitHub Pages custom workflow deployment (`actions/configure-pages`, `actions/upload-pages-artifact`, and `actions/deploy-pages`) so the generated `docs/` artifact is published by that same run. It intentionally does not rely on a workflow self-commit to trigger a branch-based Pages build.
 
 ### Manual update automation
 
-The only automated deployment target is `SonChangGi/best-factor`. Live-data cron schedules are active again at 07:00 KST Tue-Sat with 09:00/11:00/13:00 KST stale-data fallbacks, and reviewed `workflow_dispatch` runs execute the same live yfinance-primary/Yahoo-chart-fallback generation path. Pushes deploy the committed `docs/` artifact; scheduled/manual refreshes also sync the committed `docs/data/latest-results.json` and `docs/data/summary.json` before Pages deployment so later pushes do not overwrite a fresher artifact with stale JSON.
+The only automated deployment target is `SonChangGi/best-factor`. Live-data cron schedules are active again at 07:00 KST Tue-Sat with 09:00/11:00/13:00 KST stale-data fallbacks, and reviewed `workflow_dispatch` runs execute the same live yfinance-primary/Yahoo-chart-fallback generation path. Pushes deploy the committed `docs/` artifact; scheduled/manual refreshes sync `docs/data/latest-results.json`, `docs/data/summary.json`, the result-bound public configuration, and the persisted private configuration before Pages deployment so later pushes do not overwrite a fresher artifact with stale JSON or settings.
 
 For scheduled and manual updates, the deployed Pages artifact remains the freshness source of truth. The freshness gate is implemented in `.github/scripts/check_dashboard_freshness.py`: the 07:00 KST primary schedule always tries to refresh, while fallback schedules skip if the public JSON is already fresh for the expected U.S. session.
 
