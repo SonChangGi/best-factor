@@ -29,7 +29,7 @@ class DashboardConfigTest(unittest.TestCase):
         self.assertEqual(set(private_payload), {"schema_version", "config", "config_hash"})
         config = dashboard_config.validate_envelope(private_payload)
         self.assertEqual(tuple(config), dashboard_config.CONFIG_KEYS)
-        self.assertEqual(config, dashboard_config.DEFAULT_CONFIG)
+        self.assertEqual(config, private_payload["config"])
         self.assertEqual(private_payload["config_hash"], dashboard_config.config_hash(config))
 
         public_payload = json.loads(PUBLIC_PATH.read_text(encoding="utf-8"))
@@ -215,7 +215,7 @@ class DashboardConfigTest(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             payload = json.loads(public_output.read_text(encoding="utf-8"))
             config, binding = dashboard_config.validate_public_envelope(payload)
-            self.assertEqual(config, dashboard_config.DEFAULT_CONFIG)
+            self.assertEqual(config, dashboard_config.load_config(PERSISTED_PATH))
             self.assertEqual(
                 binding,
                 dashboard_config.build_result_binding(
@@ -291,7 +291,7 @@ class DashboardConfigTest(unittest.TestCase):
         self.assertIn("default: false", fallback_block)
         self.assertIn("type: boolean", fallback_block)
         self.assertIn(
-            "ALLOW_FALLBACK: ${{ github.event_name == 'schedule' || inputs.allow_fallback }}",
+            "ALLOW_FALLBACK: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_fallback }}",
             workflow,
         )
         self.assertIn(

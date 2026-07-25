@@ -28,6 +28,10 @@ YAHOO_CHART_BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
 YAHOO_CHART_USER_AGENT = "best-factor/1.0 (+https://sonchanggi.github.io/best-factor/)"
 YAHOO_CHART_MAX_WORKERS = 8
 YAHOO_CHART_PERIOD_RE = re.compile(r"^(?:\d+(?:d|wk|mo|y)|ytd|max)$", re.IGNORECASE)
+YFINANCE_MARKET_CAP_EXCHANGES = ("NMS", "NGM", "NCM", "NYQ", "ASE", "PCX", "BTS", "CXI", "NAE", "YHD")
+YFINANCE_MARKET_CAP_PAGE_SIZE = 250
+YFINANCE_MARKET_CAP_MAX_RESULTS = 10_000
+YFINANCE_MARKET_CAP_MAX_TARGETED_FALLBACKS = 25
 _EXCLUDED_SECURITY_NAME_PATTERNS = {
     "etf": (" ETF", "EXCHANGE TRADED", "ETF -", " ETF"),
     "fund": (" FUND", "CLOSED-END", "MUTUAL FUND"),
@@ -309,6 +313,172 @@ def fetch_yfinance_prices(
         "price_adjustment": "open_high_low_close_scaled_to_adj_close",
     }
     return rows, metadata
+
+
+def fetch_yfinance_market_caps(
+    tickers: Iterable[str],
+    *,
+    page_size: int = YFINANCE_MARKET_CAP_PAGE_SIZE,
+    max_results: int = YFINANCE_MARKET_CAP_MAX_RESULTS,
+    max_targeted_fallbacks: int = YFINANCE_MARKET_CAP_MAX_TARGETED_FALLBACKS,
+) -> tuple[dict[str, float], dict[str, object]]:
+    """Fetch current US-listed equity market caps with bounded Yahoo requests.
+
+    The screener is used only as a metadata source. Nasdaq Trader still defines
+    the eligible common-stock universe, and this function returns values only
+    for the exact caller-provided ticker set. A small per-ticker fallback fills
+    symbols that the paginated screener omits; callers decide whether the final
+    coverage is sufficient to publish.
+    """
+    try:
+        import yfinance as yf  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional dependency path
+        raise RuntimeError("Install optional live dependency with `pip install -e .[live]` to fetch market caps") from exc
+
+    requested = _dedupe_preserve_order(normalize_ticker(ticker) for ticker in tickers)
+    requested_set = set(requested)
+    page_size = int(page_size)
+    max_results = int(max_results)
+    max_targeted_fallbacks = int(max_targeted_fallbacks)
+    if not 1 <= page_size <= YFINANCE_MARKET_CAP_PAGE_SIZE:
+        raise ValueError(f"market-cap screener page_size must be between 1 and {YFINANCE_MARKET_CAP_PAGE_SIZE}")
+    if max_results < page_size:
+        raise ValueError("market-cap screener max_results must be at least page_size")
+    if max_targeted_fallbacks < 0:
+        raise ValueError("market-cap max_targeted_fallbacks must be non-negative")
+
+    fetched_at = dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z")
+    if not requested:
+        return {}, {
+            "provider": "yfinance_market_cap",
+            "provider_version": _package_version("yfinance"),
+            "fetched_at": fetched_at,
+            "requested_ticker_count": 0,
+            "matched_ticker_count": 0,
+            "coverage_ratio": 1.0,
+            "screener_total": 0,
+            "screener_page_count": 0,
+            "targeted_fallback_count": 0,
+            "missing_tickers": [],
+            "targeted_fallback_errors": [],
+        }
+
+    query = yf.EquityQuery(
+        "and",
+        [
+            yf.EquityQuery("eq", ["region", "us"]),
+            yf.EquityQuery("is-in", ["exchange", *YFINANCE_MARKET_CAP_EXCHANGES]),
+            yf.EquityQuery("gt", ["intradaymarketcap", 0]),
+        ],
+    )
+    market_caps: dict[str, float] = {}
+    total: int | None = None
+    offset = 0
+    page_count = 0
+    latest_market_time = 0
+    provider_symbols: set[str] = set()
+    last_provider_symbol = ""
+    while total is None or offset < total:
+        response = _retry_yfinance_call(
+            lambda current_offset=offset: yf.screen(
+                query,
+                offset=current_offset,
+                size=page_size,
+                sortField="ticker",
+                sortAsc=True,
+            ),
+            operation=f"market-cap screener page {page_count + 1}",
+        )
+        if not isinstance(response, dict):
+            raise ValueError("market-cap screener response must be an object")
+        quotes = response.get("quotes")
+        if not isinstance(quotes, list):
+            raise ValueError("market-cap screener response quotes must be a list")
+        page_start = _strict_non_negative_int(response.get("start"), "market-cap screener start")
+        page_count_value = _strict_non_negative_int(response.get("count"), "market-cap screener count")
+        page_total = _strict_non_negative_int(response.get("total"), "market-cap screener total")
+        if page_start != offset:
+            raise ValueError(f"market-cap screener start drifted: expected {offset}, received {page_start}")
+        if page_count_value != len(quotes):
+            raise ValueError(
+                f"market-cap screener count mismatch: response={page_count_value}, quotes={len(quotes)}"
+            )
+        if total is None:
+            total = page_total
+            if total > max_results:
+                raise ValueError(f"market-cap screener total {total} exceeds max_results {max_results}")
+        elif page_total != total:
+            raise ValueError(f"market-cap screener total drifted: expected {total}, received {page_total}")
+        if not quotes and offset < total:
+            raise ValueError(f"market-cap screener stopped before total: offset={offset}, total={total}")
+
+        for quote_row in quotes:
+            if not isinstance(quote_row, dict):
+                raise ValueError("market-cap screener quote rows must be objects")
+            symbol = normalize_ticker(quote_row.get("symbol"))
+            if not symbol:
+                raise ValueError("market-cap screener returned a blank symbol")
+            if symbol in provider_symbols:
+                raise ValueError(f"market-cap screener returned duplicate symbol {symbol}")
+            if last_provider_symbol and symbol <= last_provider_symbol:
+                raise ValueError(
+                    f"market-cap screener ticker order drifted: {symbol} followed {last_provider_symbol}"
+                )
+            provider_symbols.add(symbol)
+            last_provider_symbol = symbol
+            if symbol not in requested_set:
+                continue
+            if str(quote_row.get("quoteType") or "").upper() != "EQUITY":
+                continue
+            if str(quote_row.get("currency") or "").upper() != "USD":
+                continue
+            market_cap = parse_float(quote_row.get("marketCap"))
+            if not math.isfinite(market_cap) or market_cap <= 0:
+                continue
+            prior = market_caps.get(symbol)
+            if prior is not None and prior != market_cap:
+                raise ValueError(f"market-cap screener returned conflicting duplicate values for {symbol}")
+            market_caps[symbol] = market_cap
+            market_time = parse_int(quote_row.get("regularMarketTime"), 0)
+            latest_market_time = max(latest_market_time, market_time)
+
+        offset += len(quotes)
+        page_count += 1
+
+    missing = [ticker for ticker in requested if ticker not in market_caps]
+    targeted_errors: list[dict[str, str]] = []
+    targeted_count = 0
+    if len(missing) <= max_targeted_fallbacks:
+        for ticker in missing:
+            try:
+                market_cap = _retry_yfinance_call(
+                    lambda current_ticker=ticker: _fetch_yfinance_ticker_market_cap(yf, current_ticker),
+                    operation=f"targeted market-cap fallback {ticker}",
+                )
+            except Exception as exc:  # pragma: no cover - live provider variability
+                targeted_errors.append({"ticker": ticker, "error": f"{type(exc).__name__}: {exc}"})
+                continue
+            market_caps[ticker] = market_cap
+            targeted_count += 1
+
+    unresolved = [ticker for ticker in requested if ticker not in market_caps]
+    matched = len(requested) - len(unresolved)
+    metadata = {
+        "provider": "yfinance_market_cap",
+        "provider_version": _package_version("yfinance"),
+        "fetched_at": fetched_at,
+        "source": "Yahoo Finance current US-listed equity market-cap screen via yfinance",
+        "requested_ticker_count": len(requested),
+        "matched_ticker_count": matched,
+        "coverage_ratio": matched / len(requested),
+        "screener_total": total or 0,
+        "screener_page_count": page_count,
+        "screener_latest_market_time": latest_market_time,
+        "targeted_fallback_count": targeted_count,
+        "targeted_fallback_errors": targeted_errors,
+        "missing_tickers": unresolved,
+    }
+    return market_caps, metadata
 
 
 def fetch_yahoo_chart_prices(
@@ -858,3 +1028,40 @@ def _retry_yfinance_call(call, operation: str, attempts: int = 3, initial_delay:
         attempts=attempts,
         initial_delay=initial_delay,
     )
+
+
+def _strict_non_negative_int(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be a non-negative integer")
+    number = int(value)
+    if number != value or number < 0:
+        raise ValueError(f"{field} must be a non-negative integer")
+    return number
+
+
+def _fetch_yfinance_ticker_market_cap(yf, ticker: str) -> float:
+    instrument = yf.Ticker(_yahoo_chart_symbol(ticker))
+    candidates: list[object] = []
+    try:
+        fast_info = instrument.fast_info
+        candidates.extend(
+            [
+                getattr(fast_info, "market_cap", None),
+                fast_info.get("market_cap") if hasattr(fast_info, "get") else None,
+                fast_info.get("marketCap") if hasattr(fast_info, "get") else None,
+            ]
+        )
+    except Exception:
+        pass
+    if not any(math.isfinite(parse_float(value)) and parse_float(value) > 0 for value in candidates):
+        try:
+            info = instrument.info
+            if isinstance(info, dict):
+                candidates.append(info.get("marketCap"))
+        except Exception:
+            pass
+    for value in candidates:
+        market_cap = parse_float(value)
+        if math.isfinite(market_cap) and market_cap > 0:
+            return market_cap
+    raise ValueError(f"no finite positive market cap returned for {ticker}")
