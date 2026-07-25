@@ -304,14 +304,47 @@ jobs:
 
       - name: Build validated Nasdaq Trader stock universe
         if: steps.freshness.outputs.should_update == 'true'
-        run: python .github/scripts/build_live_universe.py .github/best-factor-dashboard-tickers.txt /tmp/best-factor-universe.csv --metadata-json /tmp/best-factor-universe-metadata.json --min-symbols 1700
+        shell: bash
+        env:
+          ALLOW_FALLBACK: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_fallback }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' -t CONFIG_VALUES < /tmp/best-factor-effective-config.values
+          if (( ${#CONFIG_VALUES[@]} != 11 )); then
+            echo "Expected 11 normalized analysis settings, received ${#CONFIG_VALUES[@]}." >&2
+            exit 1
+          fi
+          MIN_MARKET_CAP="${CONFIG_VALUES[6]}"
+          MARKET_CAP_FALLBACK_ARGS=()
+          if [[ "${ALLOW_FALLBACK}" == "true" ]]; then
+            MARKET_CAP_FALLBACK_ARGS+=(--allow-incomplete-market-cap)
+          fi
+          python .github/scripts/build_live_universe.py \
+            .github/best-factor-dashboard-tickers.txt \
+            /tmp/best-factor-universe.csv \
+            --metadata-json /tmp/best-factor-universe-metadata.json \
+            --market-cap-metadata-json /tmp/best-factor-market-cap-metadata.json \
+            --min-symbols 1700 \
+            --min-market-cap "${MIN_MARKET_CAP}" \
+            --min-market-cap-coverage-ratio 1.0 \
+            "${MARKET_CAP_FALLBACK_ARGS[@]}"
+
+      - name: Archive market-cap provider diagnostics
+        if: always() && steps.freshness.outputs.should_update == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: best-factor-market-cap-diagnostics-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            /tmp/best-factor-market-cap-metadata.json
+            /tmp/best-factor-universe-metadata.json
 
       - name: Generate latest dashboard JSON
         if: steps.freshness.outputs.should_update == 'true'
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          ALLOW_FALLBACK: ${{ github.event_name == 'schedule' || inputs.allow_fallback }}
+          ALLOW_FALLBACK: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_fallback }}
         run: |
           set -euo pipefail
           echo "fallback policy: event=${EVENT_NAME} allow_fallback=${ALLOW_FALLBACK}"
@@ -465,6 +498,7 @@ jobs:
             /tmp/best-factor-live-run/*.json
             /tmp/best-factor-live-run/report.md
             /tmp/best-factor-live-run/report.html
+            /tmp/best-factor-market-cap-metadata.json
             /tmp/best-factor-universe-metadata.json
             docs/data/latest-results.json
             docs/data/summary.json

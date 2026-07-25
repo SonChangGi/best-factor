@@ -1,4 +1,5 @@
 import datetime as dt
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +8,7 @@ from unittest import mock
 from best_factor.data import (
     adjusted_ohlc_to_adj_close,
     download_nasdaq_symbol_directory,
+    fetch_yfinance_market_caps,
     fetch_resilient_prices,
     fetch_yahoo_chart_prices,
     load_prices_csv,
@@ -99,6 +101,297 @@ class DataLoadingTest(unittest.TestCase):
         self.assertEqual(metadata["provider_fill_counts"], {"yfinance": 1, "yahoo_chart": 1})
         self.assertEqual(metadata["fallback_filled_ticker_count"], 1)
         self.assertEqual(metadata["fallback_filled_tickers"], ["BBB"])
+
+    def test_market_cap_screener_paginates_and_uses_bounded_targeted_fallback(self):
+        fake_yfinance = mock.Mock()
+        fake_yfinance.EquityQuery.side_effect = lambda operator, operand: (operator, operand)
+        fake_yfinance.screen.side_effect = [
+            {
+                "start": 0,
+                "count": 2,
+                "total": 3,
+                "quotes": [
+                    {
+                        "symbol": "AAA",
+                        "quoteType": "EQUITY",
+                        "currency": "USD",
+                        "marketCap": 12_000_000_000,
+                        "regularMarketTime": 1_784_923_200,
+                    },
+                    {
+                        "symbol": "AAZ",
+                        "quoteType": "EQUITY",
+                        "currency": "USD",
+                        "marketCap": 1_000_000_000,
+                        "regularMarketTime": 1_784_923_200,
+                    },
+                ],
+            },
+            {
+                "start": 2,
+                "count": 1,
+                "total": 3,
+                "quotes": [
+                    {
+                        "symbol": "BBB",
+                        "quoteType": "EQUITY",
+                        "currency": "USD",
+                        "marketCap": 8_000_000_000,
+                        "regularMarketTime": 1_784_923_201,
+                    }
+                ],
+            },
+        ]
+        fake_yfinance.Ticker.return_value.fast_info = {"market_cap": 4_000_000_000}
+        fake_yfinance.Ticker.return_value.info = {}
+
+        with mock.patch.dict(sys.modules, {"yfinance": fake_yfinance}):
+            market_caps, metadata = fetch_yfinance_market_caps(
+                ["AAA", "BBB", "CCC"],
+                page_size=2,
+                max_results=10,
+                max_targeted_fallbacks=1,
+            )
+
+        self.assertEqual(
+            market_caps,
+            {
+                "AAA": 12_000_000_000,
+                "BBB": 8_000_000_000,
+                "CCC": 4_000_000_000,
+            },
+        )
+        self.assertEqual(metadata["matched_ticker_count"], 3)
+        self.assertEqual(metadata["coverage_ratio"], 1.0)
+        self.assertEqual(metadata["screener_page_count"], 2)
+        self.assertEqual(metadata["targeted_fallback_count"], 1)
+        self.assertEqual(metadata["missing_tickers"], [])
+        fake_yfinance.Ticker.assert_called_once_with("CCC")
+
+    def test_market_cap_screener_uses_exact_us_equity_query(self):
+        fake_yfinance = mock.Mock()
+        fake_yfinance.EquityQuery.side_effect = lambda operator, operand: (operator, operand)
+        fake_yfinance.screen.return_value = {
+            "start": 0,
+            "count": 0,
+            "total": 0,
+            "quotes": [],
+        }
+        expected_exchange_query = (
+            "is-in",
+            ["exchange", "NMS", "NGM", "NCM", "NYQ", "ASE", "PCX", "BTS", "CXI", "NAE", "YHD"],
+        )
+        expected_query = (
+            "and",
+            [
+                ("eq", ["region", "us"]),
+                expected_exchange_query,
+                ("gt", ["intradaymarketcap", 0]),
+            ],
+        )
+
+        with mock.patch.dict(sys.modules, {"yfinance": fake_yfinance}):
+            fetch_yfinance_market_caps(
+                ["AAA"],
+                page_size=1,
+                max_results=1,
+                max_targeted_fallbacks=0,
+            )
+
+        self.assertEqual(
+            fake_yfinance.EquityQuery.call_args_list,
+            [
+                mock.call("eq", ["region", "us"]),
+                mock.call("is-in", expected_exchange_query[1]),
+                mock.call("gt", ["intradaymarketcap", 0]),
+                mock.call("and", expected_query[1]),
+            ],
+        )
+        fake_yfinance.screen.assert_called_once_with(
+            expected_query,
+            offset=0,
+            size=1,
+            sortField="ticker",
+            sortAsc=True,
+        )
+
+    def test_market_cap_screener_excludes_non_usd_and_non_equity_quotes(self):
+        fake_yfinance = mock.Mock()
+        fake_yfinance.EquityQuery.side_effect = lambda operator, operand: (operator, operand)
+        fake_yfinance.screen.return_value = {
+            "start": 0,
+            "count": 2,
+            "total": 2,
+            "quotes": [
+                {
+                    "symbol": "AAA",
+                    "quoteType": "EQUITY",
+                    "currency": "CAD",
+                    "marketCap": 12_000_000_000,
+                },
+                {
+                    "symbol": "BBB",
+                    "quoteType": "ETF",
+                    "currency": "USD",
+                    "marketCap": 8_000_000_000,
+                },
+            ],
+        }
+
+        with mock.patch.dict(sys.modules, {"yfinance": fake_yfinance}):
+            market_caps, metadata = fetch_yfinance_market_caps(
+                ["AAA", "BBB"],
+                page_size=2,
+                max_results=2,
+                max_targeted_fallbacks=0,
+            )
+
+        self.assertEqual(market_caps, {})
+        self.assertEqual(metadata["matched_ticker_count"], 0)
+        self.assertEqual(metadata["missing_tickers"], ["AAA", "BBB"])
+        fake_yfinance.Ticker.assert_not_called()
+
+    def test_market_cap_screener_rejects_duplicate_order_start_and_count_drift(self):
+        cases = [
+            (
+                "duplicate",
+                {
+                    "start": 0,
+                    "count": 2,
+                    "total": 2,
+                    "quotes": [
+                        {"symbol": "AAA", "quoteType": "EQUITY", "currency": "USD", "marketCap": 1},
+                        {"symbol": "AAA", "quoteType": "EQUITY", "currency": "USD", "marketCap": 1},
+                    ],
+                },
+                "duplicate symbol",
+            ),
+            (
+                "order",
+                {
+                    "start": 0,
+                    "count": 2,
+                    "total": 2,
+                    "quotes": [
+                        {"symbol": "BBB", "quoteType": "EQUITY", "currency": "USD", "marketCap": 1},
+                        {"symbol": "AAA", "quoteType": "EQUITY", "currency": "USD", "marketCap": 1},
+                    ],
+                },
+                "ticker order drifted",
+            ),
+            (
+                "start",
+                {
+                    "start": 1,
+                    "count": 1,
+                    "total": 1,
+                    "quotes": [
+                        {"symbol": "AAA", "quoteType": "EQUITY", "currency": "USD", "marketCap": 1},
+                    ],
+                },
+                "start drifted",
+            ),
+            (
+                "count",
+                {
+                    "start": 0,
+                    "count": 2,
+                    "total": 1,
+                    "quotes": [
+                        {"symbol": "AAA", "quoteType": "EQUITY", "currency": "USD", "marketCap": 1},
+                    ],
+                },
+                "count mismatch",
+            ),
+        ]
+
+        for name, response, error_pattern in cases:
+            with self.subTest(name=name):
+                fake_yfinance = mock.Mock()
+                fake_yfinance.EquityQuery.side_effect = lambda operator, operand: (operator, operand)
+                fake_yfinance.screen.return_value = response
+                with mock.patch.dict(sys.modules, {"yfinance": fake_yfinance}):
+                    with self.assertRaisesRegex(ValueError, error_pattern):
+                        fetch_yfinance_market_caps(
+                            ["AAA", "BBB"],
+                            page_size=2,
+                            max_results=2,
+                            max_targeted_fallbacks=0,
+                        )
+
+    def test_market_cap_screener_skips_targeted_fallback_above_25_unresolved(self):
+        fake_yfinance = mock.Mock()
+        fake_yfinance.EquityQuery.side_effect = lambda operator, operand: (operator, operand)
+        fake_yfinance.screen.return_value = {
+            "start": 0,
+            "count": 0,
+            "total": 0,
+            "quotes": [],
+        }
+        requested = [f"SYM{index:02d}" for index in range(26)]
+
+        with mock.patch.dict(sys.modules, {"yfinance": fake_yfinance}):
+            market_caps, metadata = fetch_yfinance_market_caps(requested)
+
+        self.assertEqual(market_caps, {})
+        self.assertEqual(metadata["targeted_fallback_count"], 0)
+        self.assertEqual(metadata["missing_tickers"], requested)
+        fake_yfinance.Ticker.assert_not_called()
+
+    def test_market_cap_screener_rejects_result_sets_above_guard(self):
+        fake_yfinance = mock.Mock()
+        fake_yfinance.EquityQuery.side_effect = lambda operator, operand: (operator, operand)
+        fake_yfinance.screen.return_value = {
+            "start": 0,
+            "count": 1,
+            "total": 11,
+            "quotes": [
+                {
+                    "symbol": "AAA",
+                    "quoteType": "EQUITY",
+                    "currency": "USD",
+                    "marketCap": 12_000_000_000,
+                }
+            ],
+        }
+        with mock.patch.dict(sys.modules, {"yfinance": fake_yfinance}):
+            with self.assertRaisesRegex(ValueError, "exceeds max_results"):
+                fetch_yfinance_market_caps(["AAA"], page_size=1, max_results=10)
+
+    def test_market_cap_screener_rejects_total_drift(self):
+        fake_yfinance = mock.Mock()
+        fake_yfinance.EquityQuery.side_effect = lambda operator, operand: (operator, operand)
+        fake_yfinance.screen.side_effect = [
+            {
+                "start": 0,
+                "count": 1,
+                "total": 2,
+                "quotes": [
+                    {
+                        "symbol": "AAA",
+                        "quoteType": "EQUITY",
+                        "currency": "USD",
+                        "marketCap": 12_000_000_000,
+                    }
+                ],
+            },
+            {
+                "start": 1,
+                "count": 1,
+                "total": 3,
+                "quotes": [
+                    {
+                        "symbol": "BBB",
+                        "quoteType": "EQUITY",
+                        "currency": "USD",
+                        "marketCap": 8_000_000_000,
+                    }
+                ],
+            },
+        ]
+        with mock.patch.dict(sys.modules, {"yfinance": fake_yfinance}):
+            with self.assertRaisesRegex(ValueError, "total drifted"):
+                fetch_yfinance_market_caps(["AAA", "BBB"], page_size=1, max_results=10)
 
     def test_nasdaq_symbol_directory_parser_keeps_only_conservative_common_stock(self):
         text = (

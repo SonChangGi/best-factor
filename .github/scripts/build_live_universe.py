@@ -15,6 +15,7 @@ import csv
 import datetime as dt
 import hashlib
 import json
+import math
 import sys
 import urllib.request
 from collections import Counter
@@ -25,6 +26,7 @@ from best_factor.data import (
     NASDAQ_LISTED_URL,
     OTHER_LISTED_URL,
     SYMBOL_DIRECTORY_URLS,
+    fetch_yfinance_market_caps,
     normalize_ticker,
     parse_nasdaq_symbol_directory,
 )
@@ -34,6 +36,10 @@ FIELDNAMES = ["ticker", "name", "exchange", "asset_type", "active", "market_cap"
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if not math.isfinite(args.min_market_cap) or args.min_market_cap < 0:
+        raise ValueError("--min-market-cap must be finite and non-negative")
+    if not math.isfinite(args.min_market_cap_coverage_ratio) or not 0 < args.min_market_cap_coverage_ratio <= 1:
+        raise ValueError("--min-market-cap-coverage-ratio must be in (0, 1]")
     priority_tickers = read_tickers(args.tickers_txt)
     candidates, metadata = load_symbol_directory_candidates(args.symbol_directory_url)
     rows, selection = select_committed_common_stocks(priority_tickers, candidates)
@@ -43,6 +49,39 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError(
             f"validated common-stock universe has {len(rows)} rows, below --min-symbols {args.min_symbols} "
             f"(short by {missing}; invalid preview: {invalid_preview})"
+        )
+    market_cap_metadata: dict[str, object] | None = None
+    market_cap_enrichment_applied = False
+    if args.min_market_cap > 0:
+        market_caps, market_cap_metadata = fetch_yfinance_market_caps(row["ticker"] for row in rows)
+        rows = enrich_market_caps(rows, market_caps)
+        matched = sum(1 for row in rows if math.isfinite(float(row.get("market_cap") or math.nan)))
+        coverage_ratio = matched / len(rows) if rows else 0.0
+        if args.market_cap_metadata_json:
+            market_cap_metadata_path = Path(args.market_cap_metadata_json)
+            market_cap_metadata_path.parent.mkdir(parents=True, exist_ok=True)
+            market_cap_metadata_path.write_text(
+                json.dumps(market_cap_metadata, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+        if coverage_ratio < args.min_market_cap_coverage_ratio:
+            missing_tickers = [str(row["ticker"]) for row in rows if not math.isfinite(float(row.get("market_cap") or math.nan))]
+            message = (
+                f"market-cap coverage {matched}/{len(rows)} ({coverage_ratio:.4%}) is below "
+                f"--min-market-cap-coverage-ratio {args.min_market_cap_coverage_ratio:.4%}; "
+                f"missing preview: {','.join(missing_tickers[:20])}"
+            )
+            if not args.allow_incomplete_market_cap:
+                raise ValueError(message)
+            print(f"{message}; emitting no market-cap values for explicitly allowed downstream fallback")
+            rows = clear_market_caps(rows)
+        else:
+            market_cap_enrichment_applied = True
+        print(
+            "market-cap enrichment: "
+            f"matched={matched}/{len(rows)} coverage={coverage_ratio:.4%} "
+            f"screener_total={market_cap_metadata.get('screener_total', 0)} "
+            f"targeted_fallbacks={market_cap_metadata.get('targeted_fallback_count', 0)}"
         )
     output = Path(args.output_csv)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -59,7 +98,17 @@ def main(argv: list[str] | None = None) -> int:
         "generated_at": dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z"),
         "universe_construction_note": (
             "Current Nasdaq Trader symbol directories validate the committed dashboard priority list; "
-            "only conservative common-stock rows are emitted. This is not historical point-in-time membership."
+            "only conservative common-stock rows are emitted. "
+            + (
+                "Current Yahoo/yfinance US-listed equity metadata fills market_cap for the exact validated ticker set. "
+                if market_cap_enrichment_applied
+                else (
+                    "The requested current market-cap enrichment was incomplete, so no market-cap values were emitted. "
+                    if market_cap_metadata is not None
+                    else ""
+                )
+            )
+            + "This is not historical point-in-time membership or point-in-time market capitalization."
         ),
     }
     if args.metadata_json:
@@ -75,7 +124,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("tickers_txt", type=Path, help="committed priority ticker list")
     parser.add_argument("output_csv", type=Path, help="universe CSV output path")
     parser.add_argument("--metadata-json", type=Path, help="optional universe-construction metadata JSON")
+    parser.add_argument("--market-cap-metadata-json", type=Path, help="optional private market-cap provider audit JSON")
     parser.add_argument("--min-symbols", type=int, default=500, help="minimum validated stock rows required")
+    parser.add_argument(
+        "--min-market-cap",
+        type=float,
+        default=0.0,
+        help="fetch current market-cap metadata when the analysis requests a positive threshold",
+    )
+    parser.add_argument(
+        "--min-market-cap-coverage-ratio",
+        type=float,
+        default=1.0,
+        help="minimum finite market-cap coverage required before emitting a filtered live universe",
+    )
+    parser.add_argument(
+        "--allow-incomplete-market-cap",
+        action="store_true",
+        help="emit no market-cap values instead of failing so an explicitly authorized downstream fallback can run",
+    )
     parser.add_argument(
         "--symbol-directory-url",
         action="append",
@@ -145,6 +212,36 @@ def select_committed_common_stocks(
         "invalid_ticker_count": len(invalid),
         "selected_tickers": [str(row["ticker"]) for row in rows],
     }
+
+
+def enrich_market_caps(
+    rows: list[dict[str, object]],
+    market_caps: dict[str, float],
+) -> list[dict[str, object]]:
+    enriched: list[dict[str, object]] = []
+    for row in rows:
+        ticker = normalize_ticker(row.get("ticker"))
+        market_cap = market_caps.get(ticker)
+        if market_cap is None or not math.isfinite(float(market_cap)) or float(market_cap) <= 0:
+            enriched.append(dict(row))
+            continue
+        source = str(row.get("source") or "unknown")
+        enriched.append(
+            {
+                **row,
+                "market_cap": int(float(market_cap)),
+                "source": f"{source}+yfinance_current_market_cap_screen",
+            }
+        )
+    return enriched
+
+
+def clear_market_caps(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    cleared: list[dict[str, object]] = []
+    for row in rows:
+        source = str(row.get("source") or "unknown").replace("+yfinance_current_market_cap_screen", "")
+        cleared.append({**row, "market_cap": "", "source": source})
+    return cleared
 
 
 def download_text(url: str) -> str:

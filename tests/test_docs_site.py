@@ -1,9 +1,11 @@
 import importlib.util
+import csv
 import json
 import re
 import shutil
 import sys
 import subprocess
+import tempfile
 import textwrap
 import unittest
 from pathlib import Path
@@ -320,6 +322,12 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'", workflow)
         self.assertIn("contents: write", workflow)
         self.assertIn("python -m best_factor.cli run", workflow)
+        self.assertIn('--min-market-cap "${MIN_MARKET_CAP}"', workflow)
+        self.assertIn("--min-market-cap-coverage-ratio 1.0", workflow)
+        self.assertIn("--allow-incomplete-market-cap", workflow)
+        self.assertIn("/tmp/best-factor-market-cap-metadata.json", workflow)
+        self.assertIn("if: always() && steps.freshness.outputs.should_update == 'true'", workflow)
+        self.assertIn("best-factor-market-cap-diagnostics-${{ github.run_id }}", workflow)
         self.assertIn("Commit refreshed dashboard data", workflow)
         self.assertIn("git commit -F", workflow)
         self.assertIn("git push origin HEAD:main", workflow)
@@ -379,6 +387,93 @@ class DocsSiteTest(unittest.TestCase):
         )
         self.assertEqual([row["ticker"] for row in rows], ["AAPL", "MSFT"])
         self.assertEqual(selection["invalid_tickers"], ["SPY"])
+        enriched = module.enrich_market_caps(
+            rows,
+            {
+                "AAPL": 3_000_000_000_000,
+                "MSFT": 2_500_000_000_000,
+                "IGNORED": 123,
+            },
+        )
+        self.assertEqual([row["ticker"] for row in enriched], ["AAPL", "MSFT"])
+        self.assertEqual(enriched[0]["market_cap"], 3_000_000_000_000)
+        self.assertEqual(enriched[1]["market_cap"], 2_500_000_000_000)
+        self.assertTrue(all("yfinance_current_market_cap_screen" in str(row["source"]) for row in enriched))
+
+    def test_live_universe_market_cap_enrichment_requires_configured_coverage(self):
+        script = ROOT / ".github" / "scripts" / "build_live_universe.py"
+        spec = importlib.util.spec_from_file_location("build_live_universe_coverage", script)
+        module = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+        candidates = {
+            ticker: {
+                "ticker": ticker,
+                "name": ticker,
+                "exchange": "Q",
+                "asset_type": "stock",
+                "active": True,
+                "market_cap": "",
+                "sector": "UNKNOWN",
+                "source": "nasdaq_test",
+                "as_of_date": "2026-07-24",
+            }
+            for ticker in ("AAA", "BBB")
+        }
+        metadata = {
+            "universe_source_urls": ["https://www.nasdaqtrader.com/test"],
+            "symbol_directory_source_hash": "test",
+            "symbol_directory_sources": [],
+            "raw_symbol_count": 2,
+            "common_stock_candidate_count": 2,
+            "excluded_symbol_counts": {},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            tickers_path = tmp_path / "tickers.txt"
+            tickers_path.write_text("AAA\nBBB\n", encoding="utf-8")
+            with (
+                mock.patch.object(module, "load_symbol_directory_candidates", return_value=(candidates, metadata)),
+                mock.patch.object(
+                    module,
+                    "fetch_yfinance_market_caps",
+                    return_value=(
+                        {"AAA": 12_000_000_000},
+                        {"screener_total": 10, "targeted_fallback_count": 0},
+                    ),
+                ),
+            ):
+                with self.assertRaisesRegex(ValueError, "market-cap coverage"):
+                    module.main(
+                        [
+                            str(tickers_path),
+                            str(tmp_path / "universe.csv"),
+                            "--min-symbols",
+                            "2",
+                            "--min-market-cap",
+                            "10000000000",
+                            "--min-market-cap-coverage-ratio",
+                            "1.0",
+                        ]
+                    )
+                fallback_output = tmp_path / "fallback-universe.csv"
+                module.main(
+                    [
+                        str(tickers_path),
+                        str(fallback_output),
+                        "--min-symbols",
+                        "2",
+                        "--min-market-cap",
+                        "10000000000",
+                        "--min-market-cap-coverage-ratio",
+                        "1.0",
+                        "--allow-incomplete-market-cap",
+                    ]
+                )
+            with fallback_output.open(encoding="utf-8", newline="") as handle:
+                fallback_rows = list(csv.DictReader(handle))
+            self.assertEqual([row["market_cap"] for row in fallback_rows], ["", ""])
+            self.assertTrue(all("yfinance_current_market_cap_screen" not in row["source"] for row in fallback_rows))
 
 
 if __name__ == "__main__":
