@@ -4,19 +4,19 @@
     "factor_allowlist": [],
     "factor_preset": "zoo",
     "min_dollar_volume": 50000000.0,
-    "min_market_cap": 0.0,
-    "period": "2y",
+    "min_market_cap": 10000000000.0,
+    "period": "5y",
     "rebalance": "M",
-    "top_n": 15,
+    "top_n": 20,
     "transaction_cost_bps": 5.0,
     "transaction_cost_model": "one_way_notional",
     "weighting": "score"
   },
-  "config_hash": "07b2bc80f15f43e9f13725c468886f3cff7f7247b8d475ac8c0d451415416cf9",
+  "config_hash": "082b5dbbe2c6cdf08d669733f9eacbc1518b0c88693d091f27574c8bc2f50750",
   "result_binding": {
     "data_end_date": "2026-07-23",
-    "generated_at": "2026-07-24T11:22:34Z",
-    "source_hash": "45bc0c3553a14eb2"
+    "generated_at": "2026-07-25T11:17:58Z",
+    "source_hash": "5fe02c160d7e49ac"
   },
   "schema_version": 1
 }
