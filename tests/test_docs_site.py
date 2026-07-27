@@ -87,9 +87,7 @@ class DocsSiteTest(unittest.TestCase):
                 "https://sonchanggi.github.io/dram-price/",
                 "https://sonchanggi.github.io/etf-tracking/",
                 "https://sonchanggi.github.io/sox/",
-                "https://sonchanggi.github.io/quant-dashboard/risk-score/",
                 "https://sonchanggi.github.io/port/",
-                "https://sonchanggi.github.io/valuation/",
                 "https://sonchanggi.github.io/kelly/",
             },
         )
@@ -112,7 +110,7 @@ class DocsSiteTest(unittest.TestCase):
         self.assertTrue(repo_paths)
         self.assertTrue(all(path in {
             "best-factor", "quant-dashboard", "momentum-factor-lab", "dram-price",
-            "etf-tracking", "sox", "port", "valuation", "kelly", "fearNgreed", "fearngreed",
+            "etf-tracking", "sox", "port", "kelly", "fearNgreed", "fearngreed",
         } for path in page_paths))
         self.assertTrue(all(path == "best-factor" for path in repo_paths))
         self.assertTrue(all(path == "best-factor" for path in short_repo_paths))
