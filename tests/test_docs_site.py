@@ -20,6 +20,7 @@ class DocsSiteTest(unittest.TestCase):
         for relative in [
             "index.html",
             "styles.css",
+            "shared-nav.css",
             "app.js",
             "data/latest-results.json",
             "data/summary.json",

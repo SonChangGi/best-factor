@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const html = readFileSync(new URL('../docs/index.html', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../docs/app.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../docs/styles.css', import.meta.url), 'utf8');
+const sharedNav = readFileSync(new URL('../docs/shared-nav.css', import.meta.url), 'utf8');
 
 function dashboardHelpers() {
   const context = {
@@ -98,14 +99,18 @@ test('analysis rerun form exposes canonical inputs while display controls remain
 });
 
 test('canonical navigation has the exact 9-project order and one current page', () => {
-  const nav = html.match(/<div class="site-nav-links"[^>]*>([\s\S]*?)<\/div>/)?.[1] || '';
-  const links = [...nav.matchAll(/<a(?: class="[^"]*")? href="([^"]+)"(?: aria-current="page")?>([\s\S]*?)<\/a>/g)]
+  const brand = html.match(/<a class="site-nav-brand quant-shared-nav__brand" href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+  const nav = html.match(/<div class="site-nav-links quant-shared-nav__links"[^>]*>([\s\S]*?)<\/div>/)?.[1] || '';
+  const links = [...nav.matchAll(/<a class="[^"]*" href="([^"]+)"(?: aria-current="page")?>([\s\S]*?)<\/a>/g)]
     .map((match) => ({
       href: match[1],
       label: match[2].replace(/&amp;/g, '&').trim(),
     }));
+  assert.deepEqual(
+    { label: brand?.[2].trim(), href: brand?.[1] },
+    { label: 'Quant Research Hub', href: 'https://sonchanggi.github.io/quant-dashboard/' },
+  );
   assert.deepEqual(links, [
-    { label: 'Hub', href: 'https://sonchanggi.github.io/quant-dashboard/' },
     { label: 'Fear & Greed', href: 'https://sonchanggi.github.io/fearNgreed/' },
     { label: 'Momentum', href: 'https://sonchanggi.github.io/momentum-factor-lab/' },
     { label: 'DRAM', href: 'https://sonchanggi.github.io/dram-price/' },
@@ -115,7 +120,13 @@ test('canonical navigation has the exact 9-project order and one current page', 
     { label: 'Port', href: 'https://sonchanggi.github.io/port/' },
     { label: 'Kelly', href: 'https://sonchanggi.github.io/kelly/' },
   ]);
-  assert.equal((nav.match(/aria-current="page"/g) || []).length, 1);
+  assert.equal((html.match(/aria-current="page"/g) || []).length, 1);
+  assert.match(html, /<body id="top" class="has-quant-shared-nav">/);
+  assert.match(html, /shared-nav\.css\?v=20260728-shared-nav-v1/);
+  assert.match(sharedNav, /position:\s*fixed\s*!important/);
+  assert.match(sharedNav, /--quant-shared-nav-height:\s*59px/);
+  assert.match(sharedNav, /--quant-shared-nav-height:\s*101px/);
+  assert.match(sharedNav, /grid-template-rows:\s*50px 44px/);
 });
 
 test('compact typography and non-overlapping chart readout are explicit contracts', () => {
