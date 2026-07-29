@@ -140,6 +140,18 @@ jobs:
     steps:
       - name: Checkout isolated best-factor repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: pyproject.toml
+      - name: Install base analysis package
+        run: python -m pip install -e .
+      - name: Validate committed dashboard contracts
+        run: |
+          PYTHONPATH=src python -m unittest discover -s tests
+          node --test tests/common_design_v1.test.mjs tests/control_api.test.mjs
       - name: Configure GitHub Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
       - name: Upload committed dashboard artifact
@@ -151,6 +163,36 @@ jobs:
         env:
           NODE_OPTIONS: --no-deprecation
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+      - name: Verify live public dashboard bytes
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            matched=true
+            for relative_path in data/latest-results.json data/summary.json data/dashboard-config.json; do
+              readback="/tmp/best-factor-${relative_path//\//-}"
+              if ! curl \
+                --fail \
+                --silent \
+                --show-error \
+                --connect-timeout 10 \
+                --max-time 30 \
+                --output "$readback" \
+                "${PAGE_URL%/}/${relative_path}?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}" \
+                || ! cmp --silent "docs/${relative_path}" "$readback"; then
+                matched=false
+                break
+              fi
+            done
+            if [[ "$matched" == "true" ]]; then
+              echo "Live Best Factor dashboard data is byte-identical to committed docs."
+              exit 0
+            fi
+            [[ $attempt -lt 12 ]] || exit 1
+            sleep 5
+          done
 
   update-and-deploy:
     if: >-
@@ -456,6 +498,13 @@ jobs:
             --public-output docs/data/dashboard-config.json
           cp /tmp/best-factor-effective-config.json .github/best-factor-dashboard-config.json
 
+      - name: Validate generated publication contracts
+        if: steps.freshness.outputs.should_update == 'true'
+        run: |
+          PYTHONPATH=src python .github/scripts/validate_publication.py
+          PYTHONPATH=src python -m unittest discover -s tests -p 'test_docs_site.py'
+          node --test tests/common_design_v1.test.mjs tests/control_api.test.mjs
+
       - name: Commit refreshed dashboard data
         if: steps.freshness.outputs.should_update == 'true'
         id: data_commit
@@ -478,7 +527,7 @@ jobs:
           Confidence: high
           Scope-risk: narrow
           Directive: do not edit analysis methodology in automation-only refresh commits
-          Tested: workflow freshness gate and network-free regression tests run before this commit
+          Tested: workflow freshness gate, network-free regression tests, and post-generation publication contracts run before this commit
           Not-tested: live provider availability beyond this scheduled run
 
           Skip-Pages-Deploy: update-dashboard-workflow
@@ -521,6 +570,38 @@ jobs:
         env:
           NODE_OPTIONS: --no-deprecation
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+
+      - name: Verify live public dashboard bytes
+        if: steps.freshness.outputs.should_update == 'true'
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            matched=true
+            for relative_path in data/latest-results.json data/summary.json data/dashboard-config.json; do
+              readback="/tmp/best-factor-${relative_path//\//-}"
+              if ! curl \
+                --fail \
+                --silent \
+                --show-error \
+                --connect-timeout 10 \
+                --max-time 30 \
+                --output "$readback" \
+                "${PAGE_URL%/}/${relative_path}?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}" \
+                || ! cmp --silent "docs/${relative_path}" "$readback"; then
+                matched=false
+                break
+              fi
+            done
+            if [[ "$matched" == "true" ]]; then
+              echo "Live Best Factor dashboard data is byte-identical to generated docs."
+              exit 0
+            fi
+            [[ $attempt -lt 12 ]] || exit 1
+            sleep 5
+          done
 
       - name: Verify immutable control-run artifact
         if: steps.freshness.outputs.should_update == 'true' && inputs.control_run_id != ''
