@@ -297,6 +297,18 @@ class DocsSiteTest(unittest.TestCase):
         self.assertEqual(payload["automation"].get("primary_refresh_kst"), "07:00 Tue-Sat")
         self.assertIn("09:00 Tue-Sat stale/missing JSON only", payload["automation"].get("fallback_refresh_kst", []))
 
+    def test_generated_publication_validator_reconciles_all_three_public_contracts(self):
+        script = ROOT / ".github" / "scripts" / "validate_publication.py"
+        completed = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            env={"PYTHONPATH": str(ROOT / "src")},
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("best_factor_publication_validation=passed", completed.stdout)
+
     def test_hostile_json_would_not_be_injected_into_static_shell(self):
         html = (DOCS / "index.html").read_text(encoding="utf-8")
         app = (DOCS / "app.js").read_text(encoding="utf-8")
@@ -328,10 +340,41 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("if: always() && steps.freshness.outputs.should_update == 'true'", workflow)
         self.assertIn("best-factor-market-cap-diagnostics-${{ github.run_id }}", workflow)
         self.assertIn("Commit refreshed dashboard data", workflow)
+        self.assertIn("Validate generated publication contracts", workflow)
+        self.assertIn("PYTHONPATH=src python .github/scripts/validate_publication.py", workflow)
+        self.assertLess(
+            workflow.index("Validate generated publication contracts"),
+            workflow.index("Commit refreshed dashboard data"),
+        )
         self.assertIn("git commit -F", workflow)
         self.assertIn("git push origin HEAD:main", workflow)
         self.assertIn("github.actor == 'github-actions[bot]'", workflow)
         self.assertIn("actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5", workflow)
+
+    def test_pages_paths_validate_before_upload_and_read_back_public_bytes(self):
+        workflow = (ROOT / ".github" / "workflows" / "update-dashboard.yml").read_text(encoding="utf-8")
+        push_job = workflow.split("  deploy-committed-docs:", 1)[1].split("  update-and-deploy:", 1)[0]
+        refresh_job = workflow.split("  update-and-deploy:", 1)[1]
+
+        self.assertIn("Validate committed dashboard contracts", push_job)
+        self.assertIn("cache-dependency-path: pyproject.toml", push_job)
+        self.assertIn("Install base analysis package", push_job)
+        self.assertIn("python -m pip install -e .", push_job)
+        self.assertIn("PYTHONPATH=src python -m unittest discover -s tests", push_job)
+        self.assertIn("node --test tests/common_design_v1.test.mjs tests/control_api.test.mjs", push_job)
+        self.assertLess(
+            push_job.index("Validate committed dashboard contracts"),
+            push_job.index("Upload committed dashboard artifact"),
+        )
+        for job in (push_job, refresh_job):
+            self.assertIn("Verify live public dashboard bytes", job)
+            self.assertIn("steps.deployment.outputs.page_url", job)
+            self.assertIn(
+                "for relative_path in data/latest-results.json data/summary.json data/dashboard-config.json",
+                job,
+            )
+            self.assertIn('cmp --silent "docs/${relative_path}" "$readback"', job)
+            self.assertLess(job.index("actions/deploy-pages@"), job.index("Verify live public dashboard bytes"))
 
 
     def test_dependabot_tracks_actions_and_python_dependencies(self):
