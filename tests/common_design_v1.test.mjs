@@ -92,7 +92,7 @@ test('analysis rerun form exposes canonical inputs while display controls remain
   assert.match(app, /loadAnalysisConfigSidecar\(payload\)/);
 });
 
-test('canonical navigation has the exact 11-project order and one current page', () => {
+test('canonical navigation has the exact 10-project order and one current page', () => {
   const nav = html.match(/<div class="site-nav-links"[^>]*>([\s\S]*?)<\/div>/)?.[1] || '';
   const links = [...nav.matchAll(/<a(?: class="[^"]*")? href="([^"]+)"(?: aria-current="page")?>([\s\S]*?)<\/a>/g)]
     .map((match) => ({
@@ -110,7 +110,6 @@ test('canonical navigation has the exact 11-project order and one current page',
     { label: 'Risk Score', href: 'https://sonchanggi.github.io/quant-dashboard/risk-score/' },
     { label: 'Port', href: 'https://sonchanggi.github.io/port/' },
     { label: 'Valuation', href: 'https://sonchanggi.github.io/valuation/' },
-    { label: 'Kelly', href: 'https://sonchanggi.github.io/kelly/' },
   ]);
   assert.equal((nav.match(/aria-current="page"/g) || []).length, 1);
 });
