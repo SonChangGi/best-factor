@@ -7,6 +7,7 @@ import vm from 'node:vm';
 const html = readFileSync(new URL('../docs/index.html', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../docs/app.js', import.meta.url), 'utf8');
 const workflow = readFileSync(new URL('../.github/workflows/update-dashboard.yml', import.meta.url), 'utf8');
+const callbackScript = readFileSync(new URL('../.github/scripts/control_callback.py', import.meta.url), 'utf8');
 
 const INPUTS = {
   period: '5y',
@@ -534,8 +535,10 @@ test('the API contract never changes the existing 11-input workflow mapping', ()
   assert.match(dispatchBlock, /control_config_hash_algorithm:[\s\S]*?default: ""[\s\S]*?type: string/);
   assert.match(dispatchBlock, /control_config_hash:[\s\S]*?default: ""[\s\S]*?type: string/);
   assert.match(workflow, /id: data_commit/);
-  assert.match(workflow, /summary_allowlist = \(/);
-  assert.match(workflow, /"payload": bounded_payload/);
+  assert.match(workflow, /python \.github\/scripts\/control_callback\.py result/);
+  assert.match(workflow, /python \.github\/scripts\/control_callback\.py failure/);
+  assert.match(callbackScript, /SUMMARY_ALLOWLIST = \(/);
+  assert.match(callbackScript, /"payload": bounded_payload/);
   assert.match(workflow, /\/v1\/internal\/runs\/\$\{CONTROL_RUN_ID\}\/failure/);
   assert.match(
     workflow,

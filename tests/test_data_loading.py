@@ -164,6 +164,9 @@ class DataLoadingTest(unittest.TestCase):
         self.assertEqual(metadata["matched_ticker_count"], 3)
         self.assertEqual(metadata["coverage_ratio"], 1.0)
         self.assertEqual(metadata["screener_page_count"], 2)
+        self.assertEqual(metadata["screener_snapshot_attempt_count"], 1)
+        self.assertEqual(metadata["screener_snapshot_retry_count"], 0)
+        self.assertEqual(metadata["screener_snapshot_retry_errors"], [])
         self.assertEqual(metadata["targeted_fallback_count"], 1)
         self.assertEqual(metadata["missing_tickers"], [])
         fake_yfinance.Ticker.assert_called_once_with("CCC")
@@ -358,7 +361,7 @@ class DataLoadingTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exceeds max_results"):
                 fetch_yfinance_market_caps(["AAA"], page_size=1, max_results=10)
 
-    def test_market_cap_screener_rejects_total_drift(self):
+    def test_market_cap_screener_restarts_the_whole_snapshot_after_total_drift(self):
         fake_yfinance = mock.Mock()
         fake_yfinance.EquityQuery.side_effect = lambda operator, operand: (operator, operand)
         fake_yfinance.screen.side_effect = [
@@ -388,10 +391,93 @@ class DataLoadingTest(unittest.TestCase):
                     }
                 ],
             },
+            {
+                "start": 0,
+                "count": 1,
+                "total": 2,
+                "quotes": [
+                    {
+                        "symbol": "AAA",
+                        "quoteType": "EQUITY",
+                        "currency": "USD",
+                        "marketCap": 12_000_000_000,
+                    }
+                ],
+            },
+            {
+                "start": 1,
+                "count": 1,
+                "total": 2,
+                "quotes": [
+                    {
+                        "symbol": "BBB",
+                        "quoteType": "EQUITY",
+                        "currency": "USD",
+                        "marketCap": 8_000_000_000,
+                    }
+                ],
+            },
         ]
         with mock.patch.dict(sys.modules, {"yfinance": fake_yfinance}):
-            with self.assertRaisesRegex(ValueError, "total drifted"):
-                fetch_yfinance_market_caps(["AAA", "BBB"], page_size=1, max_results=10)
+            market_caps, metadata = fetch_yfinance_market_caps(
+                ["AAA", "BBB"],
+                page_size=1,
+                max_results=10,
+                snapshot_attempts=2,
+                snapshot_initial_delay=0,
+            )
+
+        self.assertEqual(market_caps, {"AAA": 12_000_000_000, "BBB": 8_000_000_000})
+        self.assertEqual(metadata["screener_snapshot_attempt_count"], 2)
+        self.assertEqual(metadata["screener_snapshot_retry_count"], 1)
+        self.assertEqual(metadata["screener_snapshot_retry_errors"][0]["attempt"], 1)
+        self.assertIn("total drifted", metadata["screener_snapshot_retry_errors"][0]["message"])
+        self.assertEqual(fake_yfinance.screen.call_count, 4)
+
+    def test_market_cap_screener_fails_closed_after_bounded_total_drift_retries(self):
+        fake_yfinance = mock.Mock()
+        fake_yfinance.EquityQuery.side_effect = lambda operator, operand: (operator, operand)
+        drifting_pair = [
+            {
+                "start": 0,
+                "count": 1,
+                "total": 2,
+                "quotes": [
+                    {
+                        "symbol": "AAA",
+                        "quoteType": "EQUITY",
+                        "currency": "USD",
+                        "marketCap": 12_000_000_000,
+                    }
+                ],
+            },
+            {
+                "start": 1,
+                "count": 1,
+                "total": 3,
+                "quotes": [
+                    {
+                        "symbol": "BBB",
+                        "quoteType": "EQUITY",
+                        "currency": "USD",
+                        "marketCap": 8_000_000_000,
+                    }
+                ],
+            },
+        ]
+        fake_yfinance.screen.side_effect = drifting_pair * 3
+
+        with mock.patch.dict(sys.modules, {"yfinance": fake_yfinance}):
+            with self.assertRaisesRegex(ValueError, "unstable after 3 snapshot attempts"):
+                fetch_yfinance_market_caps(
+                    ["AAA", "BBB"],
+                    page_size=1,
+                    max_results=10,
+                    snapshot_attempts=3,
+                    snapshot_initial_delay=0,
+                )
+
+        self.assertEqual(fake_yfinance.screen.call_count, 6)
 
     def test_nasdaq_symbol_directory_parser_keeps_only_conservative_common_stock(self):
         text = (

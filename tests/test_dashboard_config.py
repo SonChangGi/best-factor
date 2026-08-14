@@ -6,7 +6,6 @@ import re
 import subprocess
 import sys
 import tempfile
-import textwrap
 import unittest
 from pathlib import Path
 
@@ -313,6 +312,9 @@ class DashboardConfigTest(unittest.TestCase):
 
     def test_control_callback_uses_exact_immutable_artifact_and_bounded_binding(self):
         workflow = (ROOT / ".github" / "workflows" / "update-dashboard.yml").read_text(encoding="utf-8")
+        callback_script = (ROOT / ".github" / "scripts" / "control_callback.py").read_text(
+            encoding="utf-8"
+        )
         deploy_index = workflow.index("- name: Deploy to GitHub Pages")
         readback_index = workflow.index("- name: Verify immutable control-run artifact")
         callback_index = workflow.index("- name: Publish control-run result manifest")
@@ -337,13 +339,16 @@ class DashboardConfigTest(unittest.TestCase):
             'CALLBACK_ENDPOINT="${QUANT_CONTROL_CALLBACK_URL%/}/v1/internal/runs/${CONTROL_RUN_ID}/result-manifest"',
             workflow,
         )
+        self.assertIn("python .github/scripts/control_callback.py result", workflow)
+        self.assertIn("python .github/scripts/control_callback.py failure", workflow)
+        self.assertNotIn("python - <<'PY'", workflow[callback_index:])
         for field in (
-            '"binding": {',
+            '"binding": binding',
             '"projectId": "best-factor"',
-            '"requestedInputs": config_envelope["config"]',
-            '"normalizedInputs": config_envelope["config"]',
+            '"requestedInputs": requested_inputs',
+            '"normalizedInputs": requested_inputs',
             '"effectiveConfigHash": effective_config_hash',
-            '"effectiveInputs": config_envelope["config"]',
+            '"effectiveInputs": requested_inputs',
             '"ignoredInputs": []',
             '"fallbacks": []',
             '"fallbackUsed": False',
@@ -355,34 +360,22 @@ class DashboardConfigTest(unittest.TestCase):
             '"contractVersion": "best-factor/latest-results/v1"',
             '"payload": bounded_payload',
         ):
-            self.assertIn(field, workflow)
-        self.assertIn("summary_allowlist = (", workflow)
-        self.assertIn('"best_factor"', workflow)
-        self.assertIn("if len(bounded_bytes) > 64 * 1024:", workflow)
-        self.assertEqual(
-            workflow.count(
-                "Control callback URL must be an HTTPS base without credentials, query, or fragment"
-            ),
-            2,
+            self.assertIn(field, callback_script)
+        self.assertIn("SUMMARY_ALLOWLIST = (", callback_script)
+        self.assertIn('"best_factor"', callback_script)
+        self.assertIn("if len(bounded_bytes) > 64 * 1024:", callback_script)
+        self.assertIn(
+            "Control callback URL must be an HTTPS base without credentials, query, or fragment",
+            callback_script,
         )
         self.assertIn("/v1/internal/runs/${CONTROL_RUN_ID}/failure", workflow)
-        self.assertIn('"providerRunId": f"github-actions:{os.environ[\'CONTROL_RUN_ID\']}"', workflow)
-        self.assertIn('"errorCode": "worker_workflow_failed"', workflow)
-        self.assertIn('source_hash = summary.get("source_hash") or metadata.get("source_hash")', workflow)
-        self.assertIn("8 <= len(source_hash) <= 128", workflow)
-        self.assertNotIn("source_hash.ljust", workflow)
-        self.assertNotIn("source_hash.rjust", workflow)
-        callback_step = workflow.split("- name: Publish control-run result manifest", 1)[1].split(
-            "- name: Report controlled-run failure",
-            1,
-        )[0]
-        failure_step = workflow.split("- name: Report controlled-run failure", 1)[1]
-        for filename, step in (
-            ("best-factor-control-result-callback", callback_step),
-            ("best-factor-control-failure-callback", failure_step),
-        ):
-            callback_python = step.split("          python - <<'PY'\n", 1)[1].split("          PY\n", 1)[0]
-            compile(textwrap.dedent(callback_python), filename, "exec")
+        self.assertIn('"providerRunId": f"github-actions:{binding[\'runId\']}"', callback_script)
+        self.assertIn('"errorCode": "worker_workflow_failed"', callback_script)
+        self.assertIn('source_hash = summary.get("source_hash") or metadata.get("source_hash")', callback_script)
+        self.assertIn('r"[0-9a-fA-F]{8,128}"', callback_script)
+        self.assertNotIn("source_hash.ljust", callback_script)
+        self.assertNotIn("source_hash.rjust", callback_script)
+        compile(callback_script, "best-factor-control-callback", "exec")
 
     def test_existing_cli_same_inputs_are_deterministic_and_true_top_n_changes_results(self):
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second, tempfile.TemporaryDirectory() as top_one:
