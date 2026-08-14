@@ -130,7 +130,7 @@ This project must be deployed only to its own repository. The intended public UR
 - `https://sonchanggi.github.io/best-factor/`
 - GitHub repository: `SonChangGi/best-factor`
 
-It must not deploy to, trigger workflows in, or reuse assets from another repository or Pages site. The shared 9-project navigation may link to sibling dashboards, but no sibling project is a deployment target for this repository.
+It must not deploy to, trigger workflows in, or reuse assets from another repository or Pages site. The shared 8-destination navigation may link to sibling dashboards, but no sibling project is a deployment target for this repository.
 
 The `docs/` dashboard separates two kinds of controls:
 
