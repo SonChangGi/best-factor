@@ -98,7 +98,7 @@ test('analysis rerun form exposes canonical inputs while display controls remain
   assert.match(app, /loadAnalysisConfigSidecar\(payload\)/);
 });
 
-test('canonical navigation has the exact 8-project order and one current page', () => {
+test('canonical navigation has the exact 9-project order and one current page', () => {
   const brand = html.match(/<a class="site-nav-brand quant-shared-nav__brand" href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/);
   const nav = html.match(/<div class="site-nav-links quant-shared-nav__links"[^>]*>([\s\S]*?)<\/div>/)?.[1] || '';
   const links = [...nav.matchAll(/<a class="[^"]*" href="([^"]+)"(?: aria-current="page")?>([\s\S]*?)<\/a>/g)]
@@ -118,6 +118,7 @@ test('canonical navigation has the exact 8-project order and one current page', 
     { label: 'ETF', href: 'https://sonchanggi.github.io/etf-tracking/' },
     { label: 'SOX', href: 'https://sonchanggi.github.io/sox/' },
     { label: 'Port', href: 'https://sonchanggi.github.io/port/' },
+    { label: 'Regime', href: 'https://sonchanggi.github.io/regime/' },
   ]);
   assert.equal((html.match(/aria-current="page"/g) || []).length, 1);
   assert.match(html, /<body id="top" class="has-quant-shared-nav">/);
