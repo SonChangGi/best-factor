@@ -114,6 +114,7 @@ on:
       - ".github/best-factor-dashboard-tickers.txt"
       - ".github/scripts/build_live_universe.py"
       - ".github/scripts/check_dashboard_freshness.py"
+      - ".github/scripts/control_callback.py"
       - ".github/scripts/dashboard_config.py"
       - ".github/scripts/refresh_dashboard_tickers.py"
 
@@ -663,126 +664,10 @@ jobs:
             echo "Control callback URL must use HTTPS." >&2
             exit 1
           fi
-          python - <<'PY'
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          from urllib.parse import urlsplit
-
-          callback_base = urlsplit(os.environ["QUANT_CONTROL_CALLBACK_URL"])
-          if (
-              callback_base.scheme != "https"
-              or not callback_base.hostname
-              or callback_base.username
-              or callback_base.password
-              or callback_base.query
-              or callback_base.fragment
-          ):
-              raise SystemExit("Control callback URL must be an HTTPS base without credentials, query, or fragment")
-          result_path = Path("/tmp/best-factor-public-latest-results.json")
-          result_bytes = result_path.read_bytes()
-          payload = json.loads(result_bytes)
-          config_envelope = json.loads(Path("/tmp/best-factor-effective-config.json").read_text(encoding="utf-8"))
-          summary = payload.get("summary")
-          metadata = payload.get("metadata")
-          if not isinstance(summary, dict):
-              raise SystemExit("latest-results summary must be an object")
-          if not isinstance(metadata, dict):
-              metadata = {}
-          summary_allowlist = (
-              "best_composite_score",
-              "best_factor",
-              "best_factor_holdout_cagr",
-              "best_factor_holdout_rank",
-              "best_factor_holdout_sharpe",
-              "data_end_date",
-              "effective_factor_count",
-              "factor_library_size",
-              "factor_preset",
-              "fetched_at",
-              "holding_count",
-              "interpretation_label",
-              "provider",
-              "ranking_count",
-              "selected_factor_count",
-              "source_hash",
-              "tested_factor_count",
-              "universe_as_of_date",
-          )
-          bounded_payload = {
-              "schema_version": payload.get("schema_version"),
-              "generated_at": payload.get("generated_at"),
-              "summary": {
-                  key: summary[key]
-                  for key in summary_allowlist
-                  if key in summary
-              },
-          }
-          bounded_bytes = json.dumps(
-              bounded_payload,
-              ensure_ascii=False,
-              allow_nan=False,
-              separators=(",", ":"),
-              sort_keys=True,
-          ).encode("utf-8")
-          if len(bounded_bytes) > 64 * 1024:
-              raise SystemExit("Best Factor control summary exceeds 64 KiB")
-          source = payload.get("data_scope")
-          source_hash = summary.get("source_hash") or metadata.get("source_hash")
-          data_as_of = summary.get("data_end_date") or metadata.get("data_end_date")
-          calculated_at = payload.get("generated_at")
-          if not isinstance(source, str) or not source:
-              raise SystemExit("latest-results data_scope is required")
-          if not isinstance(source_hash, str) or not (8 <= len(source_hash) <= 128) or any(
-              char not in "0123456789abcdefABCDEF" for char in source_hash
-          ):
-              raise SystemExit("latest-results source hash must be an 8-128 character hexadecimal digest")
-          if not isinstance(data_as_of, str) or not data_as_of:
-              raise SystemExit("latest-results data end date is required")
-          if not isinstance(calculated_at, str) or not calculated_at:
-              raise SystemExit("latest-results generated_at is required")
-          effective_config_hash = config_envelope.get("config_hash")
-          if effective_config_hash != os.environ["CONTROL_CONFIG_HASH"]:
-              raise SystemExit("effective config hash drifted after control binding validation")
-          manifest = {
-              "binding": {
-                  "projectId": "best-factor",
-                  "runId": os.environ["CONTROL_RUN_ID"],
-                  "inputSchemaVersion": os.environ["CONTROL_INPUT_SCHEMA_VERSION"],
-                  "inputSchemaHash": os.environ["CONTROL_INPUT_SCHEMA_HASH"],
-                  "configHashAlgorithm": os.environ["CONTROL_CONFIG_HASH_ALGORITHM"],
-                  "configHash": os.environ["CONTROL_CONFIG_HASH"],
-              },
-              "requestedInputs": config_envelope["config"],
-              "normalizedInputs": config_envelope["config"],
-              "effectiveConfigHash": effective_config_hash,
-              "effectiveInputs": config_envelope["config"],
-              "ignoredInputs": [],
-              "fallbacks": [],
-              "fallbackUsed": False,
-              "fallbackReason": None,
-              "dataAsOf": data_as_of,
-              "calculatedAt": calculated_at,
-              "codeVersion": os.environ["CODE_VERSION"],
-              "dataIdentity": {
-                  "source": source,
-                  "sourceHash": source_hash,
-                  "dataAsOf": data_as_of,
-              },
-              "artifact": {
-                  "url": os.environ["ARTIFACT_URL"],
-                  "sha256": hashlib.sha256(result_bytes).hexdigest(),
-                  "byteSize": len(result_bytes),
-                  "contractVersion": "best-factor/latest-results/v1",
-              },
-              "payload": bounded_payload,
-          }
-          Path("/tmp/best-factor-control-result-manifest.json").write_text(
-              json.dumps(manifest, ensure_ascii=False, separators=(",", ":")),
-              encoding="utf-8",
-          )
-          PY
+          python .github/scripts/control_callback.py result \
+            --result-json /tmp/best-factor-public-latest-results.json \
+            --config-json /tmp/best-factor-effective-config.json \
+            --output /tmp/best-factor-control-result-manifest.json
           CALLBACK_ENDPOINT="${QUANT_CONTROL_CALLBACK_URL%/}/v1/internal/runs/${CONTROL_RUN_ID}/result-manifest"
           curl \
             --fail-with-body \
@@ -820,42 +705,8 @@ jobs:
             echo "Control callback URL must use HTTPS." >&2
             exit 1
           fi
-          python - <<'PY'
-          import json
-          import os
-          from datetime import datetime, timezone
-          from pathlib import Path
-          from urllib.parse import urlsplit
-
-          callback_base = urlsplit(os.environ["QUANT_CONTROL_CALLBACK_URL"])
-          if (
-              callback_base.scheme != "https"
-              or not callback_base.hostname
-              or callback_base.username
-              or callback_base.password
-              or callback_base.query
-              or callback_base.fragment
-          ):
-              raise SystemExit("Control callback URL must be an HTTPS base without credentials, query, or fragment")
-          payload = {
-              "binding": {
-                  "projectId": "best-factor",
-                  "runId": os.environ["CONTROL_RUN_ID"],
-                  "inputSchemaVersion": os.environ["CONTROL_INPUT_SCHEMA_VERSION"],
-                  "inputSchemaHash": os.environ["CONTROL_INPUT_SCHEMA_HASH"],
-                  "configHashAlgorithm": os.environ["CONTROL_CONFIG_HASH_ALGORITHM"],
-                  "configHash": os.environ["CONTROL_CONFIG_HASH"],
-              },
-              "errorCode": "worker_workflow_failed",
-              "errorMessage": "Best Factor controlled GitHub Actions job failed before a verified result was published.",
-              "providerRunId": f"github-actions:{os.environ['CONTROL_RUN_ID']}",
-              "occurredAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-          }
-          Path("/tmp/best-factor-control-failure.json").write_text(
-              json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-              encoding="utf-8",
-          )
-          PY
+          python .github/scripts/control_callback.py failure \
+            --output /tmp/best-factor-control-failure.json
           CALLBACK_ENDPOINT="${QUANT_CONTROL_CALLBACK_URL%/}/v1/internal/runs/${CONTROL_RUN_ID}/failure"
           curl \
             --fail-with-body \

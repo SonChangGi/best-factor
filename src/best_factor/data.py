@@ -32,6 +32,8 @@ YFINANCE_MARKET_CAP_EXCHANGES = ("NMS", "NGM", "NCM", "NYQ", "ASE", "PCX", "BTS"
 YFINANCE_MARKET_CAP_PAGE_SIZE = 250
 YFINANCE_MARKET_CAP_MAX_RESULTS = 10_000
 YFINANCE_MARKET_CAP_MAX_TARGETED_FALLBACKS = 25
+YFINANCE_MARKET_CAP_SNAPSHOT_ATTEMPTS = 3
+YFINANCE_MARKET_CAP_SNAPSHOT_INITIAL_DELAY = 2.0
 _EXCLUDED_SECURITY_NAME_PATTERNS = {
     "etf": (" ETF", "EXCHANGE TRADED", "ETF -", " ETF"),
     "fund": (" FUND", "CLOSED-END", "MUTUAL FUND"),
@@ -45,6 +47,10 @@ _EXCLUDED_SECURITY_NAME_PATTERNS = {
     "spac_or_blank_check": ("ACQUISITION CORP", "ACQUISITION CORPORATION", "BLANK CHECK"),
     "convertible_or_certificate": ("CONVERTIBLE", "CERTIFICATE", "REDEEMABLE", "SUBORDINATED"),
 }
+
+
+class _MarketCapSnapshotDrift(ValueError):
+    """Raised when one paginated screener traversal is not a stable snapshot."""
 
 
 def parse_date(value: str | dt.date | dt.datetime) -> dt.date:
@@ -321,6 +327,8 @@ def fetch_yfinance_market_caps(
     page_size: int = YFINANCE_MARKET_CAP_PAGE_SIZE,
     max_results: int = YFINANCE_MARKET_CAP_MAX_RESULTS,
     max_targeted_fallbacks: int = YFINANCE_MARKET_CAP_MAX_TARGETED_FALLBACKS,
+    snapshot_attempts: int = YFINANCE_MARKET_CAP_SNAPSHOT_ATTEMPTS,
+    snapshot_initial_delay: float = YFINANCE_MARKET_CAP_SNAPSHOT_INITIAL_DELAY,
 ) -> tuple[dict[str, float], dict[str, object]]:
     """Fetch current US-listed equity market caps with bounded Yahoo requests.
 
@@ -328,7 +336,9 @@ def fetch_yfinance_market_caps(
     the eligible common-stock universe, and this function returns values only
     for the exact caller-provided ticker set. A small per-ticker fallback fills
     symbols that the paginated screener omits; callers decide whether the final
-    coverage is sufficient to publish.
+    coverage is sufficient to publish. If Yahoo changes the reported total
+    during pagination, the complete traversal restarts with bounded exponential
+    backoff and records the discarded attempts in private provider metadata.
     """
     try:
         import yfinance as yf  # type: ignore
@@ -340,12 +350,18 @@ def fetch_yfinance_market_caps(
     page_size = int(page_size)
     max_results = int(max_results)
     max_targeted_fallbacks = int(max_targeted_fallbacks)
+    snapshot_attempts = int(snapshot_attempts)
+    snapshot_initial_delay = float(snapshot_initial_delay)
     if not 1 <= page_size <= YFINANCE_MARKET_CAP_PAGE_SIZE:
         raise ValueError(f"market-cap screener page_size must be between 1 and {YFINANCE_MARKET_CAP_PAGE_SIZE}")
     if max_results < page_size:
         raise ValueError("market-cap screener max_results must be at least page_size")
     if max_targeted_fallbacks < 0:
         raise ValueError("market-cap max_targeted_fallbacks must be non-negative")
+    if snapshot_attempts < 1:
+        raise ValueError("market-cap snapshot_attempts must be positive")
+    if not math.isfinite(snapshot_initial_delay) or snapshot_initial_delay < 0:
+        raise ValueError("market-cap snapshot_initial_delay must be finite and non-negative")
 
     fetched_at = dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z")
     if not requested:
@@ -358,6 +374,9 @@ def fetch_yfinance_market_caps(
             "coverage_ratio": 1.0,
             "screener_total": 0,
             "screener_page_count": 0,
+            "screener_snapshot_attempt_count": 0,
+            "screener_snapshot_retry_count": 0,
+            "screener_snapshot_retry_errors": [],
             "targeted_fallback_count": 0,
             "missing_tickers": [],
             "targeted_fallback_errors": [],
@@ -371,6 +390,83 @@ def fetch_yfinance_market_caps(
             yf.EquityQuery("gt", ["intradaymarketcap", 0]),
         ],
     )
+    snapshot_retry_errors: list[dict[str, object]] = []
+    for snapshot_attempt in range(1, snapshot_attempts + 1):
+        try:
+            market_caps, total, page_count, latest_market_time = _fetch_yfinance_market_cap_snapshot(
+                yf,
+                query,
+                requested_set=requested_set,
+                page_size=page_size,
+                max_results=max_results,
+            )
+            break
+        except (_MarketCapSnapshotDrift, RuntimeError) as exc:
+            snapshot_retry_errors.append(
+                {
+                    "attempt": snapshot_attempt,
+                    "error_type": type(exc).__name__,
+                    "message": str(exc)[:256],
+                }
+            )
+            if snapshot_attempt >= snapshot_attempts:
+                if isinstance(exc, _MarketCapSnapshotDrift):
+                    raise ValueError(
+                        f"market-cap screener remained unstable after {snapshot_attempts} snapshot attempts: {exc}"
+                    ) from exc
+                raise RuntimeError(
+                    f"market-cap screener failed after {snapshot_attempts} snapshot attempts: {exc}"
+                ) from exc
+            time.sleep(snapshot_initial_delay * (2 ** (snapshot_attempt - 1)))
+
+    missing = [ticker for ticker in requested if ticker not in market_caps]
+    targeted_errors: list[dict[str, str]] = []
+    targeted_count = 0
+    if len(missing) <= max_targeted_fallbacks:
+        for ticker in missing:
+            try:
+                market_cap = _retry_yfinance_call(
+                    lambda current_ticker=ticker: _fetch_yfinance_ticker_market_cap(yf, current_ticker),
+                    operation=f"targeted market-cap fallback {ticker}",
+                )
+            except Exception as exc:  # pragma: no cover - live provider variability
+                targeted_errors.append({"ticker": ticker, "error": f"{type(exc).__name__}: {exc}"})
+                continue
+            market_caps[ticker] = market_cap
+            targeted_count += 1
+
+    unresolved = [ticker for ticker in requested if ticker not in market_caps]
+    matched = len(requested) - len(unresolved)
+    metadata = {
+        "provider": "yfinance_market_cap",
+        "provider_version": _package_version("yfinance"),
+        "fetched_at": fetched_at,
+        "source": "Yahoo Finance current US-listed equity market-cap screen via yfinance",
+        "requested_ticker_count": len(requested),
+        "matched_ticker_count": matched,
+        "coverage_ratio": matched / len(requested),
+        "screener_total": total or 0,
+        "screener_page_count": page_count,
+        "screener_snapshot_attempt_count": len(snapshot_retry_errors) + 1,
+        "screener_snapshot_retry_count": len(snapshot_retry_errors),
+        "screener_snapshot_retry_errors": snapshot_retry_errors,
+        "screener_latest_market_time": latest_market_time,
+        "targeted_fallback_count": targeted_count,
+        "targeted_fallback_errors": targeted_errors,
+        "missing_tickers": unresolved,
+    }
+    return market_caps, metadata
+
+
+def _fetch_yfinance_market_cap_snapshot(
+    yf,
+    query,
+    *,
+    requested_set: set[str],
+    page_size: int,
+    max_results: int,
+) -> tuple[dict[str, float], int, int, int]:
+    """Traverse one whole screener snapshot and discard partial state on drift."""
     market_caps: dict[str, float] = {}
     total: int | None = None
     offset = 0
@@ -408,7 +504,9 @@ def fetch_yfinance_market_caps(
             if total > max_results:
                 raise ValueError(f"market-cap screener total {total} exceeds max_results {max_results}")
         elif page_total != total:
-            raise ValueError(f"market-cap screener total drifted: expected {total}, received {page_total}")
+            raise _MarketCapSnapshotDrift(
+                f"market-cap screener total drifted: expected {total}, received {page_total}"
+            )
         if not quotes and offset < total:
             raise ValueError(f"market-cap screener stopped before total: offset={offset}, total={total}")
 
@@ -445,40 +543,7 @@ def fetch_yfinance_market_caps(
         offset += len(quotes)
         page_count += 1
 
-    missing = [ticker for ticker in requested if ticker not in market_caps]
-    targeted_errors: list[dict[str, str]] = []
-    targeted_count = 0
-    if len(missing) <= max_targeted_fallbacks:
-        for ticker in missing:
-            try:
-                market_cap = _retry_yfinance_call(
-                    lambda current_ticker=ticker: _fetch_yfinance_ticker_market_cap(yf, current_ticker),
-                    operation=f"targeted market-cap fallback {ticker}",
-                )
-            except Exception as exc:  # pragma: no cover - live provider variability
-                targeted_errors.append({"ticker": ticker, "error": f"{type(exc).__name__}: {exc}"})
-                continue
-            market_caps[ticker] = market_cap
-            targeted_count += 1
-
-    unresolved = [ticker for ticker in requested if ticker not in market_caps]
-    matched = len(requested) - len(unresolved)
-    metadata = {
-        "provider": "yfinance_market_cap",
-        "provider_version": _package_version("yfinance"),
-        "fetched_at": fetched_at,
-        "source": "Yahoo Finance current US-listed equity market-cap screen via yfinance",
-        "requested_ticker_count": len(requested),
-        "matched_ticker_count": matched,
-        "coverage_ratio": matched / len(requested),
-        "screener_total": total or 0,
-        "screener_page_count": page_count,
-        "screener_latest_market_time": latest_market_time,
-        "targeted_fallback_count": targeted_count,
-        "targeted_fallback_errors": targeted_errors,
-        "missing_tickers": unresolved,
-    }
-    return market_caps, metadata
+    return market_caps, total or 0, page_count, latest_market_time
 
 
 def fetch_yahoo_chart_prices(
