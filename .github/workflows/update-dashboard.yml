@@ -135,6 +135,7 @@ jobs:
       github.event_name == 'push' &&
       !(github.actor == 'github-actions[bot]' && contains(github.event.head_commit.message, 'Skip-Pages-Deploy: update-dashboard-workflow'))
     runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name == 'push' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -201,6 +202,7 @@ jobs:
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
     runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name == 'schedule' }}
     timeout-minutes: 90
     permissions:
       contents: write
@@ -721,3 +723,53 @@ jobs:
             --output /tmp/best-factor-control-failure-response.txt \
             "${CALLBACK_ENDPOINT}"
           echo "control failure manifest accepted"
+
+  public-site-health:
+    needs: [deploy-committed-docs, update-and-deploy]
+    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'push') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - name: Fail only when the existing Best Factor page is unusable
+        env:
+          PAGE_URL: https://sonchanggi.github.io/best-factor/
+        shell: bash
+        run: |
+          set -u
+          required_paths=(index.html data/summary.json data/latest-results.json)
+          for attempt in {1..12}; do
+            usable=true
+            for relative_path in "${required_paths[@]}"; do
+              readback="$RUNNER_TEMP/best-factor-health-${relative_path//\//-}"
+              if ! curl --fail --silent --show-error --location \
+                --header "Cache-Control: no-cache" \
+                --connect-timeout 10 \
+                --max-time 120 \
+                --output "$readback" \
+                "${PAGE_URL%/}/${relative_path}?health=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"; then
+                usable=false
+                break
+              fi
+              if [[ ! -s "$readback" ]]; then
+                usable=false
+                break
+              fi
+              if [[ "$relative_path" == "index.html" ]] && ! grep -Eiq '<!doctype html|<html' "$readback"; then
+                usable=false
+                break
+              fi
+              if [[ "$relative_path" == *.json ]] && ! jq -e 'type == "object" and length > 0' "$readback" >/dev/null; then
+                usable=false
+                break
+              fi
+            done
+            if [[ "$usable" == "true" ]]; then
+              echo "The existing Best Factor page remains usable; refresh or automatic deploy errors stay in run logs without failure mail."
+              exit 0
+            fi
+            [[ $attempt -lt 12 ]] && sleep 10
+          done
+          echo "::error::The public Best Factor page or its required JSON is unavailable or invalid."
+          exit 1
