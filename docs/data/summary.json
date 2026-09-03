@@ -8,16 +8,16 @@
   "coverage": {
     "holdingCount": 20,
     "priceCoverageRatio": 1.0,
-    "rankableStockUniverseCount": 1773,
+    "rankableStockUniverseCount": 1771,
     "rankingCount": 308,
     "selectedFactorCount": 318,
     "testedFactorCount": 318,
-    "universeTickerCount": 1773
+    "universeTickerCount": 1771
   },
-  "dataAsOf": "2026-09-01",
+  "dataAsOf": "2026-09-02",
   "detailDataUrl": "https://sonchanggi.github.io/best-factor/data/latest-results.json",
   "detailUrl": "https://sonchanggi.github.io/best-factor/",
-  "generatedAt": "2026-09-02T00:05:49Z",
+  "generatedAt": "2026-09-03T00:12:38Z",
   "highlights": [
     {
       "description": "\ud604\uc7ac run\uc758 in-sample winner",
@@ -27,12 +27,12 @@
     {
       "description": "ranking formula composite score",
       "label": "Composite",
-      "value": 0.8810769402
+      "value": 0.8967594212
     },
     {
       "description": "\ucd5c\uadfc tail \ubcf4\uc870 \uac80\uc99d, true OOS \uc544\ub2d8",
       "label": "Holdout rank",
-      "value": 150
+      "value": 141
     }
   ],
   "limitations": [
@@ -45,18 +45,18 @@
     "Live runs also publish history- and liquidity-qualified stock counts; the latest eligible count is a stronger diagnostic than raw price coverage, but early rebalance windows can still have smaller effective universes."
   ],
   "payload": {
-    "detailBytes": 5249139,
+    "detailBytes": 5249169,
     "summaryBytes": null
   },
   "primaryEntities": [
     {
       "label": "SNDK \u00b7 rank 1",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
         "score": 510.2649141,
-        "weight": 0.3010231814
+        "weight": 0.3146728357
       },
       "name": "SNDK",
       "sector": "US Equity Factor",
@@ -77,11 +77,11 @@
     {
       "label": "GSAT \u00b7 rank 2",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
-        "score": 305.9353706,
-        "weight": 0.159031573
+        "score": 321.4580593,
+        "weight": 0.1756029972
       },
       "name": "GSAT",
       "sector": "US Equity Factor",
@@ -102,11 +102,11 @@
     {
       "label": "AES \u00b7 rank 3",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
-        "score": 206.7932559,
-        "weight": 0.09013625765
+        "score": 241.7712598,
+        "weight": 0.1169079337
       },
       "name": "AES",
       "sector": "US Equity Factor",
@@ -127,11 +127,11 @@
     {
       "label": "WDC \u00b7 rank 4",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
-        "score": 184.0304018,
-        "weight": 0.07431801513
+        "score": 179.3880321,
+        "weight": 0.07095819624
       },
       "name": "WDC",
       "sector": "US Equity Factor",
@@ -152,11 +152,11 @@
     {
       "label": "LITE \u00b7 rank 5",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
-        "score": 168.7236136,
-        "weight": 0.06368110266
+        "score": 163.7524947,
+        "weight": 0.05944149751
       },
       "name": "LITE",
       "sector": "US Equity Factor",
@@ -177,11 +177,11 @@
     {
       "label": "MU \u00b7 rank 6",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
-        "score": 160.3064122,
-        "weight": 0.05783186541
+        "score": 160.3064415,
+        "weight": 0.05690323129
       },
       "name": "MU",
       "sector": "US Equity Factor",
@@ -202,11 +202,11 @@
     {
       "label": "BE \u00b7 rank 7",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
         "score": 152.6582689,
-        "weight": 0.05251705803
+        "weight": 0.05126980165
       },
       "name": "BE",
       "sector": "US Equity Factor",
@@ -227,11 +227,11 @@
     {
       "label": "RVMD \u00b7 rank 8",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
-        "score": 129.873028,
-        "weight": 0.03668325865
+        "score": 139.6272586,
+        "weight": 0.04167152463
       },
       "name": "RVMD",
       "sector": "US Equity Factor",
@@ -250,38 +250,13 @@
       ]
     },
     {
-      "label": "WBD \u00b7 rank 9",
+      "label": "TTMI \u00b7 rank 9",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
-        "score": 118.9528617,
-        "weight": 0.02909467426
-      },
-      "name": "WBD",
-      "sector": "US Equity Factor",
-      "sectorLabel": "\ubbf8\uad6d \uc8fc\uc2dd \ud329\ud130",
-      "signals": [
-        "\ucd5c\uc2e0 \ubcf4\uc720 \ube44\uc911\uc740 \uc5f0\uad6c\uc6a9 \ubaa8\ub378 \ucd9c\ub825\uc774\uba70 \uc2e4\ud589 \uac00\ub2a5\ud55c \ub9e4\ub9e4 \uc9c0\uc2dc\uac00 \uc544\ub2d9\ub2c8\ub2e4."
-      ],
-      "symbol": "WBD",
-      "themes": [
-        "Factor",
-        "Best Factor",
-        "ramom_378d_skip_42d_vol_63d"
-      ],
-      "warnings": [
-        "\ud604\uc7ac \uc720\ub2c8\ubc84\uc2a4/\ub3d9\uc77c\uc885\uac00/\ubb34\ub8cc \ub370\uc774\ud130 \ud55c\uacc4\uc640 holdout\uc758 \ube44\ub3c5\ub9bd\uc131\uc744 \ud568\uaed8 \ud655\uc778\ud558\uc138\uc694."
-      ]
-    },
-    {
-      "label": "TTMI \u00b7 rank 10",
-      "metrics": {
-        "bestCompositeScore": 0.8810769402,
-        "factor": "ramom_378d_skip_42d_vol_63d",
-        "rebalanceDate": "2026-08-31",
-        "score": 116.3955497,
-        "weight": 0.02731756055
+        "score": 114.9842602,
+        "weight": 0.02352018256
       },
       "name": "TTMI",
       "sector": "US Equity Factor",
@@ -300,13 +275,38 @@
       ]
     },
     {
-      "label": "FIX \u00b7 rank 11",
+      "label": "WBD \u00b7 rank 10",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
-        "score": 107.704618,
-        "weight": 0.02127810413
+        "score": 111.7562543,
+        "weight": 0.02114252384
+      },
+      "name": "WBD",
+      "sector": "US Equity Factor",
+      "sectorLabel": "\ubbf8\uad6d \uc8fc\uc2dd \ud329\ud130",
+      "signals": [
+        "\ucd5c\uc2e0 \ubcf4\uc720 \ube44\uc911\uc740 \uc5f0\uad6c\uc6a9 \ubaa8\ub378 \ucd9c\ub825\uc774\uba70 \uc2e4\ud589 \uac00\ub2a5\ud55c \ub9e4\ub9e4 \uc9c0\uc2dc\uac00 \uc544\ub2d9\ub2c8\ub2e4."
+      ],
+      "symbol": "WBD",
+      "themes": [
+        "Factor",
+        "Best Factor",
+        "ramom_378d_skip_42d_vol_63d"
+      ],
+      "warnings": [
+        "\ud604\uc7ac \uc720\ub2c8\ubc84\uc2a4/\ub3d9\uc77c\uc885\uac00/\ubb34\ub8cc \ub370\uc774\ud130 \ud55c\uacc4\uc640 holdout\uc758 \ube44\ub3c5\ub9bd\uc131\uc744 \ud568\uaed8 \ud655\uc778\ud558\uc138\uc694."
+      ]
+    },
+    {
+      "label": "FIX \u00b7 rank 11",
+      "metrics": {
+        "bestCompositeScore": 0.8967594212,
+        "factor": "ramom_378d_skip_42d_vol_63d",
+        "rebalanceDate": "2026-08-31",
+        "score": 105.4091824,
+        "weight": 0.01646744853
       },
       "name": "FIX",
       "sector": "US Equity Factor",
@@ -325,38 +325,13 @@
       ]
     },
     {
-      "label": "STRL \u00b7 rank 12",
+      "label": "CIEN \u00b7 rank 12",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
-        "score": 103.8947874,
-        "weight": 0.01863059676
-      },
-      "name": "STRL",
-      "sector": "US Equity Factor",
-      "sectorLabel": "\ubbf8\uad6d \uc8fc\uc2dd \ud329\ud130",
-      "signals": [
-        "\ucd5c\uc2e0 \ubcf4\uc720 \ube44\uc911\uc740 \uc5f0\uad6c\uc6a9 \ubaa8\ub378 \ucd9c\ub825\uc774\uba70 \uc2e4\ud589 \uac00\ub2a5\ud55c \ub9e4\ub9e4 \uc9c0\uc2dc\uac00 \uc544\ub2d9\ub2c8\ub2e4."
-      ],
-      "symbol": "STRL",
-      "themes": [
-        "Factor",
-        "Best Factor",
-        "ramom_378d_skip_42d_vol_63d"
-      ],
-      "warnings": [
-        "\ud604\uc7ac \uc720\ub2c8\ubc84\uc2a4/\ub3d9\uc77c\uc885\uac00/\ubb34\ub8cc \ub370\uc774\ud130 \ud55c\uacc4\uc640 holdout\uc758 \ube44\ub3c5\ub9bd\uc131\uc744 \ud568\uaed8 \ud655\uc778\ud558\uc138\uc694."
-      ]
-    },
-    {
-      "label": "CIEN \u00b7 rank 13",
-      "metrics": {
-        "bestCompositeScore": 0.8810769402,
-        "factor": "ramom_378d_skip_42d_vol_63d",
-        "rebalanceDate": "2026-08-31",
-        "score": 99.46994799,
-        "weight": 0.01555571066
+        "score": 96.28075456,
+        "weight": 0.009743704409
       },
       "name": "CIEN",
       "sector": "US Equity Factor",
@@ -375,13 +350,38 @@
       ]
     },
     {
+      "label": "STRL \u00b7 rank 13",
+      "metrics": {
+        "bestCompositeScore": 0.8967594212,
+        "factor": "ramom_378d_skip_42d_vol_63d",
+        "rebalanceDate": "2026-08-31",
+        "score": 93.93108964,
+        "weight": 0.008013007071
+      },
+      "name": "STRL",
+      "sector": "US Equity Factor",
+      "sectorLabel": "\ubbf8\uad6d \uc8fc\uc2dd \ud329\ud130",
+      "signals": [
+        "\ucd5c\uc2e0 \ubcf4\uc720 \ube44\uc911\uc740 \uc5f0\uad6c\uc6a9 \ubaa8\ub378 \ucd9c\ub825\uc774\uba70 \uc2e4\ud589 \uac00\ub2a5\ud55c \ub9e4\ub9e4 \uc9c0\uc2dc\uac00 \uc544\ub2d9\ub2c8\ub2e4."
+      ],
+      "symbol": "STRL",
+      "themes": [
+        "Factor",
+        "Best Factor",
+        "ramom_378d_skip_42d_vol_63d"
+      ],
+      "warnings": [
+        "\ud604\uc7ac \uc720\ub2c8\ubc84\uc2a4/\ub3d9\uc77c\uc885\uac00/\ubb34\ub8cc \ub370\uc774\ud130 \ud55c\uacc4\uc640 holdout\uc758 \ube44\ub3c5\ub9bd\uc131\uc744 \ud568\uaed8 \ud655\uc778\ud558\uc138\uc694."
+      ]
+    },
+    {
       "label": "AMD \u00b7 rank 14",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
         "score": 93.39034175,
-        "weight": 0.01133090276
+        "weight": 0.007614707326
       },
       "name": "AMD",
       "sector": "US Equity Factor",
@@ -400,38 +400,13 @@
       ]
     },
     {
-      "label": "ATI \u00b7 rank 15",
+      "label": "TIGO \u00b7 rank 15",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
-        "score": 89.71616477,
-        "weight": 0.008777663079
-      },
-      "name": "ATI",
-      "sector": "US Equity Factor",
-      "sectorLabel": "\ubbf8\uad6d \uc8fc\uc2dd \ud329\ud130",
-      "signals": [
-        "\ucd5c\uc2e0 \ubcf4\uc720 \ube44\uc911\uc740 \uc5f0\uad6c\uc6a9 \ubaa8\ub378 \ucd9c\ub825\uc774\uba70 \uc2e4\ud589 \uac00\ub2a5\ud55c \ub9e4\ub9e4 \uc9c0\uc2dc\uac00 \uc544\ub2d9\ub2c8\ub2e4."
-      ],
-      "symbol": "ATI",
-      "themes": [
-        "Factor",
-        "Best Factor",
-        "ramom_378d_skip_42d_vol_63d"
-      ],
-      "warnings": [
-        "\ud604\uc7ac \uc720\ub2c8\ubc84\uc2a4/\ub3d9\uc77c\uc885\uac00/\ubb34\ub8cc \ub370\uc774\ud130 \ud55c\uacc4\uc640 holdout\uc758 \ube44\ub3c5\ub9bd\uc131\uc744 \ud568\uaed8 \ud655\uc778\ud558\uc138\uc694."
-      ]
-    },
-    {
-      "label": "TIGO \u00b7 rank 16",
-      "metrics": {
-        "bestCompositeScore": 0.8810769402,
-        "factor": "ramom_378d_skip_42d_vol_63d",
-        "rebalanceDate": "2026-08-31",
-        "score": 88.6429133,
-        "weight": 0.008031844831
+        "score": 91.46378007,
+        "weight": 0.006195655977
       },
       "name": "TIGO",
       "sector": "US Equity Factor",
@@ -450,13 +425,13 @@
       ]
     },
     {
-      "label": "ARWR \u00b7 rank 17",
+      "label": "ARWR \u00b7 rank 16",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
-        "score": 88.02430872,
-        "weight": 0.007601967398
+        "score": 90.18901242,
+        "weight": 0.005256697847
       },
       "name": "ARWR",
       "sector": "US Equity Factor",
@@ -475,13 +450,63 @@
       ]
     },
     {
-      "label": "INTC \u00b7 rank 18",
+      "label": "GH \u00b7 rank 17",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
+        "factor": "ramom_378d_skip_42d_vol_63d",
+        "rebalanceDate": "2026-08-31",
+        "score": 90.02253442,
+        "weight": 0.005134074823
+      },
+      "name": "GH",
+      "sector": "US Equity Factor",
+      "sectorLabel": "\ubbf8\uad6d \uc8fc\uc2dd \ud329\ud130",
+      "signals": [
+        "\ucd5c\uc2e0 \ubcf4\uc720 \ube44\uc911\uc740 \uc5f0\uad6c\uc6a9 \ubaa8\ub378 \ucd9c\ub825\uc774\uba70 \uc2e4\ud589 \uac00\ub2a5\ud55c \ub9e4\ub9e4 \uc9c0\uc2dc\uac00 \uc544\ub2d9\ub2c8\ub2e4."
+      ],
+      "symbol": "GH",
+      "themes": [
+        "Factor",
+        "Best Factor",
+        "ramom_378d_skip_42d_vol_63d"
+      ],
+      "warnings": [
+        "\ud604\uc7ac \uc720\ub2c8\ubc84\uc2a4/\ub3d9\uc77c\uc885\uac00/\ubb34\ub8cc \ub370\uc774\ud130 \ud55c\uacc4\uc640 holdout\uc758 \ube44\ub3c5\ub9bd\uc131\uc744 \ud568\uaed8 \ud655\uc778\ud558\uc138\uc694."
+      ]
+    },
+    {
+      "label": "ATI \u00b7 rank 18",
+      "metrics": {
+        "bestCompositeScore": 0.8967594212,
+        "factor": "ramom_378d_skip_42d_vol_63d",
+        "rebalanceDate": "2026-08-31",
+        "score": 87.46014313,
+        "weight": 0.003246689203
+      },
+      "name": "ATI",
+      "sector": "US Equity Factor",
+      "sectorLabel": "\ubbf8\uad6d \uc8fc\uc2dd \ud329\ud130",
+      "signals": [
+        "\ucd5c\uc2e0 \ubcf4\uc720 \ube44\uc911\uc740 \uc5f0\uad6c\uc6a9 \ubaa8\ub378 \ucd9c\ub825\uc774\uba70 \uc2e4\ud589 \uac00\ub2a5\ud55c \ub9e4\ub9e4 \uc9c0\uc2dc\uac00 \uc544\ub2d9\ub2c8\ub2e4."
+      ],
+      "symbol": "ATI",
+      "themes": [
+        "Factor",
+        "Best Factor",
+        "ramom_378d_skip_42d_vol_63d"
+      ],
+      "warnings": [
+        "\ud604\uc7ac \uc720\ub2c8\ubc84\uc2a4/\ub3d9\uc77c\uc885\uac00/\ubb34\ub8cc \ub370\uc774\ud130 \ud55c\uacc4\uc640 holdout\uc758 \ube44\ub3c5\ub9bd\uc131\uc744 \ud568\uaed8 \ud655\uc778\ud558\uc138\uc694."
+      ]
+    },
+    {
+      "label": "INTC \u00b7 rank 19",
+      "metrics": {
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
         "score": 87.29047686,
-        "weight": 0.00709201683
+        "weight": 0.003121717776
       },
       "name": "INTC",
       "sector": "US Equity Factor",
@@ -500,13 +525,13 @@
       ]
     },
     {
-      "label": "TD \u00b7 rank 19",
+      "label": "TD \u00b7 rank 20",
       "metrics": {
-        "bestCompositeScore": 0.8810769402,
+        "bestCompositeScore": 0.8967594212,
         "factor": "ramom_378d_skip_42d_vol_63d",
         "rebalanceDate": "2026-08-31",
         "score": 87.28213396,
-        "weight": 0.007086219228
+        "weight": 0.003115572631
       },
       "name": "TD",
       "sector": "US Equity Factor",
@@ -515,31 +540,6 @@
         "\ucd5c\uc2e0 \ubcf4\uc720 \ube44\uc911\uc740 \uc5f0\uad6c\uc6a9 \ubaa8\ub378 \ucd9c\ub825\uc774\uba70 \uc2e4\ud589 \uac00\ub2a5\ud55c \ub9e4\ub9e4 \uc9c0\uc2dc\uac00 \uc544\ub2d9\ub2c8\ub2e4."
       ],
       "symbol": "TD",
-      "themes": [
-        "Factor",
-        "Best Factor",
-        "ramom_378d_skip_42d_vol_63d"
-      ],
-      "warnings": [
-        "\ud604\uc7ac \uc720\ub2c8\ubc84\uc2a4/\ub3d9\uc77c\uc885\uac00/\ubb34\ub8cc \ub370\uc774\ud130 \ud55c\uacc4\uc640 holdout\uc758 \ube44\ub3c5\ub9bd\uc131\uc744 \ud568\uaed8 \ud655\uc778\ud558\uc138\uc694."
-      ]
-    },
-    {
-      "label": "LRCX \u00b7 rank 20",
-      "metrics": {
-        "bestCompositeScore": 0.8810769402,
-        "factor": "ramom_378d_skip_42d_vol_63d",
-        "rebalanceDate": "2026-08-31",
-        "score": 81.37379507,
-        "weight": 0.002980427539
-      },
-      "name": "LRCX",
-      "sector": "US Equity Factor",
-      "sectorLabel": "\ubbf8\uad6d \uc8fc\uc2dd \ud329\ud130",
-      "signals": [
-        "\ucd5c\uc2e0 \ubcf4\uc720 \ube44\uc911\uc740 \uc5f0\uad6c\uc6a9 \ubaa8\ub378 \ucd9c\ub825\uc774\uba70 \uc2e4\ud589 \uac00\ub2a5\ud55c \ub9e4\ub9e4 \uc9c0\uc2dc\uac00 \uc544\ub2d9\ub2c8\ub2e4."
-      ],
-      "symbol": "LRCX",
       "themes": [
         "Factor",
         "Best Factor",
