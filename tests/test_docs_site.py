@@ -341,6 +341,7 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("python -m best_factor.cli run", workflow)
         self.assertIn('--min-market-cap "${MIN_MARKET_CAP}"', workflow)
         self.assertIn("--min-market-cap-coverage-ratio 1.0", workflow)
+        self.assertLess(workflow.index("Check KST dashboard freshness gate"), workflow.index("Reject obsolete source before collection"))
         self.assertIn("--allow-incomplete-market-cap", workflow)
         self.assertIn("/tmp/best-factor-market-cap-metadata.json", workflow)
         self.assertIn("if: always() && steps.freshness.outputs.should_update == 'true'", workflow)

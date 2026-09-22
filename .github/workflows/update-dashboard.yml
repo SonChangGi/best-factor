@@ -246,9 +246,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python .github/scripts/automation_admission.py --max-wait-seconds 300
 
-      - name: Reject obsolete source before collection
-        run: test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(git rev-parse HEAD)"
-
       - name: Record control run correlation
         env:
           CONTROL_RUN_ID: ${{ inputs.control_run_id }}
@@ -295,6 +292,10 @@ jobs:
           EVENT_SCHEDULE: ${{ github.event.schedule }}
           REUSE_CURRENT_MANUAL: ${{ github.event_name == 'workflow_dispatch' && !inputs.force_refresh && !inputs.allow_fallback && inputs.control_run_id == '' }}
         run: PYTHONPATH=src python .github/scripts/check_dashboard_freshness.py --event-name "$EVENT_NAME" --event-schedule "$EVENT_SCHEDULE" --config-json /tmp/best-factor-effective-config.json
+
+      - name: Reject obsolete source before collection
+        if: steps.freshness.outputs.should_update == 'true'
+        run: test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(git rev-parse HEAD)"
 
       - name: Install package with live-data extra
         if: steps.freshness.outputs.should_update == 'true'
