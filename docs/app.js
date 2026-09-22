@@ -73,11 +73,10 @@
   ];
   const UPDATE_AUTOMATION_DEFAULT = {
     timezone: 'Asia/Seoul',
-    primary_refresh_kst: '07:00 Tue-Sat',
+    primary_refresh_kst: '08:43 Tue-Sat',
     fallback_refresh_kst: [
-      '09:00 Tue-Sat stale/missing JSON only',
-      '11:00 Tue-Sat stale/missing JSON only',
-      '13:00 Tue-Sat stale/missing JSON only'
+      '12:13 Tue-Sat stale/missing JSON only',
+      '15:43 Tue-Sat stale/missing JSON only'
     ],
     fallback_policy: 'Primary scheduled runs refresh after each expected US regular session; fallback schedules rerun only when deployed JSON is stale, missing, or broken. workflow_dispatch remains available for reviewed reruns.',
     manual_update_method: 'GitHub Actions workflow_dispatch'
@@ -1462,8 +1461,8 @@
     const scheduleList = q('#update-schedule-list');
     if (scheduleList) {
       scheduleList.replaceChildren(
-        scheduleItem('07:00 KST Tue-Sat', '직전 미국 정규장 기준 live-data run.'),
-        scheduleItem('09/11/13 KST fallback', 'JSON stale/missing/broken일 때만 재실행.'),
+        scheduleItem('08:43 KST Tue-Sat', '직전 미국 정규장 기준 live-data run.'),
+        scheduleItem('12:13/15:43 KST fallback', 'JSON stale/missing/broken일 때만 재실행.'),
         scheduleItem('검토 후 수동 재실행', 'workflow_dispatch로 동일 검증 경로 실행.')
       );
     }

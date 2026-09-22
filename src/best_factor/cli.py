@@ -85,6 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="best-factor", description="Rank US equity factors and emit latest holdings/weights.")
     sub = parser.add_subparsers(dest="command")
     run = sub.add_parser("run", help="run a factor backtest")
+    run.add_argument("--expected-data-end-date", type=dt.date.fromisoformat, help="Frozen completed US session required for live publication")
     run.add_argument("--provider", choices=["csv", "yfinance", "yahoo_chart", "yfinance_yahoo_chart"], default="csv")
     run.add_argument("--prices-file", help="long-form CSV prices file for provider=csv")
     run.add_argument("--universe-file", help="optional universe metadata CSV")
@@ -184,13 +185,15 @@ def _fetch_live_prices(
     cache_dir: str | Path,
     *,
     chunk_size: int,
+    expected_end_date: dt.date | None = None,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
+    bounds = {"expected_end_date": expected_end_date} if expected_end_date else {}
     if provider == "yfinance":
-        return fetch_yfinance_prices(tickers, period, cache_dir, chunk_size=chunk_size)
+        return fetch_yfinance_prices(tickers, period, cache_dir, chunk_size=chunk_size, **bounds)
     if provider == "yahoo_chart":
-        return fetch_yahoo_chart_prices(tickers, period, cache_dir, chunk_size=chunk_size)
+        return fetch_yahoo_chart_prices(tickers, period, cache_dir, chunk_size=chunk_size, **bounds)
     if provider == "yfinance_yahoo_chart":
-        return fetch_resilient_prices(tickers, period, cache_dir, chunk_size=chunk_size)
+        return fetch_resilient_prices(tickers, period, cache_dir, chunk_size=chunk_size, **bounds)
     raise ValueError(f"unsupported live price provider: {provider}")
 
 
@@ -230,7 +233,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         _reject_benchmark_overlap(tickers, benchmark_tickers)
         if not tickers:
             raise ValueError(f"--tickers are required when --provider {args.provider}")
-        prices, provider_metadata = _fetch_live_prices(args.provider, tickers, args.period, cache_dir, chunk_size=args.price_chunk_size)
+        prices, provider_metadata = _fetch_live_prices(args.provider, tickers, args.period, cache_dir, chunk_size=args.price_chunk_size, expected_end_date=args.expected_data_end_date)
         if benchmark_tickers:
             try:
                 benchmark_prices, benchmark_provider_metadata = _fetch_live_prices(
@@ -239,6 +242,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     args.period,
                     cache_dir,
                     chunk_size=args.price_chunk_size,
+                    expected_end_date=args.expected_data_end_date,
                 )
             except Exception as exc:
                 benchmark_prices = []
@@ -249,6 +253,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 }
         else:
             benchmark_prices, benchmark_provider_metadata = [], {}
+    if args.expected_data_end_date:
+        prices = [row for row in prices if row["date"] <= args.expected_data_end_date]
+        benchmark_prices = [row for row in benchmark_prices if row["date"] <= args.expected_data_end_date]
     if not prices:
         raise ValueError("no prices loaded")
     tickers = sorted({str(row["ticker"]) for row in prices})
@@ -278,6 +285,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             f"--min-latest-data-coverage-ratio {float(args.min_latest_data_coverage_ratio):.4f}"
         )
     latest_reference_date = latest_price_coverage.get("latest_data_reference_date")
+    if args.expected_data_end_date and latest_reference_date != args.expected_data_end_date.isoformat():
+        raise ValueError(f"Stale prices: expected completed session {args.expected_data_end_date}, got {latest_reference_date}; preserving published results")
     if latest_reference_date:
         reference_date = dt.date.fromisoformat(str(latest_reference_date)[:10])
         if str(latest_price_coverage.get("latest_data_max_date") or "") > reference_date.isoformat():
@@ -401,6 +410,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "data_start_date": data_start_date,
         "data_end_date": data_end_date,
+        "expected_data_end_date": args.expected_data_end_date.isoformat() if args.expected_data_end_date else None,
         "universe_is_point_in_time": False,
         "market_cap_filter_basis": _market_cap_filter_basis(args, universe),
         "market_cap_filter_attempted": market_cap_attempted,

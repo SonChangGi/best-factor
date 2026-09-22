@@ -21,13 +21,12 @@ SCHEMA_VERSION = 1
 STATIC_DATA_WARNING = "Static snapshot generated from a prior run; not live market data or investment advice."
 UPDATE_AUTOMATION = {
     "timezone": "Asia/Seoul",
-    "primary_refresh_kst": "07:00 Tue-Sat",
+    "primary_refresh_kst": "08:43 Tue-Sat",
     "fallback_refresh_kst": [
-        "09:00 Tue-Sat stale/missing JSON only",
-        "11:00 Tue-Sat stale/missing JSON only",
-        "13:00 Tue-Sat stale/missing JSON only",
+        "12:13 Tue-Sat stale/missing JSON only",
+        "15:43 Tue-Sat stale/missing JSON only",
     ],
-    "fallback_policy": "Primary scheduled runs refresh after each expected US regular session; fallback schedules rerun only when deployed JSON is stale, missing, or broken. workflow_dispatch remains available for reviewed reruns.",
+    "fallback_policy": "Every scheduled slot skips an already-published completed US session; stale, missing or broken JSON triggers bounded retries. workflow_dispatch remains available for reviewed reruns.",
     "manual_update_method": "GitHub Actions workflow_dispatch",
     "manual_update_note": "Static GitHub Pages cannot run Python in the browser; the button opens the authorized GitHub Actions workflow run page for reviewed reruns.",
 }
@@ -341,7 +340,7 @@ def build_public_summary(payload: dict[str, object]) -> dict[str, object]:
         "status": {
             "state": state,
             "label": f"{summary.get('best_factor') or 'factor N/A'} · {len(holdings)} holdings",
-            "cadence": "scheduled 07:00 KST Tue-Sat plus stale-data fallbacks; workflow_dispatch on demand",
+            "cadence": "scheduled 08:43 KST Tue-Sat plus stale-data fallbacks; workflow_dispatch on demand",
             "expectedFreshnessDays": 7,
             "degradedReasons": degraded_reasons,
         },

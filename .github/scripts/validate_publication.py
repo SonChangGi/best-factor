@@ -49,6 +49,7 @@ def validate_publication(
     summary_path: Path,
     public_config_path: Path,
     private_config_path: Path,
+    expected_data_end_date: str | None = None,
 ) -> None:
     results = _load_json(results_path)
     summary = _load_json(summary_path)
@@ -73,6 +74,9 @@ def validate_publication(
         raise ValueError("latest-results holding_count mismatch")
     if result_summary.get("best_factor") != rankings[0].get("factor"):
         raise ValueError("latest-results best_factor/ranking order mismatch")
+
+    if expected_data_end_date and result_summary.get("data_end_date") != expected_data_end_date:
+        raise ValueError(f"publication is stale: expected {expected_data_end_date}, got {result_summary.get('data_end_date')}")
 
     expected_summary = build_public_summary(results)
     expected_summary["payload"]["detailBytes"] = results_path.stat().st_size  # type: ignore[index]
@@ -101,12 +105,14 @@ def main() -> int:
         type=Path,
         default=Path(".github/best-factor-dashboard-config.json"),
     )
+    parser.add_argument("--expected-data-end-date")
     args = parser.parse_args()
     validate_publication(
         results_path=args.results,
         summary_path=args.summary,
         public_config_path=args.public_config,
         private_config_path=args.private_config,
+        expected_data_end_date=args.expected_data_end_date,
     )
     print("best_factor_publication_validation=passed")
     return 0

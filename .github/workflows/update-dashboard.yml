@@ -96,12 +96,11 @@ on:
         default: ""
         type: string
   schedule:
-    # 07:00 KST Tue-Sat: staggered primary refresh after the prior US regular session.
-    - cron: "0 22 * * 1-5"
-    # 09:00/11:00/13:00 KST Tue-Sat: 1-2 hour freshness-gated fallbacks.
-    - cron: "0 0 * * 2-6"
-    - cron: "0 2 * * 2-6"
-    - cron: "0 4 * * 2-6"
+    # Spread primary/retry slots across the four US-market projects; all UTC.
+    # 08:43, 12:13 and 15:43 KST Tue-Sat. Every slot skips an already-current session.
+    - cron: "43 23 * * 1-5"
+    - cron: "13 3 * * 2-6"
+    - cron: "43 6 * * 2-6"
   push:
     branches: [main]
     paths:
@@ -119,6 +118,7 @@ on:
       - ".github/scripts/refresh_dashboard_tickers.py"
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -128,6 +128,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  admission:
+    if: >-
+      github.repository == 'SonChangGi/best-factor' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Wait for earlier peer collection pipelines
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/scripts/automation_admission.py
+
   deploy-committed-docs:
     if: >-
       github.repository == 'SonChangGi/best-factor' &&
@@ -135,7 +148,6 @@ jobs:
       github.event_name == 'push' &&
       !(github.actor == 'github-actions[bot]' && contains(github.event.head_commit.message, 'Skip-Pages-Deploy: update-dashboard-workflow'))
     runs-on: ubuntu-latest
-    continue-on-error: ${{ github.event_name == 'push' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -154,8 +166,15 @@ jobs:
         run: |
           PYTHONPATH=src python -m unittest discover -s tests
           node --test tests/common_design_v1.test.mjs tests/control_api.test.mjs
+      - name: Resolve completed session before static deployment
+        id: committed_freshness
+        run: python .github/scripts/check_dashboard_freshness.py --event-name push
+      - name: Reject stale committed data before static deployment
+        run: PYTHONPATH=src python .github/scripts/validate_publication.py --expected-data-end-date "${{ steps.committed_freshness.outputs.expected_data_end_date }}"
       - name: Configure GitHub Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+      - name: Reject obsolete source before deployment
+        run: test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(git rev-parse HEAD)"
       - name: Upload committed dashboard artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
@@ -173,7 +192,7 @@ jobs:
           set -euo pipefail
           for attempt in {1..12}; do
             matched=true
-            for relative_path in data/latest-results.json data/summary.json data/dashboard-config.json; do
+            for relative_path in index.html app.js styles.css shared-nav.css data/latest-results.json data/summary.json data/dashboard-config.json; do
               readback="/tmp/best-factor-${relative_path//\//-}"
               if ! curl \
                 --fail \
@@ -197,12 +216,12 @@ jobs:
           done
 
   update-and-deploy:
+    needs: admission
     if: >-
       github.repository == 'SonChangGi/best-factor' &&
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
     runs-on: ubuntu-latest
-    continue-on-error: ${{ github.event_name == 'schedule' }}
     timeout-minutes: 90
     permissions:
       contents: write
@@ -214,6 +233,9 @@ jobs:
     steps:
       - name: Checkout isolated best-factor repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Reject obsolete source before collection
+        run: test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(git rev-parse HEAD)"
 
       - name: Record control run correlation
         env:
@@ -429,6 +451,7 @@ jobs:
           ))
           rm -rf /tmp/best-factor-live-run
           COMMON_ARGS=(
+            --expected-data-end-date "${{ steps.freshness.outputs.expected_data_end_date }}"
             --provider yfinance_yahoo_chart
             --tickers "${TICKERS[@]}"
             --period "${PERIOD}"
@@ -504,7 +527,7 @@ jobs:
       - name: Validate generated publication contracts
         if: steps.freshness.outputs.should_update == 'true'
         run: |
-          PYTHONPATH=src python .github/scripts/validate_publication.py
+          PYTHONPATH=src python .github/scripts/validate_publication.py --expected-data-end-date "${{ steps.freshness.outputs.expected_data_end_date }}"
           PYTHONPATH=src python -m unittest discover -s tests -p 'test_docs_site.py'
           node --test tests/common_design_v1.test.mjs tests/control_api.test.mjs
 
@@ -514,6 +537,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(git rev-parse HEAD)"
           if git diff --quiet -- docs/data/latest-results.json docs/data/summary.json docs/data/dashboard-config.json .github/best-factor-dashboard-config.json; then
             echo "No dashboard data or analysis-setting changes to commit."
             echo "commit_sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
@@ -561,6 +585,10 @@ jobs:
         if: steps.freshness.outputs.should_update == 'true'
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
+      - name: Reject obsolete data commit before deployment
+        if: steps.freshness.outputs.should_update == 'true'
+        run: test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(git rev-parse HEAD)"
+
       - name: Upload static dashboard artifact
         if: steps.freshness.outputs.should_update == 'true'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
@@ -583,7 +611,7 @@ jobs:
           set -euo pipefail
           for attempt in {1..12}; do
             matched=true
-            for relative_path in data/latest-results.json data/summary.json data/dashboard-config.json; do
+            for relative_path in index.html app.js styles.css shared-nav.css data/latest-results.json data/summary.json data/dashboard-config.json; do
               readback="/tmp/best-factor-${relative_path//\//-}"
               if ! curl \
                 --fail \
@@ -732,7 +760,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Fail only when the existing Best Factor page is unusable
+      - name: Check existing Best Factor page availability separately
         env:
           PAGE_URL: https://sonchanggi.github.io/best-factor/
         shell: bash
@@ -766,7 +794,7 @@ jobs:
               fi
             done
             if [[ "$usable" == "true" ]]; then
-              echo "The existing Best Factor page remains usable; refresh or automatic deploy errors stay in run logs without failure mail."
+              echo "The existing Best Factor page remains usable; refresh failures are reported by the update job."
               exit 0
             fi
             [[ $attempt -lt 12 ]] && sleep 10

@@ -45,7 +45,7 @@
     "Live runs also publish history- and liquidity-qualified stock counts; the latest eligible count is a stronger diagnostic than raw price coverage, but early rebalance windows can still have smaller effective universes."
   ],
   "payload": {
-    "detailBytes": 5248939,
+    "detailBytes": 5248868,
     "summaryBytes": null
   },
   "primaryEntities": [
@@ -560,7 +560,7 @@
     }
   ],
   "status": {
-    "cadence": "scheduled 07:00 KST Tue-Sat plus stale-data fallbacks; workflow_dispatch on demand",
+    "cadence": "scheduled 08:43 KST Tue-Sat plus stale-data fallbacks; workflow_dispatch on demand",
     "degradedReasons": [],
     "expectedFreshnessDays": 7,
     "label": "ramom_378d_skip_42d_vol_126d \u00b7 20 holdings",

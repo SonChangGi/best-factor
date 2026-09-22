@@ -59,8 +59,8 @@ class DocsSiteTest(unittest.TestCase):
             "워크플로 상태 보기",
             "update-schedule-list",
             "자동 최신 데이터 갱신",
-            "07:00 KST Tue-Sat",
-            "09/11/13 KST fallback",
+            "08:43 KST Tue-Sat",
+            "12:13/15:43 KST fallback",
             "검토 후 수동 재실행",
             "economic-analysis-title",
             "economic-analysis-grid",
@@ -100,6 +100,8 @@ class DocsSiteTest(unittest.TestCase):
                 combined.append(target.read_text(encoding="utf-8"))
             elif target.exists():
                 for path in target.rglob("*"):
+                    if path.name in {"automation_admission.py", "test_automation_admission.py"}:
+                        continue  # Read-only peer coordination; never a deployment target.
                     if path.is_file() and path.suffix not in {".pyc", ".pyo"}:
                         combined.append(path.read_text(encoding="utf-8"))
         haystack = "\n".join(combined)
@@ -183,8 +185,8 @@ class DocsSiteTest(unittest.TestCase):
             if (displayed.length !== 21) throw new Error(`bad length ${{displayed.length}}`);
             if (displayed[19] !== 'factor_20' || displayed[20] !== 'factor_25') throw new Error(displayed.join(','));
             if (context.__bestFactorDashboard.workflowUrlForTest !== 'https://github.com/SonChangGi/best-factor/actions/workflows/update-dashboard.yml') throw new Error('bad workflow URL');
-            const scheduleText = context.__bestFactorDashboard.updateScheduleTextForTest({{ automation: {{ primary_refresh_kst: '07:00 Tue-Sat', fallback_refresh_kst: ['09:00 Tue-Sat stale/missing JSON only'] }} }});
-            if (!scheduleText.includes('07:00 Tue-Sat') || !scheduleText.includes('09:00 Tue-Sat')) throw new Error(scheduleText);
+            const scheduleText = context.__bestFactorDashboard.updateScheduleTextForTest({{ automation: {{ primary_refresh_kst: '08:43 Tue-Sat', fallback_refresh_kst: ['12:13 Tue-Sat stale/missing JSON only'] }} }});
+            if (!scheduleText.includes('08:43 Tue-Sat') || !scheduleText.includes('12:13 Tue-Sat')) throw new Error(scheduleText);
             if (!context.__bestFactorDashboard.economicNarrativeForTest('momentum').includes('가격 지속성')) throw new Error('bad economic narrative');
             const comparisonPayload = {{
               metadata: {{ benchmark_label: 'Nasdaq Composite', benchmark_tickers: ['^IXIC'], rebalance_frequency: 'M' }},
@@ -293,8 +295,8 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("same-close", payload["metadata"].get("timing_convention", ""))
         self.assertIn("multiple-testing", " ".join(payload["caveats"]))
         self.assertEqual(payload["automation"].get("timezone"), "Asia/Seoul")
-        self.assertEqual(payload["automation"].get("primary_refresh_kst"), "07:00 Tue-Sat")
-        self.assertIn("09:00 Tue-Sat stale/missing JSON only", payload["automation"].get("fallback_refresh_kst", []))
+        self.assertEqual(payload["automation"].get("primary_refresh_kst"), "08:43 Tue-Sat")
+        self.assertIn("12:13 Tue-Sat stale/missing JSON only", payload["automation"].get("fallback_refresh_kst", []))
 
     def test_generated_publication_validator_reconciles_all_three_public_contracts(self):
         script = ROOT / ".github" / "scripts" / "validate_publication.py"
@@ -321,7 +323,7 @@ class DocsSiteTest(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "update-dashboard.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("schedule:", workflow)
-        for cron in ['cron: "0 22 * * 1-5"', 'cron: "0 0 * * 2-6"', 'cron: "0 2 * * 2-6"', 'cron: "0 4 * * 2-6"']:
+        for cron in ['cron: "43 23 * * 1-5"', 'cron: "13 3 * * 2-6"', 'cron: "43 6 * * 2-6"']:
             self.assertIn(cron, workflow)
         self.assertIn("deploy-committed-docs:", workflow)
         self.assertIn("github.event_name == 'push'", workflow)
@@ -330,10 +332,10 @@ class DocsSiteTest(unittest.TestCase):
         self.assertIn("path: docs", workflow)
         self.assertIn("update-and-deploy:", workflow)
         self.assertIn("github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'", workflow)
-        self.assertIn("continue-on-error: ${{ github.event_name == 'schedule' }}", workflow)
-        self.assertIn("continue-on-error: ${{ github.event_name == 'push' }}", workflow)
+        self.assertNotIn("continue-on-error: ${{ github.event_name == 'schedule' }}", workflow)
+        self.assertNotIn("continue-on-error: ${{ github.event_name == 'push' }}", workflow)
         self.assertIn("public-site-health:", workflow)
-        self.assertIn("Fail only when the existing Best Factor page is unusable", workflow)
+        self.assertIn("Check existing Best Factor page availability separately", workflow)
         self.assertIn("required_paths=(index.html data/summary.json data/latest-results.json)", workflow)
         self.assertIn("contents: write", workflow)
         self.assertIn("python -m best_factor.cli run", workflow)
@@ -374,7 +376,7 @@ class DocsSiteTest(unittest.TestCase):
             self.assertIn("Verify live public dashboard bytes", job)
             self.assertIn("steps.deployment.outputs.page_url", job)
             self.assertIn(
-                "for relative_path in data/latest-results.json data/summary.json data/dashboard-config.json",
+                "for relative_path in index.html app.js styles.css shared-nav.css data/latest-results.json data/summary.json data/dashboard-config.json",
                 job,
             )
             self.assertIn('cmp --silent "docs/${relative_path}" "$readback"', job)

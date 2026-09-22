@@ -15,16 +15,11 @@ spec.loader.exec_module(freshness)
 
 
 class DashboardFreshnessTest(unittest.TestCase):
-    def test_primary_seven_kst_schedule_always_updates(self):
-        result = freshness.decide_update(
-            event_name="schedule",
-            event_schedule="0 22 * * 1-5",
-            now_utc=dt.datetime(2026, 6, 10, 22, 0, tzinfo=dt.UTC),
-            live_url="https://example.invalid/not-used.json",
-        )
-        self.assertEqual(result["should_update"], "true")
-        self.assertEqual(result["expected_data_end_date"], "2026-06-10")
-        self.assertEqual(result["freshness_reason"], "primary_07_kst_schedule_always_refreshes")
+    def test_primary_also_skips_current_completed_session(self):
+        path = self.write_payload(generated_at="2026-06-10T22:00:00Z", data_end_date="2026-06-10")
+        result = freshness.decide_update(event_name="schedule", event_schedule="43 23 * * 1-5",
+            now_utc=dt.datetime(2026, 6, 10, 23, 43, tzinfo=dt.UTC), json_file=path)
+        self.assertEqual(result["should_update"], "false")
 
     def test_manual_or_push_events_always_update(self):
         result = freshness.decide_update(
@@ -40,19 +35,19 @@ class DashboardFreshnessTest(unittest.TestCase):
         path = self.write_payload(generated_at="2026-06-11T00:20:00Z", data_end_date="2026-06-10")
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 0 * * 2-6",
+            event_schedule="13 3 * * 2-6",
             now_utc=dt.datetime(2026, 6, 11, 0, 0, tzinfo=dt.UTC),
             json_file=path,
         )
         self.assertEqual(result["should_update"], "false")
-        self.assertEqual(result["freshness_reason"], "fresh_for_kst_today_and_expected_us_session")
+        self.assertEqual(result["freshness_reason"], "fresh_for_expected_completed_us_session")
         self.assertEqual(result["actual_data_end_date"], "2026-06-10")
 
     def test_nine_kst_fallback_reruns_when_data_end_is_stale(self):
         path = self.write_payload(generated_at="2026-06-11T00:20:00Z", data_end_date="2026-06-09")
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 0 * * 2-6",
+            event_schedule="13 3 * * 2-6",
             now_utc=dt.datetime(2026, 6, 11, 0, 0, tzinfo=dt.UTC),
             json_file=path,
         )
@@ -72,7 +67,7 @@ class DashboardFreshnessTest(unittest.TestCase):
                     json_file=current_path,
                 )
                 self.assertEqual(current["should_update"], "false")
-                self.assertEqual(current["freshness_reason"], "fresh_for_kst_today_and_expected_us_session")
+                self.assertEqual(current["freshness_reason"], "fresh_for_expected_completed_us_session")
             with self.subTest(schedule=schedule, payload="stale_data_end"):
                 stale_path = self.write_payload(generated_at="2026-06-11T00:20:00Z", data_end_date="2026-06-09")
                 stale = freshness.decide_update(
@@ -84,21 +79,21 @@ class DashboardFreshnessTest(unittest.TestCase):
                 self.assertEqual(stale["should_update"], "true")
                 self.assertEqual(stale["freshness_reason"], "stale_data_end_before_expected_us_session")
 
-    def test_nine_kst_fallback_reruns_when_generation_is_not_today_kst(self):
+    def test_fallback_skips_current_session_even_when_generation_is_yesterday_kst(self):
         path = self.write_payload(generated_at="2026-06-10T12:00:00Z", data_end_date="2026-06-10")
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 0 * * 2-6",
+            event_schedule="13 3 * * 2-6",
             now_utc=dt.datetime(2026, 6, 11, 0, 0, tzinfo=dt.UTC),
             json_file=path,
         )
-        self.assertEqual(result["should_update"], "true")
-        self.assertEqual(result["freshness_reason"], "stale_generated_at_not_today_kst")
+        self.assertEqual(result["should_update"], "false")
+        self.assertEqual(result["freshness_reason"], "fresh_for_expected_completed_us_session")
 
     def test_fallback_reruns_when_public_json_is_missing_or_broken(self):
         result = freshness.decide_update(
             event_name="schedule",
-            event_schedule="0 4 * * 2-6",
+            event_schedule="43 6 * * 2-6",
             now_utc=dt.datetime(2026, 6, 11, 4, 0, tzinfo=dt.UTC),
             json_file=Path("/tmp/definitely-missing-best-factor.json"),
         )
@@ -109,6 +104,20 @@ class DashboardFreshnessTest(unittest.TestCase):
         # 2026-06-14 10:00 KST is Sunday; latest expected US regular session is Friday 2026-06-12.
         expected = freshness.latest_expected_us_session_date(dt.datetime(2026, 6, 14, 1, 0, tzinfo=dt.UTC))
         self.assertEqual(expected.isoformat(), "2026-06-12")
+
+    def test_calendar_holiday_dst_intraday_and_new_year(self):
+        cases = {
+            "2026-09-22T00:00:00+00:00": "2026-09-21",
+            "2026-09-21T19:59:00+00:00": "2026-09-18",
+            "2026-09-07T23:00:00+00:00": "2026-09-04",
+            "2026-11-27T17:59:00+00:00": "2026-11-25",
+            "2026-11-27T18:01:00+00:00": "2026-11-27",
+            "2021-12-31T22:00:00+00:00": "2021-12-31",
+            "2025-01-09T23:00:00+00:00": "2025-01-08",
+        }
+        for timestamp, expected in cases.items():
+            with self.subTest(timestamp=timestamp):
+                self.assertEqual(freshness.latest_expected_us_session_date(dt.datetime.fromisoformat(timestamp)).isoformat(), expected)
 
     def write_payload(self, *, generated_at: str, data_end_date: str) -> Path:
         tmp = tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False)

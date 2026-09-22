@@ -2,9 +2,9 @@
 """Decide whether a scheduled fallback run should regenerate the dashboard.
 
 GitHub Actions schedules are UTC. The public dashboard's business contract is
-Korea-time freshness: a staggered primary Tue-Sat run at 07:00 KST should
+Korea-time freshness: a staggered primary Tue-Sat run at 08:43 KST should
 publish the latest closed US regular session, while fallback checks at
-09:00/11:00/13:00 KST rerun only if the already deployed JSON is stale or
+12:13/15:43 KST rerun only if the already deployed JSON is stale or
 missing.
 """
 from __future__ import annotations
@@ -19,8 +19,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 DEFAULT_LIVE_URL = "https://sonchanggi.github.io/best-factor/data/latest-results.json"
-DEFAULT_PRIMARY_CRONS = ("0 22 * * 1-5",)
-DEFAULT_FALLBACK_CRONS = ("0 0 * * 2-6", "0 2 * * 2-6", "0 4 * * 2-6")
+DEFAULT_PRIMARY_CRONS = ("43 23 * * 1-5",)
+DEFAULT_FALLBACK_CRONS = ("13 3 * * 2-6", "43 6 * * 2-6")
 DEFAULT_TIMEZONE = "Asia/Seoul"
 
 
@@ -84,9 +84,7 @@ def decide_update(
 
     if event != "schedule":
         return {**base, "should_update": "true", "freshness_reason": "manual_or_push_event_always_refreshes"}
-    if schedule in primary_crons:
-        return {**base, "should_update": "true", "freshness_reason": "primary_07_kst_schedule_always_refreshes"}
-    if schedule not in fallback_crons:
+    if schedule not in (*primary_crons, *fallback_crons):
         return {**base, "should_update": "true", "freshness_reason": "unknown_schedule_refreshes_conservatively"}
 
     try:
@@ -113,19 +111,11 @@ def decide_update(
 
 def evaluate_payload_freshness(payload: dict[str, Any], *, now_utc: dt.datetime, timezone: str) -> dict[str, Any]:
     expected = latest_expected_us_session_date(now_utc, timezone)
-    local_today = ensure_utc(now_utc).astimezone(ZoneInfo(timezone)).date()
     generated_at = parse_datetime(str(payload.get("generated_at") or ""))
     generated_local_date = generated_at.astimezone(ZoneInfo(timezone)).date()
     data_end = payload_data_end_date(payload)
 
-    if generated_local_date < local_today:
-        return {
-            "fresh": False,
-            "reason": "stale_generated_at_not_today_kst",
-            "actual_data_end_date": data_end.isoformat(),
-            "actual_generated_kst_date": generated_local_date.isoformat(),
-        }
-    if data_end < expected:
+    if data_end != expected:
         return {
             "fresh": False,
             "reason": "stale_data_end_before_expected_us_session",
@@ -134,7 +124,7 @@ def evaluate_payload_freshness(payload: dict[str, Any], *, now_utc: dt.datetime,
         }
     return {
         "fresh": True,
-        "reason": "fresh_for_kst_today_and_expected_us_session",
+        "reason": "fresh_for_expected_completed_us_session",
         "actual_data_end_date": data_end.isoformat(),
         "actual_generated_kst_date": generated_local_date.isoformat(),
     }
@@ -163,12 +153,21 @@ def payload_data_end_date(payload: dict[str, Any]) -> dt.date:
 
 
 def latest_expected_us_session_date(now_utc: dt.datetime, timezone: str = DEFAULT_TIMEZONE) -> dt.date:
-    """Latest US regular-session date expected to be available by KST morning."""
-    local_today = ensure_utc(now_utc).astimezone(ZoneInfo(timezone)).date()
-    candidate = local_today - dt.timedelta(days=1)
-    while not is_us_market_trading_day(candidate):
+    """Freeze the latest completed regular US session, including DST and early close."""
+    new_york = ZoneInfo("America/New_York")
+    now = ensure_utc(now_utc).astimezone(new_york)
+    candidate = now.date()
+    while True:
+        if is_us_market_trading_day(candidate):
+            # NYSE scheduled half-days: day after Thanksgiving, Christmas Eve,
+            # and July 3 when the holiday lands on a weekday.
+            early = (candidate == nth_weekday(candidate.year, 11, 3, 4) + dt.timedelta(days=1)
+                     or (candidate.month, candidate.day) == (12, 24)
+                     or (candidate.month, candidate.day) == (7, 3))
+            close = dt.datetime.combine(candidate, dt.time(13 if early else 16), new_york)
+            if now >= close:
+                return candidate
         candidate -= dt.timedelta(days=1)
-    return candidate
 
 
 def is_us_market_trading_day(day: dt.date) -> bool:
@@ -177,13 +176,15 @@ def is_us_market_trading_day(day: dt.date) -> bool:
     holidays = set()
     for year in (day.year - 1, day.year, day.year + 1):
         holidays.update(nyse_holidays(year))
+    holidays.update({dt.date(2025, 1, 9), dt.date(2018, 12, 5), dt.date(2012, 10, 29), dt.date(2012, 10, 30), dt.date(2007, 1, 2), dt.date(2004, 6, 11)})
     return day not in holidays
 
 
 def nyse_holidays(year: int) -> set[dt.date]:
     """Best-effort NYSE full-day holidays without external dependencies."""
     holidays = {
-        observed_fixed(year, 1, 1),  # New Year's Day
+        # NYSE does not close the prior Friday for a Saturday New Year.
+        dt.date(year, 1, 2) if dt.date(year, 1, 1).weekday() == 6 else dt.date(year, 1, 1),
         nth_weekday(year, 1, 0, 3),  # Martin Luther King Jr. Day
         nth_weekday(year, 2, 0, 3),  # Washington's Birthday / Presidents Day
         easter_sunday(year) - dt.timedelta(days=2),  # Good Friday

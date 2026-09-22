@@ -15,6 +15,7 @@ import urllib.request
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import quote, urlencode, urlparse
+from zoneinfo import ZoneInfo
 
 from .io_utils import read_csv_dicts, write_csv_dicts
 from .schemas import PRICE_COLUMNS, UNIVERSE_COLUMNS
@@ -221,6 +222,7 @@ def fetch_yfinance_prices(
     cache_dir: str | Path | None = None,
     *,
     chunk_size: int = 100,
+    expected_end_date: dt.date | None = None,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
     """Fetch prices through yfinance if the optional extra is installed.
 
@@ -247,7 +249,7 @@ def fetch_yfinance_prices(
             continue
         try:
             data = _retry_yfinance_call(
-                lambda c=chunk: yf.download(c, period=period, auto_adjust=False, progress=False, group_by="ticker", threads=True),
+                lambda c=chunk: yf.download(c, **_price_request_bounds(period, expected_end_date), auto_adjust=False, progress=False, group_by="ticker", threads=True),
                 operation=f"price download chunk {start // chunk_size + 1}",
             )
         except Exception as exc:  # pragma: no cover - network/provider variability
@@ -552,6 +554,7 @@ def fetch_yahoo_chart_prices(
     cache_dir: str | Path | None = None,
     *,
     chunk_size: int = 100,
+    expected_end_date: dt.date | None = None,
     timeout: int = 30,
     max_workers: int = YAHOO_CHART_MAX_WORKERS,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
@@ -573,11 +576,21 @@ def fetch_yahoo_chart_prices(
 
     def fetch_one(ticker: str) -> tuple[str, list[dict[str, object]]]:
         payload = _retry_provider_call(
-            lambda: _download_yahoo_chart_payload(ticker, yahoo_period, timeout=timeout),
+            lambda: _download_yahoo_chart_payload(ticker, yahoo_period, timeout=timeout, **({"expected_end_date": expected_end_date} if expected_end_date else {})),
             provider="yahoo_chart",
             operation=f"price download {ticker}",
         )
-        return ticker, _rows_from_yahoo_chart_payload(ticker, payload, fetched_at)
+        ticker_rows = _rows_from_yahoo_chart_payload(ticker, payload, fetched_at)
+        if expected_end_date and not any(row["date"] == expected_end_date for row in ticker_rows):
+            # Yahoo can return a null final row in long-range history while its
+            # one-day endpoint already exposes the completed regular session.
+            daily_payload = _retry_provider_call(
+                lambda: _download_yahoo_chart_payload(ticker, "1d", timeout=timeout),
+                provider="yahoo_chart", operation=f"completed-session recovery {ticker}",
+            )
+            recovered = _completed_session_rows(ticker, daily_payload, expected_end_date, fetched_at)
+            ticker_rows.extend(recovered)
+        return ticker, ticker_rows
 
     iterator: list[tuple[str, list[dict[str, object]]]] = []
     workers = min(max(1, int(max_workers or 1)), max(1, len(requested)))
@@ -648,6 +661,7 @@ def fetch_resilient_prices(
     cache_dir: str | Path | None = None,
     *,
     chunk_size: int = 100,
+    expected_end_date: dt.date | None = None,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
     """Fetch prices with yfinance first, then fill missing tickers via Yahoo chart JSON."""
     requested = _dedupe_preserve_order(normalize_ticker(ticker) for ticker in tickers)
@@ -659,7 +673,7 @@ def fetch_resilient_prices(
 
     try:
         attempted_sources.append("yfinance")
-        primary_rows, primary_metadata = fetch_yfinance_prices(requested, period, cache_dir, chunk_size=chunk_size)
+        primary_rows, primary_metadata = fetch_yfinance_prices(requested, period, cache_dir, chunk_size=chunk_size, **({"expected_end_date": expected_end_date} if expected_end_date else {}))
     except Exception as exc:  # pragma: no cover - optional dependency/network path
         provider_errors.append({"provider": "yfinance", "error": f"{type(exc).__name__}: {exc}"})
         primary_metadata = {
@@ -673,7 +687,9 @@ def fetch_resilient_prices(
 
     primary_success = set(_metadata_tickers(primary_metadata, "succeeded_tickers") or _tickers_from_price_rows(primary_rows))
     primary_failed = _metadata_tickers(primary_metadata, "failed_tickers")
-    missing = [ticker for ticker in requested if ticker not in primary_success]
+    current_tickers = {str(row["ticker"]) for row in primary_rows if row["date"] == expected_end_date}
+    stale_tickers = sorted(primary_success - current_tickers) if expected_end_date else []
+    missing = [ticker for ticker in requested if ticker not in primary_success or ticker in stale_tickers]
     fallback_rows: list[dict[str, object]] = []
     fallback_metadata: dict[str, object] = {}
     fallback_success: set[str] = set()
@@ -687,6 +703,7 @@ def fetch_resilient_prices(
                 period,
                 cache_dir,
                 chunk_size=chunk_size,
+                **({"expected_end_date": expected_end_date} if expected_end_date else {}),
             )
             fallback_success = set(_metadata_tickers(fallback_metadata, "succeeded_tickers") or _tickers_from_price_rows(fallback_rows))
             fallback_failed = _metadata_tickers(fallback_metadata, "failed_tickers")
@@ -702,7 +719,15 @@ def fetch_resilient_prices(
             }
             fallback_failed = list(missing)
 
+    # Replace the whole adjusted history for recovered stale symbols, avoiding
+    # mixed adjustment vintages around splits/dividends. Never replace with a stale retry.
+    recovered = {str(row["ticker"]) for row in fallback_rows if row["date"] == expected_end_date} if expected_end_date else set()
+    primary_rows = [row for row in primary_rows if row["ticker"] not in recovered]
+    fallback_rows = [row for row in fallback_rows if row["ticker"] not in primary_success or row["ticker"] in recovered]
+    fallback_success = _tickers_from_price_rows(fallback_rows)
     rows = _merge_price_rows_prefer_first(primary_rows, fallback_rows)
+    if expected_end_date:
+        rows = [row for row in rows if row["date"] <= expected_end_date]
     succeeded_tickers = sorted(_tickers_from_price_rows(rows))
     failed_tickers = sorted(set(requested) - set(succeeded_tickers))
     combined_errors = list(primary_metadata.get("price_download_chunk_errors") or []) + list(
@@ -747,6 +772,9 @@ def fetch_resilient_prices(
         "provider_fill_counts": {"yfinance": len(primary_success), "yahoo_chart": len(fallback_success)},
         "provider_failed_tickers_by_source": {"yfinance": primary_failed, "yahoo_chart": fallback_failed},
         "provider_error_count": len(all_errors),
+        "stale_primary_tickers": stale_tickers,
+        "stale_recovered_tickers": sorted(recovered),
+        "expected_data_end_date": expected_end_date.isoformat() if expected_end_date else None,
         "fallback_source": "yahoo_chart",
         "fallback_filled_ticker_count": len(fallback_success),
         "fallback_filled_tickers": sorted(fallback_success),
@@ -929,11 +957,36 @@ def _normalize_yahoo_chart_period(period: str) -> str:
     return value
 
 
-def _download_yahoo_chart_payload(ticker: str, period: str, *, timeout: int) -> dict[str, object]:
+def _price_request_bounds(period: str, expected_end_date: dt.date | None) -> dict[str, str]:
+    """Use a frozen, exclusive end boundary instead of a cached relative range."""
+    if expected_end_date is None:
+        return {"period": period}
+    end = expected_end_date + dt.timedelta(days=1)
+    match = re.fullmatch(r"(\d+)(d|wk|mo|y)", period)
+    if match:
+        count, unit = int(match[1]), match[2]
+        if unit == "y":
+            start = end.replace(year=end.year-count, day=min(end.day, 28)) if end.month == 2 else end.replace(year=end.year-count)
+        else:
+            start = end-dt.timedelta(days=count*{"d": 1, "wk": 7, "mo": 31}[unit])
+    elif period == "ytd":
+        start = dt.date(end.year, 1, 1)
+    elif period == "max":
+        start = dt.date(1970, 1, 1)
+    else:
+        raise ValueError(f"unsupported bounded price period: {period}")
+    return {"start": start.isoformat(), "end": end.isoformat()}
+
+
+def _download_yahoo_chart_payload(ticker: str, period: str, *, timeout: int, expected_end_date: dt.date | None = None) -> dict[str, object]:
     symbol = quote(_yahoo_chart_symbol(ticker), safe="")
+    bounds = _price_request_bounds(period, expected_end_date)
+    range_params = {"range": period}
+    if expected_end_date:
+        range_params = {"period1": int(dt.datetime.combine(dt.date.fromisoformat(bounds["start"]), dt.time(), dt.UTC).timestamp()), "period2": int(dt.datetime.combine(dt.date.fromisoformat(bounds["end"]), dt.time(), dt.UTC).timestamp())}
     query = urlencode(
         {
-            "range": period,
+            **range_params,
             "interval": "1d",
             "events": "history",
             "includeAdjustedClose": "true",
@@ -943,6 +996,7 @@ def _download_yahoo_chart_payload(ticker: str, period: str, *, timeout: int) -> 
         f"{YAHOO_CHART_BASE_URL}/{symbol}?{query}",
         headers={
             "Accept": "application/json",
+            "Cache-Control": "no-cache",
             "User-Agent": YAHOO_CHART_USER_AGENT,
         },
     )
@@ -951,6 +1005,44 @@ def _download_yahoo_chart_payload(ticker: str, period: str, *, timeout: int) -> 
     if not isinstance(payload, dict):
         raise ValueError(f"Yahoo chart response was not a JSON object for {ticker}")
     return payload
+
+
+def _completed_session_rows(ticker: str, payload: dict[str, object], expected: dt.date, fetched_at: str) -> list[dict[str, object]]:
+    """Accept only actual, complete OHLCV+adjusted-close for the frozen closed session."""
+    result = payload.get("chart", {}).get("result", [None])[0]
+    if not isinstance(result, dict):
+        return []
+    meta = result.get("meta", {})
+    if normalize_ticker(meta.get("symbol", ticker)).replace(".", "-") != normalize_ticker(ticker).replace(".", "-"):
+        return []
+    regular = meta.get("currentTradingPeriod", {}).get("regular", {})
+    end = regular.get("end")
+    if not isinstance(end, (int, float)):
+        return []
+    market_close = dt.datetime.fromtimestamp(end, dt.UTC)
+    if market_close.astimezone(ZoneInfo("America/New_York")).date() != expected or parse_date(fetched_at[:10]) < expected:
+        return []
+    if dt.datetime.fromisoformat(fetched_at.replace("Z", "+00:00")) < market_close:
+        return []
+    indicators = result.get("indicators", {})
+    quotes = indicators.get("quote", [{}])[0]
+    adj_entries = indicators.get("adjclose") or [{}]
+    adjusted = adj_entries[0].get("adjclose", [])
+    timestamps = result.get("timestamp", [])
+    valid_dates = set()
+    for i, timestamp in enumerate(timestamps):
+        stamp = dt.datetime.fromtimestamp(timestamp, dt.UTC)
+        values = [_series_float(quotes.get(field, []), i) for field in ("open", "high", "low", "close", "volume")]
+        adj = _series_float(adjusted, i)
+        if (stamp.astimezone(ZoneInfo("America/New_York")).date() == expected
+                and stamp <= dt.datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+                and all(math.isfinite(value) and value > 0 for value in values) and math.isfinite(adj) and adj > 0
+                and values[1] >= max(values[0], values[3]) and values[2] <= min(values[0], values[3])):
+            valid_dates.add(stamp.date())
+    rows = _rows_from_yahoo_chart_payload(ticker, payload, fetched_at)
+    for row in rows:
+        row["source"] = "yahoo_chart_completed_session_1d"
+    return [row for row in rows if row["date"] == expected and row["date"] in valid_dates]
 
 
 def _rows_from_yahoo_chart_payload(ticker: str, payload: dict[str, object], fetched_at: str) -> list[dict[str, object]]:
