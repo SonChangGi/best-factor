@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import json
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -34,8 +35,17 @@ def write_json(path: str | Path, payload: object) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, sort_keys=True)
+        json.dump(payload, f, indent=2, sort_keys=True, default=_json_default)
         f.write("\n")
+
+
+def _json_default(value: object) -> object:
+    """Keep date-valued run arguments JSON-safe without changing their meaning."""
+    if isinstance(value, (dt.datetime, dt.date, dt.time)):
+        return value.isoformat()
+    if isinstance(value, Path):
+        return str(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def _format_value(value: object) -> object:
