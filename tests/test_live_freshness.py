@@ -25,6 +25,11 @@ class LiveFreshnessTests(unittest.TestCase):
         payload={'chart': {'result':[result]}}
         expected=dt.date(2026,9,21)
         self.assertEqual(len(_completed_session_rows('AAA',payload,expected,'2026-09-22T01:00:00Z')),1)
+        next_session = copy.deepcopy(payload)
+        next_session['chart']['result'][0]['meta']['currentTradingPeriod']['regular']['end'] = end + 86400
+        self.assertEqual(len(_completed_session_rows('AAA',next_session,expected,'2026-09-22T04:01:00Z')),1)
+        self.assertEqual(_completed_session_rows('AAA',next_session,expected,'2026-09-21T19:00:00Z'),[])
+
         self.assertEqual(_completed_session_rows('AAA',payload,expected,'2026-09-21T19:00:00Z'),[])
         self.assertEqual(_completed_session_rows('AAA',payload,dt.date(2026,9,18),'2026-09-22T01:00:00Z'),[])
         for field in ['adjclose','high']:

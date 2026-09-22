@@ -1044,9 +1044,16 @@ def _completed_session_rows(ticker: str, payload: dict[str, object], expected: d
     if not isinstance(end, (int, float)):
         return []
     market_close = dt.datetime.fromtimestamp(end, dt.UTC)
-    if market_close.astimezone(ZoneInfo("America/New_York")).date() != expected or parse_date(fetched_at[:10]) < expected:
-        return []
-    if dt.datetime.fromisoformat(fetched_at.replace("Z", "+00:00")) < market_close:
+    fetched = dt.datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+    market_zone = ZoneInfo("America/New_York")
+    if market_close.astimezone(market_zone).date() != expected:
+        # After New York midnight, currentTradingPeriod already describes the
+        # next session while range=1d still contains yesterday's completed bar.
+        # Accept that historical target only after its conservative 16:00 close.
+        if expected >= fetched.astimezone(market_zone).date():
+            return []
+        market_close = dt.datetime.combine(expected, dt.time(16), market_zone)
+    if fetched < market_close:
         return []
     indicators = result.get("indicators", {})
     quotes = indicators.get("quote", [{}])[0]
