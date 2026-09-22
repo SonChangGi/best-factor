@@ -26,6 +26,8 @@ DEFAULT_TIMEZONE = "Asia/Seoul"
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config-json", type=Path, help="Effective configuration to compare with the published result binding")
+    parser.add_argument("--reuse-current-manual", action="store_true", default=os.getenv("REUSE_CURRENT_MANUAL") == "true")
     parser.add_argument("--event-name", default=os.getenv("GITHUB_EVENT_NAME", ""))
     parser.add_argument("--event-schedule", default=os.getenv("GITHUB_EVENT_SCHEDULE", ""))
     parser.add_argument("--live-url", default=DEFAULT_LIVE_URL)
@@ -52,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
         timezone=args.timezone,
         json_file=args.json_file,
         live_url=args.live_url,
+        config_json=args.config_json,
+        reuse_current_manual=args.reuse_current_manual,
     )
     write_github_output(result)
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
@@ -68,6 +72,8 @@ def decide_update(
     timezone: str = DEFAULT_TIMEZONE,
     json_file: Path | None = None,
     live_url: str = DEFAULT_LIVE_URL,
+    config_json: Path | None = None,
+    reuse_current_manual: bool = False,
 ) -> dict[str, str]:
     """Return GitHub-output-safe strings describing whether to update."""
     now_utc = ensure_utc(now_utc or dt.datetime.now(dt.UTC))
@@ -82,14 +88,22 @@ def decide_update(
         "timezone": timezone,
     }
 
-    if event != "schedule":
+    reusable_manual = event == "workflow_dispatch" and reuse_current_manual and config_json is not None
+    if event != "schedule" and not reusable_manual:
         return {**base, "should_update": "true", "freshness_reason": "manual_or_push_event_always_refreshes"}
-    if schedule not in (*primary_crons, *fallback_crons):
+    if not reusable_manual and schedule not in (*primary_crons, *fallback_crons):
         return {**base, "should_update": "true", "freshness_reason": "unknown_schedule_refreshes_conservatively"}
 
     try:
         payload = load_payload(json_file=json_file, live_url=live_url)
         freshness = evaluate_payload_freshness(payload, now_utc=now_utc, timezone=timezone)
+        if freshness["fresh"] and config_json is not None:
+            from dashboard_config import load_config, validate_public_envelope, build_result_binding, config_hash
+            effective = load_config(config_json)
+            public = load_payload(json_file=None, live_url=live_url.rsplit("/", 1)[0] + "/dashboard-config.json")
+            public_values, public_binding = validate_public_envelope(public)
+            if config_hash(effective) != config_hash(public_values) or public_binding != build_result_binding(payload):
+                freshness = {**freshness, "fresh": False, "reason": "configuration_or_result_binding_changed"}
     except Exception as exc:  # noqa: BLE001 - fallback should repair missing/broken public JSON.
         return {
             **base,

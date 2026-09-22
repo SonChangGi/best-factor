@@ -229,6 +229,7 @@ class DashboardConfigTest(unittest.TestCase):
         dispatch_block = workflow.split("    inputs:\n", 1)[1].split("  schedule:\n", 1)[0]
         dispatch_ids = re.findall(r"^      ([a-z][a-z0-9_]*):$", dispatch_block, flags=re.MULTILINE)
         operational_inputs = {
+            "force_refresh",
             "allow_fallback",
             "control_run_id",
             "control_input_schema_version",

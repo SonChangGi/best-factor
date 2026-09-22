@@ -5,6 +5,11 @@ run-name: >-
 on:
   workflow_dispatch:
     inputs:
+      force_refresh:
+        description: "Recollect even when this completed session and configuration are already published"
+        required: false
+        default: false
+        type: boolean
       period:
         description: "Price history (keep preserves the saved setting)"
         required: true
@@ -255,31 +260,7 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Check KST dashboard freshness gate
-        id: freshness
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_SCHEDULE: ${{ github.event.schedule }}
-        run: python .github/scripts/check_dashboard_freshness.py --event-name "$EVENT_NAME" --event-schedule "$EVENT_SCHEDULE"
-
-      - name: Install package with live-data extra
-        if: steps.freshness.outputs.should_update == 'true'
-        run: python -m pip install -e '.[live]'
-
-      - name: Run network-free regression tests
-        if: steps.freshness.outputs.should_update == 'true'
-        run: PYTHONPATH=src python -m unittest discover -s tests
-
-      - name: Run frontend control contract tests
-        if: steps.freshness.outputs.should_update == 'true'
-        run: node --test tests/common_design_v1.test.mjs tests/control_api.test.mjs
-
-      - name: Run syntax/static import checks
-        if: steps.freshness.outputs.should_update == 'true'
-        run: PYTHONPATH=src python -m compileall -q src tests .github/scripts
-
       - name: Resolve and validate persisted analysis settings
-        if: steps.freshness.outputs.should_update == 'true'
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_PERIOD: ${{ inputs.period }}
@@ -299,6 +280,30 @@ jobs:
             --event-name "${EVENT_NAME}" \
             --envelope-output /tmp/best-factor-effective-config.json \
             --values-output /tmp/best-factor-effective-config.values
+
+      - name: Check KST dashboard freshness gate
+        id: freshness
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          REUSE_CURRENT_MANUAL: ${{ github.event_name == 'workflow_dispatch' && !inputs.force_refresh && !inputs.allow_fallback && inputs.control_run_id == '' }}
+        run: PYTHONPATH=src python .github/scripts/check_dashboard_freshness.py --event-name "$EVENT_NAME" --event-schedule "$EVENT_SCHEDULE" --config-json /tmp/best-factor-effective-config.json
+
+      - name: Install package with live-data extra
+        if: steps.freshness.outputs.should_update == 'true'
+        run: python -m pip install -e '.[live]'
+
+      - name: Run network-free regression tests
+        if: steps.freshness.outputs.should_update == 'true'
+        run: PYTHONPATH=src python -m unittest discover -s tests
+
+      - name: Run frontend control contract tests
+        if: steps.freshness.outputs.should_update == 'true'
+        run: node --test tests/common_design_v1.test.mjs tests/control_api.test.mjs
+
+      - name: Run syntax/static import checks
+        if: steps.freshness.outputs.should_update == 'true'
+        run: PYTHONPATH=src python -m compileall -q src tests .github/scripts
 
       - name: Validate control API run binding
         if: steps.freshness.outputs.should_update == 'true' && inputs.control_run_id != ''

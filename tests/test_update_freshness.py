@@ -3,6 +3,8 @@ import importlib.util
 import json
 import tempfile
 import unittest
+import sys
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -118,6 +120,24 @@ class DashboardFreshnessTest(unittest.TestCase):
         for timestamp, expected in cases.items():
             with self.subTest(timestamp=timestamp):
                 self.assertEqual(freshness.latest_expected_us_session_date(dt.datetime.fromisoformat(timestamp)).isoformat(), expected)
+
+    def test_default_manual_reuses_only_matching_configuration_and_result_binding(self):
+        sys.path.insert(0, str(SCRIPT.parent))
+        payload = json.loads((ROOT / "docs/data/latest-results.json").read_text())
+        config = json.loads((ROOT / "docs/data/dashboard-config.json").read_text())
+        completed = dt.datetime.combine(dt.date.fromisoformat(payload["summary"]["data_end_date"]), dt.time(23), dt.UTC)
+        with mock.patch.object(freshness, "load_payload", side_effect=[payload, config]):
+            result = freshness.decide_update(event_name="workflow_dispatch", event_schedule="",
+                now_utc=completed, reuse_current_manual=True,
+                config_json=ROOT / ".github/best-factor-dashboard-config.json")
+        self.assertEqual(result["should_update"], "false")
+        changed = {**config, "result_binding": {**config["result_binding"], "source_hash": "0"*16}}
+        with mock.patch.object(freshness, "load_payload", side_effect=[payload, changed]):
+            result = freshness.decide_update(event_name="workflow_dispatch", event_schedule="",
+                now_utc=completed, reuse_current_manual=True,
+                config_json=ROOT / ".github/best-factor-dashboard-config.json")
+        self.assertEqual(result["should_update"], "true")
+        self.assertEqual(result["freshness_reason"], "configuration_or_result_binding_changed")
 
     def write_payload(self, *, generated_at: str, data_end_date: str) -> Path:
         tmp = tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False)

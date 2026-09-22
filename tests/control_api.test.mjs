@@ -520,7 +520,7 @@ test('the API contract never changes the existing 11-input workflow mapping', ()
   const analyticalNames = [...dispatchBlock.matchAll(/^      ([a-z][a-z0-9_]*):$/gm)]
     .map((match) => match[1])
     .filter((name) => ![
-      'allow_fallback',
+      'force_refresh', 'allow_fallback',
       'control_run_id',
       'control_input_schema_version',
       'control_input_schema_hash',
