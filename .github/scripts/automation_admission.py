@@ -57,7 +57,8 @@ def started_attempt(repository: str, run: dict) -> dict:
     page = 1
     while True:
         result = api(f"repos/{repository}/actions/runs/{run['id']}/attempts/{run.get('run_attempt', 1)}/jobs?per_page=100&page={page}")
-        starts.extend(job["started_at"] for job in result["jobs"] if job.get("started_at"))
+        starts.extend(job["started_at"] for job in result["jobs"]
+                      if job.get("started_at") and job.get("conclusion") != "skipped")
         if page * 100 >= result["total_count"]:
             break
         page += 1
