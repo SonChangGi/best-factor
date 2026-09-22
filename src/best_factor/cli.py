@@ -209,6 +209,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     output_dir = ensure_dir(args.output_dir)
     cache_dir = ensure_dir(args.cache_dir)
     provider_metadata: dict[str, object]
+    benchmark_tickers = _normalize_symbols(args.benchmark_tickers)
     if args.provider == "csv":
         if not args.prices_file:
             raise ValueError("--prices-file is required when --provider csv")
@@ -228,7 +229,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "cache_dir": str(cache_dir),
         }
     else:
-        benchmark_tickers = _normalize_symbols(args.benchmark_tickers)
         tickers = _normalize_symbols(args.tickers)
         _reject_benchmark_overlap(tickers, benchmark_tickers)
         if not tickers:
@@ -256,6 +256,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     if args.expected_data_end_date:
         prices = [row for row in prices if row["date"] <= args.expected_data_end_date]
         benchmark_prices = [row for row in benchmark_prices if row["date"] <= args.expected_data_end_date]
+    if args.expected_data_end_date and benchmark_tickers:
+        current_benchmarks = {str(row["ticker"]) for row in benchmark_prices if row["date"] == args.expected_data_end_date}
+        if not current_benchmarks:
+            raise ValueError(f"No benchmark reaches completed session {args.expected_data_end_date}; preserving published results")
+        # Apply the existing benchmark priority only among current candidates.
+        benchmark_prices = [row for row in benchmark_prices if row["ticker"] in current_benchmarks]
+        benchmark_provider_metadata["stale_benchmark_tickers"] = sorted(set(benchmark_tickers) - current_benchmarks)
     if not prices:
         raise ValueError("no prices loaded")
     tickers = sorted({str(row["ticker"]) for row in prices})
@@ -431,6 +438,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "benchmark_label": _benchmark_label(benchmark_tickers[0]) if benchmark_tickers else None,
         "benchmark_return_count": len(benchmark_returns),
         "benchmark_succeeded_tickers": benchmark_provider_metadata.get("succeeded_tickers", benchmark_tickers if benchmark_returns else []),
+        "benchmark_stale_tickers": benchmark_provider_metadata.get("stale_benchmark_tickers", []),
         "benchmark_failed_tickers": benchmark_provider_metadata.get("failed_tickers", [] if benchmark_returns else benchmark_tickers),
         "benchmark_error": benchmark_provider_metadata.get("error"),
         "benchmark_note": (

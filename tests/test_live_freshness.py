@@ -40,3 +40,12 @@ class LiveFreshnessTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Stale prices'):
                 run(args)
             self.assertFalse((Path(temp)/'metadata.json').exists())
+
+    def test_live_run_rejects_stale_benchmark_even_when_stock_prices_are_current(self):
+        with tempfile.TemporaryDirectory() as temp:
+            args=build_parser().parse_args(['run','--provider','yfinance_yahoo_chart','--tickers','AAA','--benchmark-tickers','QQQ','--output-dir',temp,'--expected-data-end-date','2026-09-21'])
+            stocks=[{'ticker':'AAA','date':dt.date(2026,9,21)}]
+            benchmark=[{'ticker':'QQQ','date':dt.date(2026,9,18)}]
+            with mock.patch('best_factor.cli._fetch_live_prices',side_effect=[(stocks,{}),(benchmark,{})]):
+                with self.assertRaisesRegex(ValueError,'No benchmark reaches completed session'):
+                    run(args)
