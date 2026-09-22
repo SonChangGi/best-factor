@@ -49,3 +49,13 @@ class LiveFreshnessTests(unittest.TestCase):
             with mock.patch('best_factor.cli._fetch_live_prices',side_effect=[(stocks,{}),(benchmark,{})]):
                 with self.assertRaisesRegex(ValueError,'No benchmark reaches completed session'):
                     run(args)
+
+    def test_one_day_bulk_retry_recovers_stale_symbols_without_chart_requests(self):
+        old = {'ticker': 'AAA', 'date': dt.date(2026, 9, 18), 'adj_close': 5.0}
+        fresh = {'ticker': 'AAA', 'date': dt.date(2026, 9, 21), 'adj_close': 10.0}
+        with mock.patch('best_factor.data.fetch_yfinance_prices', side_effect=[([old], {}), ([fresh], {})]) as bulk, mock.patch('best_factor.data.fetch_yahoo_chart_prices') as chart:
+            rows, meta = fetch_resilient_prices(['AAA'], '5y', expected_end_date=fresh['date'])
+        chart.assert_not_called()
+        self.assertEqual(bulk.call_args_list[1].args[1], '1d')
+        self.assertEqual(meta['bounded_session_recovered_tickers'], ['AAA'])
+        self.assertEqual([row['date'] for row in rows], [old['date'], fresh['date']])

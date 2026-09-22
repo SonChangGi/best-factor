@@ -2,7 +2,8 @@
 """Serialize the four public data pipelines when delayed cron runs overlap.
 
 Read-only GitHub API coordination. Repository concurrency serializes runs of
-one project; a total order (created_at, run id) orders different projects.
+one project; a total order (first job start in this attempt, run id) orders
+different projects. Unstarted concurrency-pending runs do not hold admission.
 No token is printed, no workflow is dispatched, and API failures fail closed.
 """
 from __future__ import annotations
@@ -25,11 +26,11 @@ ACTIVE = ("in_progress", "queued", "waiting", "pending", "requested")
 
 
 def order(run: dict) -> tuple[dt.datetime, int]:
-    return dt.datetime.fromisoformat(run["created_at"].replace("Z", "+00:00")), int(run["id"])
+    return dt.datetime.fromisoformat(run["admission_started_at"].replace("Z", "+00:00")), int(run["id"])
 
 
 def blockers(current: dict, peers: list[dict]) -> list[dict]:
-    return sorted((run for run in peers if run["status"] in ACTIVE
+    return sorted((run for run in peers if run["status"] in ACTIVE and run.get("admission_started_at")
                    and order(run) < order(current)), key=order)
 
 
@@ -44,6 +45,27 @@ def api(path: str) -> dict:
         return json.load(response)
 
 
+def started_attempt(repository: str, run: dict) -> dict:
+    """Actual job start is stable even when GitHub reorders pending runs.
+
+    created_at/run_started_at can predate a long runner/concurrency queue.
+    Ordering by that queued time can deadlock two repository concurrency
+    groups, or let a late-starting old run overtake work already admitted.
+    Only the current attempt's jobs count, including failed-job-only reruns.
+    """
+    starts = []
+    page = 1
+    while True:
+        result = api(f"repos/{repository}/actions/runs/{run['id']}/attempts/{run.get('run_attempt', 1)}/jobs?per_page=100&page={page}")
+        starts.extend(job["started_at"] for job in result["jobs"] if job.get("started_at"))
+        if page * 100 >= result["total_count"]:
+            break
+        page += 1
+        if page > 10:
+            raise RuntimeError("Cannot inspect all jobs in the current attempt")
+    return {**run, "admission_started_at": min(starts) if starts else None}
+
+
 def active_peers(repository: str) -> list[dict]:
     found = {}
     for peer, workflow in WORKFLOWS.items():
@@ -55,32 +77,27 @@ def active_peers(repository: str) -> list[dict]:
                 query = urllib.parse.urlencode({"status": status, "per_page": 100, "page": page})
                 result = api(f"repos/{peer}/actions/workflows/{workflow}/runs?{query}")
                 for run in result["workflow_runs"]:
-                    found[run["id"]] = run
+                    found[run["id"]] = (peer, run)
                 if page * 100 >= result["total_count"]:
                     break
                 page += 1
                 if page > 10:
                     raise RuntimeError("Cannot safely inspect the entire active workflow queue")
-    return list(found.values())
+    return [started_attempt(peer, run) for peer, run in found.values()]
 
 
 def wait_for_turn(repository: str, run_id: str, max_wait: int, poll: int) -> int:
     if repository.lower() not in {repo.lower() for repo in WORKFLOWS}:
         raise ValueError("Repository is not part of the coordinated production schedule")
     deadline = time.monotonic() + max_wait
-    # A re-run can have an old created_at. Using run_started_at for it makes
-    # admission reflect its new attempt, instead of jumping ahead of live work.
-    current = api(f"repos/{repository}/actions/runs/{run_id}")
+    current = started_attempt(repository, api(f"repos/{repository}/actions/runs/{run_id}"))
     if current["status"] != "in_progress":
         raise RuntimeError("Admission requires an active workflow run")
-    if current.get("run_attempt", 1) > 1:
-        current = {**current, "created_at": current["run_started_at"]}
+    if not current.get("admission_started_at"):
+        raise RuntimeError("The current attempt has no observable job start")
     clear_checks = 0
     while True:
         peers = active_peers(repository)
-        for peer in peers:
-            if peer.get("run_attempt", 1) > 1:
-                peer["created_at"] = peer["run_started_at"]
         waiting = blockers(current, peers)
         if not waiting:
             clear_checks += 1

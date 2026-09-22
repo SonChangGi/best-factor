@@ -271,6 +271,12 @@ def fetch_yfinance_prices(
                 adj = float(rec.get("Adj Close", close)) if "Adj Close" in rec else close
                 if math.isnan(adj):
                     continue
+                if expected_end_date and period == "1d":
+                    values = [float(rec.get(field, math.nan)) for field in ("Open", "High", "Low", "Close", "Adj Close", "Volume")]
+                    if not all(math.isfinite(value) and value > 0 for value in values):
+                        continue
+                    if values[1] < max(values[0], values[3]) or values[2] > min(values[0], values[3]):
+                        continue
                 open_, high, low, adjusted_close = adjusted_ohlc_to_adj_close(
                     float(rec.get("Open", close)),
                     float(rec.get("High", close)),
@@ -685,7 +691,23 @@ def fetch_resilient_prices(
             "price_download_chunk_errors": provider_errors[-1:],
         }
 
-    primary_success = set(_metadata_tickers(primary_metadata, "succeeded_tickers") or _tickers_from_price_rows(primary_rows))
+    bounded_recovered: set[str] = set()
+    bounded_metadata: dict[str, object] = {}
+    if expected_end_date:
+        current = {str(row["ticker"]) for row in primary_rows if row["date"] == expected_end_date}
+        with_history = _tickers_from_price_rows(primary_rows)
+        stale = [ticker for ticker in requested if ticker in with_history and ticker not in current]
+        if stale:
+            try:
+                daily_rows, bounded_metadata = fetch_yfinance_prices(stale, "1d", cache_dir, chunk_size=chunk_size, expected_end_date=expected_end_date)
+                daily_rows = [row for row in daily_rows if row["date"] == expected_end_date]
+                for row in daily_rows:
+                    row["source"] = "yfinance_completed_session_1d"
+                bounded_recovered = _tickers_from_price_rows(daily_rows)
+                primary_rows = _merge_price_rows_prefer_first(primary_rows, daily_rows)
+            except Exception as exc:
+                provider_errors.append({"provider": "yfinance_completed_session_1d", "error": f"{type(exc).__name__}: {exc}"})
+    primary_success = _tickers_from_price_rows(primary_rows)
     primary_failed = _metadata_tickers(primary_metadata, "failed_tickers")
     current_tickers = {str(row["ticker"]) for row in primary_rows if row["date"] == expected_end_date}
     stale_tickers = sorted(primary_success - current_tickers) if expected_end_date else []
@@ -743,7 +765,7 @@ def fetch_resilient_prices(
             seen_errors.add(key)
             all_errors.append(item)
 
-    primary_chunk_count = int(primary_metadata.get("price_download_chunk_count") or (math.ceil(len(requested) / max(1, int(chunk_size or 100))) if requested else 0))
+    primary_chunk_count = int(primary_metadata.get("price_download_chunk_count") or (math.ceil(len(requested) / max(1, int(chunk_size or 100))) if requested else 0)) + int(bounded_metadata.get("price_download_chunk_count") or 0)
     fallback_request_count = int(fallback_metadata.get("price_download_request_count") or (len(missing) if missing else 0))
     if cache_dir:
         cache_path = Path(cache_dir) / f"yfinance-yahoo-chart-{hashlib.sha256(' '.join(requested).encode()).hexdigest()[:12]}.csv"
@@ -772,6 +794,8 @@ def fetch_resilient_prices(
         "provider_fill_counts": {"yfinance": len(primary_success), "yahoo_chart": len(fallback_success)},
         "provider_failed_tickers_by_source": {"yfinance": primary_failed, "yahoo_chart": fallback_failed},
         "provider_error_count": len(all_errors),
+        "bounded_session_recovered_tickers": sorted(bounded_recovered),
+        "bounded_session_recovery_errors": bounded_metadata.get("price_download_chunk_errors", []),
         "stale_primary_tickers": stale_tickers,
         "stale_recovered_tickers": sorted(recovered),
         "expected_data_end_date": expected_end_date.isoformat() if expected_end_date else None,
