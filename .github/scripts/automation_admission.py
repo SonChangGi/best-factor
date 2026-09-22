@@ -117,10 +117,13 @@ def wait_for_turn(repository: str, run_id: str, max_wait: int, poll: int) -> int
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--max-wait-seconds", type=int, default=2700)
-    parser.add_argument("--poll-seconds", type=int, default=45)
+    # GITHUB_TOKEN has a 1,000 requests/hour/repository primary limit.
+    # Three peers x five states plus their running job evidence stay below
+    # that budget at 90-second intervals, including bounded failed-job retries.
+    parser.add_argument("--poll-seconds", type=int, default=90)
     args = parser.parse_args()
-    if not 0 <= args.max_wait_seconds <= 7200 or not 10 <= args.poll_seconds <= 60:
-        parser.error("wait must be 0..7200 seconds; poll must be 10..60 seconds")
+    if not 0 <= args.max_wait_seconds <= 7200 or not 60 <= args.poll_seconds <= 120:
+        parser.error("wait must be 0..7200 seconds; poll must be 60..120 seconds")
     try:
         return wait_for_turn(os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_RUN_ID"],
                              args.max_wait_seconds, args.poll_seconds)
