@@ -188,7 +188,7 @@ jobs:
         id: deployment
         env:
           NODE_OPTIONS: --no-deprecation
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
       - name: Verify live public dashboard bytes
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
@@ -613,7 +613,7 @@ jobs:
         id: deployment
         env:
           NODE_OPTIONS: --no-deprecation
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
 
       - name: Verify live public dashboard bytes
         if: steps.freshness.outputs.should_update == 'true'
