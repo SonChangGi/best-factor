@@ -14,9 +14,9 @@
   },
   "config_hash": "082b5dbbe2c6cdf08d669733f9eacbc1518b0c88693d091f27574c8bc2f50750",
   "result_binding": {
-    "data_end_date": "2026-10-05",
-    "generated_at": "2026-10-06T03:38:48Z",
-    "source_hash": "3ccae67c10aa12b5"
+    "data_end_date": "2026-10-06",
+    "generated_at": "2026-10-07T03:01:55Z",
+    "source_hash": "edacc68b5f7c83e4"
   },
   "schema_version": 1
 }
